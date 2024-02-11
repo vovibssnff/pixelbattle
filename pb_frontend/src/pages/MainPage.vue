@@ -1,6 +1,6 @@
 <template>
   <div>
-    <app-header/>
+<!--    <app-header/>-->
     <g-l-canvas/>
 <!--    <app-canvas/>-->
   </div>

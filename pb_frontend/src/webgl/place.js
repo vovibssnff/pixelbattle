@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 export default class Place {
     #loaded;
     #socket;
@@ -9,62 +11,69 @@ export default class Place {
     constructor(glWindow) {
         this.#loaded = false;
         this.#socket = null;
-        // this.#loadingp = document.querySelector("#loading-p");
-        // this.#uiwrapper = document.querySelector("#ui-wrapper");
+        this.#loadingp = null;
+        this.#uiwrapper = null;
         this.#glWindow = glWindow;
-        this.#allowDraw = null;
+        this.#allowDraw = true;
     }
 
-    initConnection() {
-        this.#loadingp.innerHTML = "connecting";
+    initConnection(data) {
 
-        let host = window.location.hostname;
-        let port = window.location.port;
-        if (port != "") {
-            host += ":" + port;
-        }
-
-        let wsProt;
-        if (window.location.protocol == "https:") {
-            wsProt = "wss:";
-        } else {
-            wsProt = "ws:";
-        }
-
-        this.#connect(wsProt + "//" + host + "/ws");
-        this.#loadingp.innerHTML = "downloading canvas";
-
-        fetch(window.location.protocol + "//" + host + "/place.png")
-            .then(async resp => {
-                if (!resp.ok) {
-                    console.error("Error downloading canvas.");
-                    return null;
-                }
-
-                let buf = await this.#downloadProgress(resp);
-                await this.#setImage(buf);
-
-                this.#loaded = true;
-                this.#loadingp.innerHTML = "";
-                this.#uiwrapper.setAttribute("hide", true);
-            });
+        fetch("/init_canvas")
+			.then(async resp => {
+				let buf = await this.#downloadProgress(resp);
+				await this.#setImage(buf);
+			});
     }
+        
+        // this.#loadingp.innerHTML = "connecting";
+        //
+        // let host = window.location.hostname;
+        // let port = window.location.port;
+        // if (port != "") {
+        //     host += ":" + port;
+        // }
+        //
+        // let wsProt;
+        // if (window.location.protocol == "https:") {
+        //     wsProt = "wss:";
+        // } else {
+        //     wsProt = "ws:";
+        // }
+        //
+        // this.#connect(wsProt + "//" + host + "/ws");
+        // this.#loadingp.innerHTML = "downloading canvas";
+        //
+        // fetch(window.location.protocol + "//" + host + "/place.png")
+        //     .then(async resp => {
+        //         if (!resp.ok) {
+        //             console.error("Error downloading canvas.");
+        //             return null;
+        //         }
+        //
+        //         let buf = await this.#downloadProgress(resp);
+        //         await this.#setImage(buf);
+        //
+        //         this.#loaded = true;
+        //         this.#loadingp.innerHTML = "";
+        //         this.#uiwrapper.setAttribute("hide", true);
+        //     });
 
     async #downloadProgress(resp) {
         let len = resp.headers.get("Content-Length");
-        let a = new Uint8Array(len);
-        let pos = 0;
-        let reader = resp.body.getReader();
-        while (true) {
-            let { done, value } = await reader.read();
-            if (value) {
-                a.set(value, pos);
-                pos += value.length;
-                this.#loadingp.innerHTML = "downloading map " + Math.round(pos / len * 100) + "%";
-            }
-            if (done) break;
-        }
-        return a;
+		let a = new Uint8Array(len);
+		let pos = 0;
+		let reader = resp.body.getReader();
+		while (true) {
+            // console.log("oh my");
+			let { done, value } = await reader.read();
+			if (value) {
+				a.set(value, pos);
+				pos += value.length;
+			}
+			if (done) break;
+		}
+		return a;
     }
 
     #connect(path) {
@@ -137,19 +146,21 @@ export default class Place {
     }
 
     async #setImage(data) {
-        let img = new Image()
+        let img = new Image();
         let blob = new Blob([data], { type: "image/png" });
         let blobUrl = URL.createObjectURL(blob);
         img.src = blobUrl;
+        this.#glWindow.setTexture(img);
+        this.#glWindow.draw();
         let promise = new Promise((resolve, reject) => {
-            img.onload = () => {
-                this.#glWindow.setTexture(img);
-                this.#glWindow.draw();
-                resolve();
-            };
-            img.onerror = reject;
-        });
-        await promise;
+			img.onload = () => {
+				this.#glWindow.setTexture(img);
+				this.#glWindow.draw();
+				resolve();
+			};
+			img.onerror = reject;
+		});
+		await promise;
     }
 
     #putUint32(b, offset, n) {

@@ -1,12 +1,13 @@
-FROM golang:1.21.6-alpine
+FROM golang:latest
 
-WORKDIR /app
+WORKDIR /usr/src/app
 COPY go.* ./
 RUN go mod download
 
-COPY cmd cmd
-COPY internal internal
-COPY pkg pkg
-RUN CGO_ENABLED=0 go build -o /pb_server ./main.go
+COPY ava.png ava.png
+COPY . .
+COPY pixels pixels
+COPY server server
+RUN CGO_ENABLED=0 go build -o /pb_server ./server/main.go
 
 CMD ["/pb_server"]
