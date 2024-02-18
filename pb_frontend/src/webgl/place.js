@@ -17,9 +17,9 @@ export default class Place {
         this.#allowDraw = true;
     }
 
-    initConnection(data) {
+    initConnection(endpoint) {
 
-        fetch("/init_canvas")
+        fetch(endpoint)
 			.then(async resp => {
 				let buf = await this.#downloadProgress(resp);
 				await this.#setImage(buf);

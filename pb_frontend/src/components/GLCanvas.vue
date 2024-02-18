@@ -1,6 +1,6 @@
 <template>
   <div>
-    <canvas id="viewport-canvas"></canvas>
+    <canvas id="viewport-canvas" oncontextmenu="return false;"></canvas>
     <div id="ui-wrapper" hide="true">
       <div id="color-wrapper">
         <div id="color-swatch"></div>
@@ -21,51 +21,68 @@
 <script>
 import GLWindow from '@/webgl/glwindow.js'
 import Place from '@/webgl/place.js'
-import logo from '@/img/ava.png'
-import axios from 'axios';
 
 export default {
   data() {
     return {
-      place: null,
-      glWindow: null,
+      ws: null,
+      wsURL: '/ws',
+      connected: false,
       colorField: null,
       colorSwatch: null,
     }
   },
   created() {
     this.setViewport();
+    // this.initializeSocket();
   },
   mounted() {
-    this.initializeGLWindow();
-    this.initializePlace();
     this.initializeGUI();
+    this.connectToWebSocket();
   },
   methods: {
+    sendPixel(x, y, color) {
+      const messageObj = {
+        x: x,
+        y: y,
+        color: color
+      };
+      this.ws.send(JSON.stringify(messageObj));
+    },
     setViewport() {
       const meta = document.createElement('meta');
       meta.setAttribute('name', 'viewport');
       meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       document.head.appendChild(meta);
     },
-    initializeGLWindow () {
-      this.glWindow = new GLWindow(document.querySelector("#viewport-canvas"));
+    connectToWebSocket() {
+      this.ws = new WebSocket("ws://" + window.location.host + "/ws");
+      this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
+      this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
-    initializePlace() {
-      this.place = new Place(this.glWindow);
+    onWebSocketOpen() {
+      console.log("damnit websocket connected");
     },
+    handleNewPixel(event) {
+      console.log(event.data);
+    },
+    // initializeSocket() {
+    //   this.socket = new WebSocket("");
+    //   this.socket.onopen = () => {
+    //     this.connected = true;
+    //     console.log('connected to socket ', this.socket.url);
+    //     this.socket.onmessage = ({data}) => {
+    //       console.log('got message ', data);
+    //     }
+    //   }
+    // },
     initializeGUI() {
       const cvs = document.querySelector("#viewport-canvas");
 
       const glWindow = new GLWindow(cvs);
       const place = new Place(glWindow);
-
-      // const [file] = logo;
-      // const arrayBuffer = file.arrayBuffer();
-      // console.log('arrayBuffer', arrayBuffer);
-      // const imageData = decode(arrayBuffer);
       
-      place.initConnection();
+      place.initConnection("/init_canvas");
 
       let color = new Uint8Array([0, 0, 0]);
       let dragdown = false;
@@ -103,13 +120,13 @@ export default {
         glWindow.draw();
       });
 
-      // document.querySelector("#zoom-in").addEventListener("click", () => {
-      //   zoomIn(1.2);
-      // });
-      //
-      // document.querySelector("#zoom-out").addEventListener("click", () => {
-      //   zoomOut(1.2);
-      // });
+      document.querySelector("#zoom-in").addEventListener("click", () => {
+        zoomIn(1.2);
+      });
+      
+      document.querySelector("#zoom-out").addEventListener("click", () => {
+        zoomOut(1.2);
+      });
 
       window.addEventListener("resize", ev => {
         glWindow.updateViewScale();
@@ -129,6 +146,7 @@ export default {
             if (ev.ctrlKey) {
               pickColor({ x: ev.clientX, y: ev.clientY });
             } else {
+              ev.stopPropagation();
               drawPixel({ x: ev.clientX, y: ev.clientY }, color);
             }
         }
@@ -240,7 +258,8 @@ export default {
           const oldColor = glWindow.getColor(pos);
           for (let i = 0; i < oldColor.length; i++) {
             if (oldColor[i] != color[i]) {
-              console.log("you're here");
+              // ТУТ ПИКСЕЛЬ ОТПРАВЛЯЕМ, ЧЕКНУВ ТАЙМЕР
+              this.sendPixel(pos.x, pos.y, color);
               place.setPixel(pos.x, pos.y, color);
               return true;
             }
@@ -290,7 +309,7 @@ body {
 
 #ui-wrapper {
   position: fixed;
-  bottom: top;
+  top: 0;
   left: 0;
   width: 100%;
   height: 100%;
@@ -302,7 +321,6 @@ body {
 #zoom-wrapper {
   visibility: hidden;
 }
-
 
 #ui-wrapper[hide=true] {
   pointer-events: none;
