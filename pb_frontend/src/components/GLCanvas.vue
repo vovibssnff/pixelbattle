@@ -21,12 +21,12 @@
 <script>
 import GLWindow from '@/webgl/glwindow.js'
 import Place from '@/webgl/place.js'
+import { matchedRouteKey } from 'vue-router';
 
 export default {
   data() {
     return {
       ws: null,
-      wsURL: '/ws',
       connected: false,
       colorField: null,
       colorSwatch: null,
@@ -42,12 +42,13 @@ export default {
   },
   methods: {
     sendPixel(x, y, color) {
-      const messageObj = {
-        x: x,
-        y: y,
-        color: color
+      const pixel = {
+        x: Math.ceil(x),
+        y: Math.ceil(y),
+        color: [color[0], color[1], color[2]],
       };
-      this.ws.send(JSON.stringify(messageObj));
+      console.log(JSON.stringify(pixel));
+      this.ws.send(JSON.stringify(pixel));
     },
     setViewport() {
       const meta = document.createElement('meta');
@@ -64,18 +65,9 @@ export default {
       console.log("damnit websocket connected");
     },
     handleNewPixel(event) {
-      console.log(event.data);
+      const pixel = JSON.parse(event.data);
+      console.log(JSON.parse(pixel));
     },
-    // initializeSocket() {
-    //   this.socket = new WebSocket("");
-    //   this.socket.onopen = () => {
-    //     this.connected = true;
-    //     console.log('connected to socket ', this.socket.url);
-    //     this.socket.onmessage = ({data}) => {
-    //       console.log('got message ', data);
-    //     }
-    //   }
-    // },
     initializeGUI() {
       const cvs = document.querySelector("#viewport-canvas");
 
@@ -236,10 +228,6 @@ export default {
         this.colorSwatch.style.backgroundColor = hex;
       });
 
-      // ***************************************************
-      // ***************************************************
-      // Helper Functions
-      //
       const pickColor = (pos) => {
         color = glWindow.getColor(glWindow.click(pos));
         let hex = "#";
@@ -258,7 +246,7 @@ export default {
           const oldColor = glWindow.getColor(pos);
           for (let i = 0; i < oldColor.length; i++) {
             if (oldColor[i] != color[i]) {
-              // ТУТ ПИКСЕЛЬ ОТПРАВЛЯЕМ, ЧЕКНУВ ТАЙМЕР
+              //TODO чек таймера
               this.sendPixel(pos.x, pos.y, color);
               place.setPixel(pos.x, pos.y, color);
               return true;

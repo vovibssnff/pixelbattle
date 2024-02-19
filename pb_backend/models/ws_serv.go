@@ -14,6 +14,7 @@ type WsServer struct {
 func NewWebSocketServer() *WsServer {
 	return &WsServer{
 		clients:    make(map[*Client]bool),
+		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 	}
@@ -34,9 +35,9 @@ func (server *WsServer) Run() {
 			var deserialized Pixel
 			if err := deserialized.Deserialize(pixel); err != nil {
 				logrus.Error(err)
-				return
+			} else {
+				server.setPixel(&deserialized)
 			}
-			server.setPixel(&deserialized)
 		}
 	}
 }

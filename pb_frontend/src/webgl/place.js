@@ -107,6 +107,14 @@ export default class Place {
         this.#socket.addEventListener("error", socketError);
     }
 
+    prepare(color) {
+        let b = new Uint8Array(11);
+        for (let i = 0; i < 3; i++) {
+            b[8 + i] = color[i];
+        }
+        return b;
+    }
+
     setPixel(x, y, color) {
         // if (!this.#allowDraw) {
         //     return;
@@ -125,12 +133,7 @@ export default class Place {
         //     alert("Disconnected.");
         //     console.error("Disconnected.");
         // }
-        let b = new Uint8Array(11);
-        this.#putUint32(b.buffer, 0, x);
-        this.#putUint32(b.buffer, 4, y);
-        for (let i = 0; i < 3; i++) {
-            b[8 + i] = color[i];
-        }
+        
         this.#glWindow.setPixelColor(x, y, color);
         this.#glWindow.draw();
     }

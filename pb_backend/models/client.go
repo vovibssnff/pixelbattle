@@ -1,10 +1,11 @@
 package models
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -17,11 +18,6 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 }
-
-// var (
-// 	newline = []byte{'\n'}
-// 	space   = []byte{' '}
-// )
 
 const (
 	writeWait      = 10 * time.Second
@@ -58,6 +54,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 func (client *Client) readPump() {
 	logrus.Info("ReadPump routine running")
 	defer func() {
+		logrus.Info("Read pump disconnected")
 		client.disconnect()
 	}()
 	client.conn.SetReadLimit(maxMessageSize)
@@ -80,6 +77,7 @@ func (client *Client) writePump() {
 	logrus.Info("WritePump routine running")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		logrus.Info("Write pump disconnected")
 		ticker.Stop()
 		client.conn.Close()
 	}()

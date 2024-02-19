@@ -1,21 +1,22 @@
 package models
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/json"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Pixel struct {
-	x     uint32
-	y     uint32
-	color []byte
+	X     uint32 `json: "x"`
+	Y     uint32 `json: "y"`
+	Color []byte `json: "color"`
 }
 
 func NewPixel(x uint32, y uint32, color []byte) *Pixel {
 	return &Pixel{
-		x:     x,
-		y:     y,
-		color: color,
+		X:     x,
+		Y:     y,
+		Color: color,
 	}
 }
 
@@ -25,17 +26,13 @@ type SerializationService interface {
 }
 
 func (p *Pixel) Serialize() ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := gob.NewEncoder(&buf)
-	if err := encoder.Encode(p); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	logrus.Info("Serializer.Serialize received: ", p)
+	return json.Marshal(p)
 }
 
-// Deserialize deserializes bytes into a Pixel using gob.
 func (p *Pixel) Deserialize(data []byte) error {
-	buf := bytes.NewBuffer(data)
-	decoder := gob.NewDecoder(buf)
-	return decoder.Decode(p)
+	logrus.Info("Serializer.Deserialize received: ", data)
+	err := json.Unmarshal(data, p)
+	logrus.Info("Serializer.Deserialize returned: ", p)
+	return err
 }
