@@ -6,13 +6,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type Color [3]uint
+
 type Pixel struct {
-	X     uint32 `json: "x"`
-	Y     uint32 `json: "y"`
-	Color []byte `json: "color"`
+	X     uint `json: "x"`
+	Y     uint `json: "y"`
+	Color []uint `json: "color"`
 }
 
-func NewPixel(x uint32, y uint32, color []byte) *Pixel {
+func NewPixel(x uint, y uint, color []uint) *Pixel {
 	return &Pixel{
 		X:     x,
 		Y:     y,
@@ -27,6 +29,8 @@ type SerializationService interface {
 
 func (p *Pixel) Serialize() ([]byte, error) {
 	logrus.Info("Serializer.Serialize received: ", p)
+	resp, _ := json.Marshal(p)
+	logrus.Info(string(resp))
 	return json.Marshal(p)
 }
 

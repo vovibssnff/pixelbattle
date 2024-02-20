@@ -66,7 +66,7 @@ export default {
     },
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
-      console.log(JSON.parse(pixel));
+      console.log(pixel);
     },
     initializeGUI() {
       const cvs = document.querySelector("#viewport-canvas");
