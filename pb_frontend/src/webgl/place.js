@@ -1,5 +1,3 @@
-import axios from 'axios'
-
 export default class Place {
     #loaded;
     #socket;
@@ -18,46 +16,12 @@ export default class Place {
     }
 
     initConnection(endpoint) {
-
         fetch(endpoint)
 			.then(async resp => {
 				let buf = await this.#downloadProgress(resp);
 				await this.#setImage(buf);
 			});
     }
-        
-        // this.#loadingp.innerHTML = "connecting";
-        //
-        // let host = window.location.hostname;
-        // let port = window.location.port;
-        // if (port != "") {
-        //     host += ":" + port;
-        // }
-        //
-        // let wsProt;
-        // if (window.location.protocol == "https:") {
-        //     wsProt = "wss:";
-        // } else {
-        //     wsProt = "ws:";
-        // }
-        //
-        // this.#connect(wsProt + "//" + host + "/ws");
-        // this.#loadingp.innerHTML = "downloading canvas";
-        //
-        // fetch(window.location.protocol + "//" + host + "/place.png")
-        //     .then(async resp => {
-        //         if (!resp.ok) {
-        //             console.error("Error downloading canvas.");
-        //             return null;
-        //         }
-        //
-        //         let buf = await this.#downloadProgress(resp);
-        //         await this.#setImage(buf);
-        //
-        //         this.#loaded = true;
-        //         this.#loadingp.innerHTML = "";
-        //         this.#uiwrapper.setAttribute("hide", true);
-        //     });
 
     async #downloadProgress(resp) {
         let len = resp.headers.get("Content-Length");
@@ -116,24 +80,7 @@ export default class Place {
     }
 
     setPixel(x, y, color) {
-        // if (!this.#allowDraw) {
-        //     return;
-        // }
-        // if (this.#socket != null && this.#socket.readyState == 1) {
-        //     let b = new Uint8Array(11);
-        //     this.#putUint32(b.buffer, 0, x);
-        //     this.#putUint32(b.buffer, 4, y);
-        //     for (let i = 0; i < 3; i++) {
-        //         b[8 + i] = color[i];
-        //     }
-        //     this.#socket.send(b);
-        //     this.#glWindow.setPixelColor(x, y, color);
-        //     this.#glWindow.draw();
-        // } else {
-        //     alert("Disconnected.");
-        //     console.error("Disconnected.");
-        // }
-        
+        console.log(x, y, color);
         this.#glWindow.setPixelColor(x, y, color);
         this.#glWindow.draw();
     }

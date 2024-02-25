@@ -1,17 +1,22 @@
-package models
+package websockets
 
 import (
-	"net/http"
-	"time"
-
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
+	"net/http"
+	"pb_backend/models"
+	"pb_backend/service"
+	"time"
 )
 
 type Client struct {
-	conn   *websocket.Conn
-	server *WsServer
-	send   chan *Pixel
+	conn          *websocket.Conn
+	server        *WsServer
+	send          chan *models.Pixel
+	err 		  chan *string
+	userid        string
+	timer_service *redis.Client
 }
 
 var upgrader = websocket.Upgrader{
@@ -26,15 +31,17 @@ const (
 	maxMessageSize = 10000
 )
 
-func NewClient(conn *websocket.Conn, server *WsServer) *Client {
+func NewClient(conn *websocket.Conn, server *WsServer, addr string, password string, db int) *Client {
 	return &Client{
-		conn:   conn,
-		server: server,
-		send:   make(chan *Pixel),
+		conn:          conn,
+		server:        server,
+		send:          make(chan *models.Pixel),
+		err:		   make(chan *string),
+		timer_service: service.NewRedisClient(addr, password, db),
 	}
 }
 
-func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
+func ServeWs(server *WsServer, dbAddr string, dbPassword string, db int, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
@@ -42,13 +49,12 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := NewClient(conn, server)
+	client := NewClient(conn, server, dbAddr, dbPassword, db)
 
 	go client.writePump()
 	go client.readPump()
 
 	server.register <- client
-
 }
 
 func (client *Client) readPump() {
@@ -68,8 +74,32 @@ func (client *Client) readPump() {
 			}
 			break
 		}
-		logrus.Info("ReadPump received: ", msg)
-		client.server.broadcast <- msg
+		// logrus.Info("ReadPump received: ", msg)
+
+		var deserialized models.Pixel
+		if err := deserialized.Deserialize(msg); err != nil {
+			logrus.Error(err)
+			continue
+		}
+		deserialized.Userid = client.userid
+
+		//таймер чек по client.userid
+		exists, err := service.CheckTime(client.timer_service, client.userid)
+		if err != nil {
+			logrus.Error(err)
+		}
+
+		// if doesn't exist
+		if exists == 0 {
+			err := service.SetTimer(client.timer_service, client.userid, 30)
+			if err != nil {
+				logrus.Error(err)
+			}
+			client.server.broadcast <- &deserialized
+		}
+
+
+
 	}
 }
 
@@ -86,7 +116,6 @@ func (client *Client) writePump() {
 		case pixel, ok := <-client.send:
 			client.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The WsServer closed the channel.
 				client.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -102,11 +131,6 @@ func (client *Client) writePump() {
 			}
 			w.Write(serialized)
 			logrus.Info("WritePump sent: ", serialized)
-			// n := len(client.send)
-			// for i := 0; i < n; i++ {
-			// 	w.Write(newline)
-			// 	w.Write(<-client.send)
-			// }
 
 			if err := w.Close(); err != nil {
 				return

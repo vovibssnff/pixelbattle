@@ -25,3 +25,14 @@ services:
     depends_on:
       - frontend
       - backend
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    # volumes:
+      # - /path/to/local/dаta:/root/redis
+      # - ./redis/redis.conf:/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASES=16

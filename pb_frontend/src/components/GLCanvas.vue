@@ -21,7 +21,6 @@
 <script>
 import GLWindow from '@/webgl/glwindow.js'
 import Place from '@/webgl/place.js'
-import { matchedRouteKey } from 'vue-router';
 
 export default {
   data() {
@@ -30,13 +29,14 @@ export default {
       connected: false,
       colorField: null,
       colorSwatch: null,
+      place: null
     }
   },
   created() {
     this.setViewport();
-    // this.initializeSocket();
   },
   mounted() {
+    let self = this;
     this.initializeGUI();
     this.connectToWebSocket();
   },
@@ -66,6 +66,7 @@ export default {
     },
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
+      self.place.setPixel(pixel.X, pixel.Y, new Uint8Array(pixel.Color[0], pixel.Color[1], pixel.Color[2]));
       console.log(pixel);
     },
     initializeGUI() {
@@ -73,8 +74,10 @@ export default {
 
       const glWindow = new GLWindow(cvs);
       const place = new Place(glWindow);
+    
+      self.place = place;
       
-      place.initConnection("/init_canvas");
+      self.place.initConnection("/init_canvas");
 
       let color = new Uint8Array([0, 0, 0]);
       let dragdown = false;
@@ -248,7 +251,6 @@ export default {
             if (oldColor[i] != color[i]) {
               //TODO чек таймера
               this.sendPixel(pos.x, pos.y, color);
-              place.setPixel(pos.x, pos.y, color);
               return true;
             }
           }
