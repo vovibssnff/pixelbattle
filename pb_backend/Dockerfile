@@ -4,7 +4,6 @@ WORKDIR /usr/src/app
 COPY go.* ./
 RUN go mod download
 
-COPY ava.png ava.png
 COPY . .
 # COPY pixels pixels
 # COPY server server

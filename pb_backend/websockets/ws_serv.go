@@ -59,22 +59,9 @@ func (server *WsServer) setPixel(pixel *models.Pixel) {
 	if err := service.WritePixel(server.redis_service, pixel); err != nil {
 		logrus.Error(err)
 		return
-		// for client := range server.clients {
-		// 	if client.userid == pixel.Userid {
-		// 		client.send <- err
-		// 	}
-		// }
 	}
 	logrus.Info("Pixel written to redis db")
 	for client := range server.clients {
 		client.send <- pixel
 	}
 }
-
-// func (server *WsServer) sendError(err error, userid string) {
-// 	for client := range server.clients {
-// 		if client.userid == userid {
-// 			client.send 
-// 		}
-// 	}
-// }

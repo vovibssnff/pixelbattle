@@ -3,12 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	// "os"
 	"pb_backend/models"
 	"time"
-
 	"github.com/redis/go-redis/v9"
-	// "github.com/sirupsen/logrus"
 )
 
 func NewRedisClient(addr string, password string, db int) *redis.Client {
@@ -53,16 +50,6 @@ func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 			if err != nil {
 				return err
 			}
-			// logrus.New()
-			// logrus.SetFormatter(&logrus.JSONFormatter{})
-			// logrus.SetLevel(logrus.DebugLevel)
-			// file, err := os.OpenFile("logrus.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-			// if err == nil {
-			// 	logrus.SetOutput(file)
-			// 	logrus.Info(key, serializedRedisPixel)
-			// } else {
-			// 	logrus.Info(err)
-			// }
 		}
 	}
 	return nil
@@ -73,10 +60,9 @@ func GetCanvas(rdb *redis.Client, img *Image) error {
 	if err != nil {
 		return err
 	}
-	var x, y uint
+	var y, x uint
 	for _, key := range keys {
-
-		_, err := fmt.Sscanf(key, "pixel:%d:%d", &x, &y)
+		_, err := fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
 		if err != nil {
 			return err
 		}
@@ -84,15 +70,11 @@ func GetCanvas(rdb *redis.Client, img *Image) error {
 		if err != nil {
 			return err
 		}
-
 		var deserialized models.RedisPixel
-
 		if err := deserialized.FromRedisFormat([]byte(jsonString[0])); err != nil {
 			return err
 		}
-
 		pixel := models.NewPixel(x, y, deserialized.Color)
-		// logrus.Info(pixel)
 		img.Data = append(img.Data, *pixel)
 	}
 	return nil

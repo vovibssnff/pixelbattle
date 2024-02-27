@@ -72,16 +72,3 @@ func (service *ImageService) GetImageBytes(img *Image) []byte {
 	}
 	return buf.Bytes()
 }
-
-// func loadImage(loadPath string) draw.Image {
-// 	f, err := os.Open(loadPath)
-// 	if err != nil {
-// 		logrus.Error(err)
-// 	}
-// 	defer f.Close()
-// 	pngImg, err := png.Decode(f)
-// 	if err != nil {
-// 		logrus.Error(err)
-// 	}
-// 	return pngImg.(draw.Image)
-// }
