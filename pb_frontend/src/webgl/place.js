@@ -80,7 +80,12 @@ export default class Place {
     }
 
     setPixel(x, y, color) {
-        console.log(x, y, color);
+        let b = new Uint8Array(11);
+        this.#putUint32(b.buffer, 0, x);
+        this.#putUint32(b.buffer, 4, y);
+        for (let i = 0; i < 3; i++) {
+            b[8 + i] = color[i];
+        }
         this.#glWindow.setPixelColor(x, y, color);
         this.#glWindow.draw();
     }
