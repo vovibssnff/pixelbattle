@@ -91,7 +91,7 @@ func (client *Client) readPump() {
 
 		// if doesn't exist
 		if exists == 0 {
-			err := service.SetTimer(client.timer_service, client.userid, 30)
+			err := service.SetTimer(client.timer_service, client.userid, 2)
 			if err != nil {
 				logrus.Error(err)
 			}
