@@ -21,7 +21,7 @@ services:
       - REDIS_PSW=redis
       - REDIS_HISTORY=2
       - REDIS_TIMER=1
-      - CANVAS_HEIGHT=500
+      - CANVAS_HEIGHT=250
       - CANVAS_WIDTH=500
     depends_on:
       - redis

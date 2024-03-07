@@ -62,6 +62,11 @@ export default {
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.place.initConnection("/init_canvas");
     this.initEventListeners();
+    const platform = navigator.platform.toLowerCase();
+    if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
+      this.initMobileEventListeners();
+      console.log("oh my fucking god android user");
+    }
     this.connectToWebSocket();
   },
   methods: {
@@ -70,6 +75,9 @@ export default {
       meta.setAttribute('name', 'viewport');
       meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       document.head.appendChild(meta);
+    },
+    initMobileEventListeners() {
+
     },
     initEventListeners() {
       document.addEventListener('keydown', this.onKeyDown);
@@ -95,30 +103,27 @@ export default {
       }
     },
     sendPixel(x, y, color) {
-      console.log(this.timerRunning, this.$data.timerRunning);
       if (!this.timerRunning) {
         this.timerRunning = true;
-        console.log(this.timerRunning, this.$data.timerRunning);
         const pixel = {
           x: Math.floor(x),
           y: Math.floor(y),
           color: [color[0], color[1], color[2]],
         };
         console.log(JSON.stringify(pixel));
+        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]), true);
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;
 
         this.timer = setInterval(() => {
           if (this.seconds > 0) {
-            // Update seconds using Vue's reactivity system
             this.seconds--;
           } else {
             clearInterval(this.timer);
             this.timerRunning = false;
           }
         }, 1000);
-        console.log(this.timerRunning);
       }
     },
     connectToWebSocket() {
@@ -132,7 +137,7 @@ export default {
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
       console.log("Received a pixel from server: ", pixel);
-      this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+      this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]), false);
     },
     onMouseDown(ev) {
       switch (ev.button) {
@@ -148,6 +153,7 @@ export default {
             this.pickColor({ x: ev.clientX, y: ev.clientY });
           } else {
             ev.preventDefault();
+            console.log("mousedown");
             this.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
           }
       }
@@ -158,6 +164,7 @@ export default {
         const oldColor = this.glWindow.getColor(pos);
         for (let i = 0; i < oldColor.length; i++) {
           if (oldColor[i] != color[i]) {
+            console.log("sending: ", pos.x, pos.y);
             this.sendPixel(pos.x, pos.y, color);
             return true;
           }
@@ -214,8 +221,8 @@ export default {
       this.colorSwatch.style.backgroundColor = hex;
     },
     onTouchMove(ev) {
-      this.$data.touchID++;
-      if (this.$data.touchScaling) {
+      this.touchID++;
+      if (this.touchScaling && ev.touches.length!=1) {
         let dist = Math.hypot(
             ev.touches[0].pageX - ev.touches[1].pageX,
             ev.touches[0].pageY - ev.touches[1].pageY);
@@ -256,7 +263,8 @@ export default {
       // console.log(movePos);
     },
     onTouchStart(ev) {
-      let thisTouch = this.$data.touchID;
+      ev.preventDefault();
+      let thisTouch = this.touchID;
       this.touchstartTime = (new Date()).getTime();
       this.lastMovePos = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
       if (ev.touches.length === 2) {
@@ -266,17 +274,16 @@ export default {
       setTimeout(() => {
         if (thisTouch == this.$data.touchID) {
           this.pickColor(this.lastMovePos);
-          navigator.vibrate(200);
+          // navigator.vibrate(200);
         }
       }, 350);
     },
-    onTouchEnd() {
+    onTouchEnd(ev) {
       this.$data.touchID++;
       let elapsed = (new Date()).getTime() - this.touchstartTime;
       if (elapsed < 100) {
-        if (drawPixel(this.lastMovePos, this.color)) {
-          navigator.vibrate(10);
-        };
+        console.log(this.lastMovePos);
+        this.drawPixel(this.lastMovePos, this.color);
       }
       if (ev.touches.length === 0) {
         this.touchScaling = false;

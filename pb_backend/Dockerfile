@@ -1,12 +1,11 @@
 FROM golang:latest
 
-WORKDIR /usr/src/app
+WORKDIR /app
 COPY go.* ./
 RUN go mod download
 
 COPY . .
 # COPY pixels pixels
 # COPY server server
-RUN CGO_ENABLED=0 go build -o /pb_server ./main/main.go
+CMD ["go", "run", "./main/main.go"]
 
-CMD ["/pb_server"]

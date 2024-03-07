@@ -1,13 +1,13 @@
 package main
 
 import (
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"pb_backend/server"
 	"pb_backend/service"
 	"pb_backend/websockets"
 	"strconv"
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
