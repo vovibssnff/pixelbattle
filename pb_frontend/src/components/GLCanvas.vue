@@ -5,8 +5,18 @@
     @contextmenu="() => {return false;}" id="viewport-canvas"></canvas>
     <div id="ui-wrapper" hide="true">
       <div id="color-wrapper">
-        <div  id="color-swatch"></div>
-        <input @change="onChange" id="color-field" type="text" placeholder="#000000" value="#000000" />
+        <!-- <div id="color-swatch"></div> -->
+        <div v-for="(color, index) in palette" 
+          :key="index" 
+          :item="color" 
+          @click="() => {this.selectSwatch(index);}" 
+          class="color-swatch" 
+          :style="{ backgroundColor: color }" 
+          ref="swatches" 
+        ></div>
+
+        <input @change="onChange" id="color-field" type="text" :placeholder="palette[activeSwatch]" :value="palette[activeSwatch]" />
+        <!-- <input @change="onChange" id="color-field" type="text" placeholder="#000000" value="#000000" /> -->
       </div>
       <div id="zoom-wrapper">
         <button @click="() => {this.zoomOut(1.2);}" class="zoom-button" id="zoom-out">-</button>
@@ -35,7 +45,7 @@ export default {
       ws: null,
       connected: false,
       colorField: null,
-      colorSwatch: null,
+      colorSwatches: [],
       cvs: null,
       glWindow: null,
       place: null,
@@ -47,7 +57,9 @@ export default {
       lastScalingDist: null,
       timerRunning: false,
       seconds: 0,
-      timer: null
+      timer: null,
+      palette: [],
+      activeSwatch: null
     }
   },
   created() {
@@ -55,11 +67,11 @@ export default {
   },
   mounted() {
     this.$data.colorField = document.querySelector("#color-field");
-    this.$data.colorSwatch = document.querySelector("#color-swatch");
     this.$data.cvs = document.querySelector("#viewport-canvas");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
     this.$data.place = new Place(this.$data.glWindow);
     this.$data.color = new Uint8Array([0, 0, 0]);
+    this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"]
     this.place.initConnection("/init_canvas");
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
@@ -68,8 +80,28 @@ export default {
       console.log("oh my fucking god android user");
     }
     this.connectToWebSocket();
+    window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
   },
   methods: {
+    getSwatches() {
+      return this.$refs.swatches;
+    },
+    selectSwatch(index) {
+      try {
+        this.getSwatches()[this.activeSwatch].style.border = '2px solid black';
+      } catch{}
+      this.activeSwatch = index;
+      this.getSwatches()[this.activeSwatch].style.border = '2px solid white';
+      let hex = this.palette[this.activeSwatch];
+      hex = hex.substring(1, 7);
+      while (hex.length < 7) {
+        hex += "0";
+      }
+      this.color[0] = parseInt(hex.substring(1, 3), 16);
+      this.color[1] = parseInt(hex.substring(3, 5), 16);
+      this.color[2] = parseInt(hex.substring(5, 7), 16);
+      // this.color = this.palette[this.activeSwatch];
+    },
     setViewport() {
       const meta = document.createElement('meta');
       meta.setAttribute('name', 'viewport');
@@ -111,7 +143,7 @@ export default {
           color: [color[0], color[1], color[2]],
         };
         console.log(JSON.stringify(pixel));
-        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]), true);
+        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]));
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;
@@ -137,7 +169,7 @@ export default {
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
       console.log("Received a pixel from server: ", pixel);
-      this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]), false);
+      this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
     },
     onMouseDown(ev) {
       switch (ev.button) {
@@ -153,7 +185,6 @@ export default {
             this.pickColor({ x: ev.clientX, y: ev.clientY });
           } else {
             ev.preventDefault();
-            console.log("mousedown");
             this.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
           }
       }
@@ -181,7 +212,7 @@ export default {
         hex += d;
       }
       this.colorField.value = hex.toUpperCase();
-      this.colorSwatch.style.backgroundColor = hex;
+      this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
     },
     zoomIn(factor) {
       let zoom = this.glWindow.getZoom();
@@ -209,6 +240,7 @@ export default {
     },
     onChange() {
       let hex = this.colorField.value.replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
+      console.log(this.colorField.value.replace(/[^A-Fa-f0-9]/g, "").toUpperCase());
       hex = hex.substring(0, 6);
       while (hex.length < 6) {
         hex += "0";
@@ -216,9 +248,12 @@ export default {
       this.color[0] = parseInt(hex.substring(0, 2), 16);
       this.color[1] = parseInt(hex.substring(2, 4), 16);
       this.color[2] = parseInt(hex.substring(4, 6), 16);
-      hex = "#" + hex;
-      this.colorField.value = hex;
-      this.colorSwatch.style.backgroundColor = hex;
+
+      this.palette[this.activeSwatch] = "#" + hex;
+      this.colorField.value = this.palette[this.activeSwatch];
+      console.log(this.getSwatches);
+
+      this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
     },
     onTouchMove(ev) {
       this.touchID++;
@@ -236,6 +271,11 @@ export default {
         }
         this.lastScalingDist = dist;
       } else {
+        try {
+          this.pos = this.glWindow.click({ x: ev.touches[0].clientX, y: ev.touches[0].clientY });
+          this.val_x = this.pos.x;
+          this.val_y = this.pos.y;
+        } catch {}
         let movePos = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
         this.glWindow.move(movePos.x - this.lastMovePos.x, movePos.y - this.lastMovePos.y);
         this.glWindow.draw();
@@ -349,13 +389,16 @@ body {
   flex-direction: row;
 }
 
-#color-swatch {
+.color-swatch {
   width: 30px;
   height: 30px;
   background-color: #000000;
+  border: 2px solid black;
+  cursor: pointer;
+  pointer-events: all;
 }
 
-#color-field {
+#color-field { 
   font-size: 16px;
   height: 30px;
   padding: 1px;
@@ -382,7 +425,7 @@ body {
   background-color: red;
   font-size: 24px;
   background-color: #ffffff;
-  border: 1px solid black;
+  border: 2px solid black;
   cursor: pointer;
   pointer-events: all;
   user-select: none;
