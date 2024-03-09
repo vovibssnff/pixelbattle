@@ -52,8 +52,18 @@ func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 			}
 		}
 	}
+	// rdb.Conn().Select(context.Background(), 3)
+	// rdb.Set(context.Background(), "initialized", "true", 0).Err()
+	// rdb.Conn().Select(context.Background(), 2)
 	return nil
 }
+
+// func CheckInitialized(rdb *redis.Client) (bool) {
+// 	rdb.Conn().Select(context.Background(), 3)
+// 	initialized, _ := rdb.Exists(context.Background(), "initialized").Result()
+// 	rdb.Conn().Select(context.Background(), 2)
+// 	return initialized == 1
+// }
 
 func GetCanvas(rdb *redis.Client, img *Image) error {
 	keys, err := rdb.Keys(context.Background(), "*").Result()

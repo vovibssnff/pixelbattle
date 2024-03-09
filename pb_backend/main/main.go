@@ -35,7 +35,8 @@ func main() {
 
 	imgService := service.NewImageService()
 	server := server.NewServer(imgService, redis_db, redis_psw, redis_history)
-	server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
+
+	// server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
 
 	http.HandleFunc("/init_canvas", func(w http.ResponseWriter, r *http.Request) {
 		server.HandleInitCanvas(w, r, uint(canvas_height), uint(canvas_width))

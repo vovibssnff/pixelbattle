@@ -143,7 +143,7 @@ export default {
           color: [color[0], color[1], color[2]],
         };
         console.log(JSON.stringify(pixel));
-        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]));
+        // this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]));
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;

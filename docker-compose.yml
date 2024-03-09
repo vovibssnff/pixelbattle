@@ -4,10 +4,10 @@ services:
   redis:
     image: redis:latest
     restart: unless-stopped
-    # volumes:
-    #   - redis_data:/data
-      # - /path/to/local/dаta:/root/redisfmt.Sscanf(os.Getenv("CANVAS_HEIGTH"), "%d", canvas_height)
-      # - ./redis/redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - ./redis/redis_data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf
     environment:
       - REDIS_PASSWORD=redis
       - REDIS_PORT=6379

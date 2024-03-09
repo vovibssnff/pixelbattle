@@ -33,5 +33,8 @@ func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Reque
 }
 
 func (server *Server) WhiteCanvasInit(n, m uint) {
-	service.InitializeCanvas(server.rdb, n, m)
+	// if (!service.CheckInitialized(server.rdb)) {
+		// logrus.Info("Initialization is needed. Initializing...")
+		service.InitializeCanvas(server.rdb, n, m)
+	// }
 }
