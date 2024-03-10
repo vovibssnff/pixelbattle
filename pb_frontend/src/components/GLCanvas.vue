@@ -160,7 +160,7 @@ export default {
       }
     },
     connectToWebSocket() {
-      this.ws = new WebSocket("wss://" + window.location.host + "/wss");
+      this.ws = new WebSocket("wss://" + window.location.host + "/ws");
       this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
