@@ -41,9 +41,11 @@ services:
   nginx:
     image: nginx:stable-alpine
     ports:
-      - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/cert/megapixelbattle.crt:/etc/nginx/ssl/megapixelbattle.crt
+      - ./nginx/cert/megapixelbattle.key:/etc/nginx/ssl/megapixelbattle.key
     depends_on:
       - backend
       - frontend
