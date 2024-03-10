@@ -75,6 +75,7 @@ export default {
     this.place.initConnection("/init_canvas");
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
+    console.log(window.location.host);
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
       this.initMobileEventListeners();
       console.log("oh my fucking god android user");

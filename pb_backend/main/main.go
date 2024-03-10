@@ -28,7 +28,7 @@ func main() {
 	go ws.Run()
 
 	//client
-	http.HandleFunc("/wss", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		logrus.Info("websocket connection init")
 		websockets.ServeWs(ws, redis_db, redis_psw, redis_timer, w, r)
 	})
