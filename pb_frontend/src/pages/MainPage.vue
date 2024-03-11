@@ -6,11 +6,11 @@
 </template>
 
 <script>
-import AppHeader from "@/components/AppHeader.vue";
+// import AppHeader from "@/components/AppHeader.vue";
 import GLCanvas from "@/components/GLCanvas.vue";
 
 export default {
-  components: {GLCanvas, AppHeader}
+  components: {GLCanvas}
 }
 </script>
 

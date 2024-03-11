@@ -39,36 +39,6 @@ export default class Place {
 		return a;
     }
 
-    connect(path) {
-        this.socket = new WebSocket(path);
-        const socketMessage = async (event) => {
-            let b = await event.data.arrayBuffer();
-            if (this.allowDraw == null) {
-                let view = new DataView(b);
-                this.allowDraw = view.getUint8(0) === 1;
-                if (!this.allowDraw) {
-                    this.keyPrompt();
-                }
-            } else {
-                this.handleSocketSetPixel(b);
-            }
-        };
-
-        const socketClose = (event) => {
-            this.socket = null;
-        };
-
-        const socketError = (event) => {
-            console.error("Error making WebSocket connection.");
-            alert("Failed to connect.");
-            this.socket.close();
-        };
-
-        this.socket.addEventListener("message", socketMessage);
-        this.socket.addEventListener("close", socketClose);
-        this.socket.addEventListener("error", socketError);
-    }
-
     prepare(color) {
         let b = new Uint8Array(11);
         for (let i = 0; i < 3; i++) {

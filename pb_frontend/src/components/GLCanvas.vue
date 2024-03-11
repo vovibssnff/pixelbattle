@@ -64,18 +64,19 @@ export default {
   },
   created() {
     this.setViewport();
+    console.log("created");
   },
   mounted() {
+    console.log("mounted");
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
     this.$data.place = new Place(this.$data.glWindow);
     this.$data.color = new Uint8Array([0, 0, 0]);
-    this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"]
+    this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
     this.place.initConnection("/init_canvas");
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
-    console.log(window.location.host);
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
       this.initMobileEventListeners();
       console.log("oh my fucking god android user");
@@ -160,9 +161,11 @@ export default {
       }
     },
     connectToWebSocket() {
-      this.ws = new WebSocket("wss://" + window.location.host + "/ws");
-      this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
-      this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
+      // const url = new URL('shit', window.Location.href);
+      // url.protocol = 'wss';
+      // this.ws = new WebSocket('/shit');
+      // this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
+      // this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
     onWebSocketOpen() {
       console.log("damnit websocket connected");
