@@ -64,10 +64,8 @@ export default {
   },
   created() {
     this.setViewport();
-    console.log("created");
   },
   mounted() {
-    console.log("mounted");
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
@@ -161,11 +159,11 @@ export default {
       }
     },
     connectToWebSocket() {
-      // const url = new URL('shit', window.Location.href);
-      // url.protocol = 'wss';
-      // this.ws = new WebSocket('/shit');
-      // this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
-      // this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
+      const url = new URL('/ws', location.href);
+      url.protocol = 'wss';
+      this.ws = new WebSocket(url);
+      this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
+      this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
     onWebSocketOpen() {
       console.log("damnit websocket connected");
