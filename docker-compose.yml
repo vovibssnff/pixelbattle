@@ -26,18 +26,6 @@ services:
     depends_on:
       - redis
 
-  # frontend:
-  #   build: ./pb_frontend
-  #   command: npm run serve
-  #   restart: unless-stopped
-  #   stdin_open: true
-  #   tty: true
-  #   volumes:
-  #     - ./pb_frontend/src:/usr/src/app/src
-  #   depends_on:
-  #     - backend
-  #     - redis
-
   nginx:
     build: ./pb_frontend
     restart: unless-stopped
