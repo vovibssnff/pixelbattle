@@ -2,9 +2,7 @@
   <div class="header">
     <img href="#default" class="logo" src="@/img/ava.png">
     <div class="header-right">
-      PB<br/>
-      LOL<br/>
-      KEK<br/>
+      nuff said<br/>
     </div>
   </div>
 </template>

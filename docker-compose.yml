@@ -21,15 +21,17 @@ services:
       - REDIS_PSW=redis
       - REDIS_HISTORY=2
       - REDIS_TIMER=1
+      - REDIS_USERS=3
       - CANVAS_HEIGHT=250
       - CANVAS_WIDTH=500
+      - SERVICE_TOKEN=
+      - API_VERSION=5.199
     depends_on:
       - redis
 
   nginx:
     build: ./pb_frontend
     restart: unless-stopped
-    # image: nginx:stable-alpine
     ports:
       - "443:443"
     volumes:

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"pb_backend/models"
+	"strconv"
 	"time"
 	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 )
 
 func NewRedisClient(addr string, password string, db int) *redis.Client {
@@ -18,30 +20,27 @@ func NewRedisClient(addr string, password string, db int) *redis.Client {
 
 func WritePixel(rdb *redis.Client, p *models.Pixel) error {
 	key := fmt.Sprintf("pixel:%d:%d", p.Y, p.X)
-
 	redisPixel := models.NewRedisPixel(p.Userid, p.Color, time.Now().Unix())
-
 	serializedRedisPixel, err := redisPixel.ToRedisFormat()
 	if err != nil {
 		return err
 	}
-
 	return rdb.RPush(context.Background(), key, serializedRedisPixel).Err()
 }
 
-func CheckTime(rdb *redis.Client, userid string) (int64, error) {
-	return rdb.Exists(context.Background(), userid).Result()
+func CheckTime(rdb *redis.Client, userid int) (int64, error) {
+	return rdb.Exists(context.Background(), strconv.Itoa(userid)).Result()
 }
 
-func SetTimer(rdb *redis.Client, userid string, n int) error {
-	return rdb.Set(context.Background(), userid, "", time.Duration(n)*time.Second).Err()
+func SetTimer(rdb *redis.Client, userid int, n int) error {
+	return rdb.Set(context.Background(), strconv.Itoa(userid), "", time.Duration(n)*time.Second).Err()
 }
 
 func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 	for i := 0; i < int(height); i++ {
 		for j := 0; j < int(width); j++ {
 			key := fmt.Sprintf("pixel:%d:%d", i, j)
-			redisPixel := models.NewRedisPixel("Vovi", []uint{255, 255, 255}, time.Now().Unix())
+			redisPixel := models.NewRedisPixel(1, []uint{255, 255, 255}, time.Now().Unix())
 			serializedRedisPixel, err := redisPixel.ToRedisFormat()
 			if err != nil {
 				return err
@@ -52,18 +51,17 @@ func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 			}
 		}
 	}
-	// rdb.Conn().Select(context.Background(), 3)
-	// rdb.Set(context.Background(), "initialized", "true", 0).Err()
-	// rdb.Conn().Select(context.Background(), 2)
 	return nil
 }
 
-// func CheckInitialized(rdb *redis.Client) (bool) {
-// 	rdb.Conn().Select(context.Background(), 3)
-// 	initialized, _ := rdb.Exists(context.Background(), "initialized").Result()
-// 	rdb.Conn().Select(context.Background(), 2)
-// 	return initialized == 1
-// }
+func CheckInitialized(rdb *redis.Client) bool {
+	dbSize, err := rdb.DBSize(context.Background()).Result()
+
+	if err != nil {
+		logrus.Error(err)
+	}
+	return dbSize != 0
+}
 
 func GetCanvas(rdb *redis.Client, img *Image) error {
 	keys, err := rdb.Keys(context.Background(), "*").Result()
@@ -88,4 +86,43 @@ func GetCanvas(rdb *redis.Client, img *Image) error {
 		img.Data = append(img.Data, *pixel)
 	}
 	return nil
+}
+
+func RegisterUser(rdb *redis.Client, usr models.User) error {
+	key := fmt.Sprintf("usr:%d", usr.ID)
+
+	serializedUser, err := usr.SerializeUser()
+	if err != nil {
+		return err
+	}
+	return rdb.Set(context.Background(), key, serializedUser, 0).Err()
+}
+
+// true if exists
+func UserExists(rdb *redis.Client, usrID int) bool {
+	key := fmt.Sprintf("usr:%d", usrID)
+	res, err := rdb.Exists(context.Background(), key).Result()
+	if err != nil {
+		logrus.Error(err)
+	}
+	if res == 1 {
+		return true
+	}
+	return false
+}
+
+func FinishRegister(rdb *redis.Client, usrID int, faculty string) error {
+	logrus.Info(faculty)
+	key := fmt.Sprintf("usr:%d", usrID)
+	jsonUsr, err := rdb.Get(context.Background(), key).Result()
+	if err != nil {
+		logrus.Error(err)
+	}
+
+	var usr models.User
+	usr.DeserializeUser([]byte(jsonUsr))
+	usr.Faculty = faculty
+
+	return RegisterUser(rdb, usr)
+	// rdb.Append(context.Background(), fmt.Sprintf("usr:%d", usrID), faculty)
 }

@@ -1,45 +1,68 @@
 package main
 
 import (
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"pb_backend/server"
 	"pb_backend/service"
 	"pb_backend/websockets"
 	"strconv"
+	"github.com/gorilla/sessions"
+	"github.com/gorilla/securecookie"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
 	redis_db := os.Getenv("REDIS_ADDR")
 	redis_psw := os.Getenv("REDIS_PSW")
-	// var redis_history, redis_timer, canvas_height, canvas_width int
-
 	redis_history, err := strconv.Atoi(os.Getenv("REDIS_HISTORY"))
 	redis_timer, err := strconv.Atoi(os.Getenv("REDIS_TIMER"))
+	redis_users, err := strconv.Atoi(os.Getenv("REDIS_USERS"))
+
 	canvas_height, err := strconv.Atoi(os.Getenv("CANVAS_HEIGHT"))
 	canvas_width, err := strconv.Atoi(os.Getenv("CANVAS_WIDTH"))
+
+	serviceToken := os.Getenv("SERVICE_TOKEN")
+	apiVer := os.Getenv("API_VERSION")
+
+	if os.Getenv("SESSION_KEY") == "" {
+		os.Setenv("SESSION_KEY", string(securecookie.GenerateRandomKey(32)))
+	}
+	sessionKey := os.Getenv("SESSION_KEY")
 
 	logrus.SetLevel(logrus.DebugLevel)
 	logrus.Info("Starting service")
 
+	redisHistoryService := service.NewRedisClient(redis_db, redis_psw, redis_history)
+	redisUserService := service.NewRedisClient(redis_db, redis_psw, redis_users)
+
+	sessionStore := sessions.NewCookieStore([]byte(sessionKey))
+
 	//server
-	ws := websockets.NewWebSocketServer(redis_db, redis_psw, redis_history)
+	ws := websockets.NewWebSocketServer(redisHistoryService, sessionStore)
 	go ws.Run()
 
 	//client
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		logrus.Info("websocket connection init")
-		websockets.ServeWs(ws, redis_db, redis_psw, redis_timer, w, r)
+		redisTimerService := service.NewRedisClient(redis_db, redis_psw, redis_timer)
+		websockets.ServeWs(ws, redisTimerService, w, r)
 	})
 
 	imgService := service.NewImageService()
-	server := server.NewServer(imgService, redis_db, redis_psw, redis_history)
+	server := server.NewServer(imgService, redisHistoryService, sessionStore, redisUserService, serviceToken, apiVer)
 
-	// server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
+	server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
 
 	http.HandleFunc("/init_canvas", func(w http.ResponseWriter, r *http.Request) {
 		server.HandleInitCanvas(w, r, uint(canvas_height), uint(canvas_width))
+	})
+
+	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		server.HandleRegister(w, r)
+	})
+
+	http.HandleFunc("/api/faculty", func(w http.ResponseWriter, r *http.Request) {
+		server.HandleFaculty(w, r)
 	})
 
 	err = http.ListenAndServe(":8080", nil)

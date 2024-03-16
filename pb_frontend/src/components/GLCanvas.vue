@@ -66,6 +66,7 @@ export default {
     this.setViewport();
   },
   mounted() {
+    document.title='megapixelbattle'
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
@@ -76,8 +77,7 @@ export default {
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
-      this.initMobileEventListeners();
-      console.log("oh my fucking god android user");
+      console.log("oh my fucking god mobile user");
     }
     this.connectToWebSocket();
     window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
@@ -107,9 +107,6 @@ export default {
       meta.setAttribute('name', 'viewport');
       meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       document.head.appendChild(meta);
-    },
-    initMobileEventListeners() {
-
     },
     initEventListeners() {
       document.addEventListener('keydown', this.onKeyDown);

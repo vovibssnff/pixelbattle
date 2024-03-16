@@ -1,21 +1,21 @@
 package websockets
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"pb_backend/models"
 	"pb_backend/service"
 	"time"
+	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 )
 
 type Client struct {
 	conn          *websocket.Conn
 	server        *WsServer
 	send          chan *models.Pixel
-	err 		  chan *string
-	userid        string
+	err           chan *string
+	userid        int
 	timer_service *redis.Client
 }
 
@@ -31,25 +31,33 @@ const (
 	maxMessageSize = 10000
 )
 
-func NewClient(conn *websocket.Conn, server *WsServer, addr string, password string, db int) *Client {
+func NewClient(conn *websocket.Conn, server *WsServer, id int, redisClient *redis.Client) *Client {
 	return &Client{
 		conn:          conn,
 		server:        server,
 		send:          make(chan *models.Pixel),
-		err:		   make(chan *string),
-		timer_service: service.NewRedisClient(addr, password, db),
+		err:           make(chan *string),
+		userid:        id,
+		timer_service: redisClient,
 	}
 }
 
-func ServeWs(server *WsServer, dbAddr string, dbPassword string, db int, w http.ResponseWriter, r *http.Request) {
+func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
+	session, _ := server.store.Get(r, "user-session")
+
+	if session.Values["Authenticated"] != "true" {
+		logrus.Warn("Unauthorized attempt to reach /ws")
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 
-	client := NewClient(conn, server, dbAddr, dbPassword, db)
+	client := NewClient(conn, server, session.Values["ID"].(int), redisClient)
 
 	go client.writePump()
 	go client.readPump()
@@ -74,7 +82,6 @@ func (client *Client) readPump() {
 			}
 			break
 		}
-		// logrus.Info("ReadPump received: ", msg)
 
 		var deserialized models.Pixel
 		if err := deserialized.Deserialize(msg); err != nil {
@@ -97,9 +104,6 @@ func (client *Client) readPump() {
 			}
 			client.server.broadcast <- &deserialized
 		}
-
-
-
 	}
 }
 

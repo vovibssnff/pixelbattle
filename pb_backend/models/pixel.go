@@ -2,8 +2,6 @@ package models
 
 import (
 	"encoding/json"
-	// "github.com/sirupsen/logrus"
-
 )
 
 type Color [3]uint
@@ -12,7 +10,7 @@ type Pixel struct {
 	X     uint `json: "x"`
 	Y     uint `json: "y"`
 	Color []uint `json: "color"`
-	Userid string `json: "userid"`
+	Userid int `json: "userid"`
 }
 
 func NewPixel(x uint, y uint, color []uint) *Pixel {
@@ -24,12 +22,12 @@ func NewPixel(x uint, y uint, color []uint) *Pixel {
 }
 
 type RedisPixel struct {
-	UserID string `json: "userid"`
+	UserID int `json: "userid"`
 	Color []uint `json: "color"`
 	Timestamp int64 `json: "timestamp"`
 }
 
-func NewRedisPixel(userid string, color []uint, timestamp int64) *RedisPixel{
+func NewRedisPixel(userid int, color []uint, timestamp int64) *RedisPixel{
 	return &RedisPixel{
 		UserID: userid,
 		Color: color,
@@ -45,16 +43,11 @@ type SerializationService interface {
 }
 
 func (p *Pixel) Serialize() ([]byte, error) {
-	// logrus.Info("Serializer.Serialize received: ", p)
-	// resp, _ := json.Marshal(p)
-	// logrus.Info(string(resp))
 	return json.Marshal(p)
 }
 
 func (p *Pixel) Deserialize(data []byte) error {
-	// logrus.Info("Serializer.Deserialize received: ", data)
 	err := json.Unmarshal(data, p)
-	// logrus.Info("Serializer.Deserialize returned: ", p)
 	return err
 }
 

@@ -3,8 +3,7 @@ package websockets
 import (
 	"pb_backend/models"
 	"pb_backend/service"
-
-	"github.com/google/uuid"
+	"github.com/gorilla/sessions"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
@@ -15,15 +14,17 @@ type WsServer struct {
 	register   chan *Client
 	unregister chan *Client
 	redis_service *redis.Client
+	store 		*sessions.CookieStore
 }
 
-func NewWebSocketServer(dbAddr string, dbPsw string, db int) *WsServer {
+func NewWebSocketServer(redisService *redis.Client, sessionStore *sessions.CookieStore) *WsServer {
 	return &WsServer{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan *models.Pixel),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		redis_service: service.NewRedisClient(dbAddr, dbPsw, db),
+		redis_service: redisService,
+		store:		sessionStore,
 	}
 }
 
@@ -45,7 +46,9 @@ func (server *WsServer) Run() {
 }
 
 func (server *WsServer) registerClient(client *Client) {
-	client.userid = uuid.New().String()
+	// session, _ := server.store.Get(r, "user-session")
+	// client.userid = session.Values["ID"]
+
 	server.clients[client] = true
 }
 

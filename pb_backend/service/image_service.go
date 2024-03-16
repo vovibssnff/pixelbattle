@@ -6,9 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	// "os"
 	"pb_backend/models"
-
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,8 +39,6 @@ func NewImageService() *ImageService {
 func (img *Image) toRGBA() *image.RGBA {
 	rgba := image.NewRGBA(image.Rect(0, 0, int(img.Width), int(img.Height)))
 	for _, pixel := range img.Data {
-		// logrus.Info(i)
-		// logrus.Info(pixel.Color)
 		rgba.Set(int(pixel.X), int(pixel.Y), color.RGBA{
 			uint8(pixel.Color[0]),
 			uint8(pixel.Color[1]),
@@ -50,18 +46,11 @@ func (img *Image) toRGBA() *image.RGBA {
 			255,
 		})
 	}
-	// for _, pixel := range img.Data {
-	// 	logrus.Info(pixel)
-	// }
 	return rgba
 }
 
 func (service *ImageService) GetImageBytes(img *Image) []byte {
 	logrus.Info("Entered GetImageBytes")
-
-	
-
-	// logrus.Info(img.Data)
 	
 	rgba := img.toRGBA()
 	var buf bytes.Buffer

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div id="VKIDAuthContainer">
     <button id="VKIDSDKAuthButton" class="VkIdWebSdk__button VkIdWebSdk__button_reset" @click="handleClick">
       <div class="VkIdWebSdk__button_container">
         <div class="VkIdWebSdk__button_icon">
@@ -20,17 +20,24 @@
 <script>
 import * as VKID from "@vkid/sdk";
 import AppHeader from "@/components/AppHeader.vue";
+// import { Connect } from "@vkontakte/superappkit";
+import { mapMutations } from "vuex";
 export default {
   components: {AppHeader},
   methods: {
+    ...mapMutations('UserModule', ['setAuthorized']),
+    auth(val) {
+      this.setAuthorized(val);
+    },
     handleClick() {
+      this.auth('in_progress')
       VKID.Auth.login();
-    }
+    },
   },
   beforeMount() {
     VKID.Config.set({
-      app: 51845999,
-      redirectUrl: 'https://localhost/main'
+      app: ,
+      redirectUrl: 'https://megapixelbattle/api/login'
     });
     const button = document.getElementById('VKIDSDKAuthButton');
     if (button) {
@@ -93,5 +100,9 @@ export default {
   flex: 1;
   justify-content: center;
   color: #ffffff;
+}
+
+#VKIDAuthContainer {
+  margin-top: 10%;
 }
 </style>
