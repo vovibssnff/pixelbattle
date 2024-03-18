@@ -3,6 +3,6 @@ import UserModule from './UserModule';
 
 export default createStore({
   modules: {
-    UserModule
+    UserModule,
   }
 });

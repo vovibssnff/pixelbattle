@@ -47,19 +47,13 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			logrus.Error(err)
 		}
 		session.Save(r, w)
-
-		//отправить faculty
-		// w.Header().Set("Content-Type", "text/plain")
-		// w.Write([]byte("faculty"))
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 	} else {
-		session.Values["Authenticated"] = "true"
 		logrus.Info("Usr already exists")
+		session.Values["Authenticated"] = "true"
+		usr := service.GetUsr(s.userService, vk_resp.User.ID)
+		session.Values["Faculty"] = usr.Faculty
 		session.Save(r, w)
-
-		//отправить ок
-		// w.Header().Set("Content-Type", "text/plain")
-		// w.Write([]byte("ok"))
 		http.Redirect(w, r, "/main", http.StatusSeeOther)
 	}
 }
@@ -67,18 +61,19 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.store.Get(r, "user-session")
 	logrus.Info("Received faculty request")
-
 	if (session.Values["Authenticated"] != "in_process") {
 		logrus.Warn("Unauthorized attempt to reach /faculty")
 		http.Redirect(w, r, "login", http.StatusSeeOther)
 		return
 	}
-
 	facResp := service.ToFaculty(r)
-	if err := service.FinishRegister(s.userService, session.Values["ID"].(int), facResp.Faculty); err != nil {
+	usr := service.GetUsr(s.userService, session.Values["ID"].(int))
+	usr.Faculty = facResp.Faculty
+	if err := service.RegisterUser(s.userService, usr); err != nil {
 		logrus.Error(err)
 	}
 	session.Values["Authenticated"] = "true"
+	session.Values["Faculty"] = facResp.Faculty
 	session.Save(r, w)
 }
 
@@ -89,7 +84,6 @@ func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Reque
 		http.Redirect(writer, r, "login", http.StatusSeeOther)
 		return
 	}
-
 	logrus.Info("Received an init request")
 	img := service.NewImage(h, w)
 	service.GetCanvas(server.historyService, img)

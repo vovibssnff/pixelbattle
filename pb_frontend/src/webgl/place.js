@@ -6,22 +6,22 @@ export default class Place {
     glWindow;
     allowDraw;
 
-    constructor(glWindow) {
+    constructor(glWindow, uiwrapper, loadingp) {
         this.loaded = false;
         this.socket = null;
-        this.loadingp = null;
-        this.uiwrapper = null;
+        this.loadingp = loadingp;
+        this.uiwrapper = uiwrapper;
         this.glWindow = glWindow;
         this.allowDraw = true;
     }
 
-    initConnection(endpoint) {
-        fetch(endpoint)
-			.then(async resp => {
-				let buf = await this.downloadProgress(resp);
-				await this.setImage(buf);
-			});
-    }
+    // initConnection(endpoint) {
+    //     fetch(endpoint)
+	// 		.then(async resp => {
+	// 			let buf = await this.downloadProgress(resp);
+	// 			await this.setImage(buf);
+	// 		});
+    // }
 
     async downloadProgress(resp) {
         let len = resp.headers.get("Content-Length");

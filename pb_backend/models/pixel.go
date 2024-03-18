@@ -11,6 +11,7 @@ type Pixel struct {
 	Y     uint `json: "y"`
 	Color []uint `json: "color"`
 	Userid int `json: "userid"`
+	Faculty string `json: "faculty"`
 }
 
 func NewPixel(x uint, y uint, color []uint) *Pixel {
@@ -23,13 +24,15 @@ func NewPixel(x uint, y uint, color []uint) *Pixel {
 
 type RedisPixel struct {
 	UserID int `json: "userid"`
+	Faculty string `json: "faculty"`
 	Color []uint `json: "color"`
 	Timestamp int64 `json: "timestamp"`
 }
 
-func NewRedisPixel(userid int, color []uint, timestamp int64) *RedisPixel{
+func NewRedisPixel(userid int, faculty string, color []uint, timestamp int64) *RedisPixel{
 	return &RedisPixel{
 		UserID: userid,
+		Faculty: faculty,
 		Color: color,
 		Timestamp: timestamp,
 	}

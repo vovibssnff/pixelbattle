@@ -16,6 +16,7 @@ type Client struct {
 	send          chan *models.Pixel
 	err           chan *string
 	userid        int
+	faculty 	  string
 	timer_service *redis.Client
 }
 
@@ -31,13 +32,14 @@ const (
 	maxMessageSize = 10000
 )
 
-func NewClient(conn *websocket.Conn, server *WsServer, id int, redisClient *redis.Client) *Client {
+func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, redisClient *redis.Client) *Client {
 	return &Client{
 		conn:          conn,
 		server:        server,
 		send:          make(chan *models.Pixel),
 		err:           make(chan *string),
 		userid:        id,
+		faculty: faculty,
 		timer_service: redisClient,
 	}
 }
@@ -57,7 +59,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		return
 	}
 
-	client := NewClient(conn, server, session.Values["ID"].(int), redisClient)
+	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient)
 
 	go client.writePump()
 	go client.readPump()
@@ -89,6 +91,7 @@ func (client *Client) readPump() {
 			continue
 		}
 		deserialized.Userid = client.userid
+		deserialized.Faculty = client.faculty
 
 		//таймер чек по client.userid
 		exists, err := service.CheckTime(client.timer_service, client.userid)

@@ -20,7 +20,7 @@ func NewRedisClient(addr string, password string, db int) *redis.Client {
 
 func WritePixel(rdb *redis.Client, p *models.Pixel) error {
 	key := fmt.Sprintf("pixel:%d:%d", p.Y, p.X)
-	redisPixel := models.NewRedisPixel(p.Userid, p.Color, time.Now().Unix())
+	redisPixel := models.NewRedisPixel(p.Userid, p.Faculty, p.Color, time.Now().Unix())
 	serializedRedisPixel, err := redisPixel.ToRedisFormat()
 	if err != nil {
 		return err
@@ -40,7 +40,7 @@ func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 	for i := 0; i < int(height); i++ {
 		for j := 0; j < int(width); j++ {
 			key := fmt.Sprintf("pixel:%d:%d", i, j)
-			redisPixel := models.NewRedisPixel(1, []uint{255, 255, 255}, time.Now().Unix())
+			redisPixel := models.NewRedisPixel(1, "", []uint{255, 255, 255}, time.Now().Unix())
 			serializedRedisPixel, err := redisPixel.ToRedisFormat()
 			if err != nil {
 				return err
@@ -56,7 +56,6 @@ func InitializeCanvas(rdb *redis.Client, height uint, width uint) error {
 
 func CheckInitialized(rdb *redis.Client) bool {
 	dbSize, err := rdb.DBSize(context.Background()).Result()
-
 	if err != nil {
 		logrus.Error(err)
 	}
@@ -90,7 +89,6 @@ func GetCanvas(rdb *redis.Client, img *Image) error {
 
 func RegisterUser(rdb *redis.Client, usr models.User) error {
 	key := fmt.Sprintf("usr:%d", usr.ID)
-
 	serializedUser, err := usr.SerializeUser()
 	if err != nil {
 		return err
@@ -111,18 +109,13 @@ func UserExists(rdb *redis.Client, usrID int) bool {
 	return false
 }
 
-func FinishRegister(rdb *redis.Client, usrID int, faculty string) error {
-	logrus.Info(faculty)
+func GetUsr(rdb *redis.Client, usrID int) models.User {
 	key := fmt.Sprintf("usr:%d", usrID)
 	jsonUsr, err := rdb.Get(context.Background(), key).Result()
 	if err != nil {
 		logrus.Error(err)
 	}
-
 	var usr models.User
 	usr.DeserializeUser([]byte(jsonUsr))
-	usr.Faculty = faculty
-
-	return RegisterUser(rdb, usr)
-	// rdb.Append(context.Background(), fmt.Sprintf("usr:%d", usrID), faculty)
+	return usr
 }

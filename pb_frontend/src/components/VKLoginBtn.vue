@@ -37,7 +37,7 @@ export default {
   beforeMount() {
     VKID.Config.set({
       app: ,
-      redirectUrl: 'https://megapixelbattle/api/login'
+      redirectUrl: 'https://v2.megapixelbattle/api/login'
     });
     const button = document.getElementById('VKIDSDKAuthButton');
     if (button) {

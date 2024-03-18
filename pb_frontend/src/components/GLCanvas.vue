@@ -1,15 +1,19 @@
 <template>
   <div oncontextmenu="return false;">
-    <canvas @mousedown="onMouseDown" @touchstart="onTouchStart" 
+    <canvas @touchstart="onTouchStart" @mousedown="onMouseDown"
     @touchend="onTouchEnd" @mousemove="coordsUpdate" 
     @contextmenu="() => {return false;}" id="viewport-canvas"></canvas>
     <div id="ui-wrapper" hide="true">
+      <p id="loading-p"></p>
       <div id="color-wrapper">
         <!-- <div id="color-swatch"></div> -->
         <div v-for="(color, index) in palette" 
           :key="index" 
           :item="color" 
-          @click="() => {this.selectSwatch(index);}" 
+          @click="(ev) => {
+            ev.preventDefault();
+            this.selectSwatch(index);
+          }" 
           class="color-swatch" 
           :style="{ backgroundColor: color }" 
           ref="swatches" 
@@ -58,28 +62,41 @@ export default {
       timerRunning: false,
       seconds: 0,
       timer: null,
+      timerValue: null,
       palette: [],
-      activeSwatch: null
+      activeSwatch: 0,
+      loaded: false,
+      savedPixels: [],
     }
   },
   created() {
     this.setViewport();
   },
+  watch: {
+    loaded(newVal) {
+      if (newVal) {
+        this.renderSavedPIxels();
+      }
+    },
+  },
   mounted() {
     document.title='megapixelbattle'
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
+    this.$data.timerValue = document.querySelector("#timer-value");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
-    this.$data.place = new Place(this.$data.glWindow);
+    this.$data.place = new Place(this.$data.glWindow, document.querySelector("#ui-wrapper"), document.querySelector("#loading-p"));
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
-    this.place.initConnection("/init_canvas");
+    this.initConnection("/init_canvas");
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
       console.log("oh my fucking god mobile user");
     }
     this.connectToWebSocket();
+    // this.setSwatchesArr(this.$refs.swatches);
+    // this.setField(document.querySelector("#color-field"));
     window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
   },
   methods: {
@@ -90,23 +107,41 @@ export default {
       try {
         this.getSwatches()[this.activeSwatch].style.border = '2px solid black';
       } catch{}
+      console.log(this.activeSwatch);
       this.activeSwatch = index;
       this.getSwatches()[this.activeSwatch].style.border = '2px solid white';
       let hex = this.palette[this.activeSwatch];
       hex = hex.substring(1, 7);
-      while (hex.length < 7) {
+      while (hex.length < 6) {
         hex += "0";
       }
-      this.color[0] = parseInt(hex.substring(1, 3), 16);
-      this.color[1] = parseInt(hex.substring(3, 5), 16);
-      this.color[2] = parseInt(hex.substring(5, 7), 16);
+      console.log(hex);
+      console.log(this.color);
+      this.color[0] = parseInt(hex.substring(0, 2), 16);
+      this.color[1] = parseInt(hex.substring(2, 4), 16);
+      this.color[2] = parseInt(hex.substring(4, 6), 16);
       // this.color = this.palette[this.activeSwatch];
+      console.log(this.color);
     },
     setViewport() {
       const meta = document.createElement('meta');
       meta.setAttribute('name', 'viewport');
       meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       document.head.appendChild(meta);
+    },
+    initConnection(endpoint) {
+      this.$data.place.loadingp.innerHTML = "loading canvas"
+      fetch(endpoint)
+			.then(async resp => {
+				let buf = await this.$data.place.downloadProgress(resp);
+				await this.$data.place.setImage(buf);
+        this.loaded = true;
+        this.$data.place.loadingp.innerHTML = "";
+        this.$data.place.uiwrapper.setAttribute("hide", true);
+			})
+      .catch((error) => {
+        this.$router.push('/login');
+      });
     },
     initEventListeners() {
       document.addEventListener('keydown', this.onKeyDown);
@@ -121,6 +156,7 @@ export default {
         this.glWindow.updateViewScale();
         this.glWindow.draw();
       });
+      // this.cvs.addEventListener('mousedown', this.onMouseDown);
     },
     coordsUpdate(ev) {
       try {
@@ -144,13 +180,16 @@ export default {
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;
-
+        this.timerValue.style.visibility = "visible";
+        console.log(this.timerValue);
+        
         this.timer = setInterval(() => {
           if (this.seconds > 0) {
             this.seconds--;
           } else {
             clearInterval(this.timer);
             this.timerRunning = false;
+            this.timerValue.style.visibility = "hidden";
           }
         }, 1000);
       }
@@ -168,25 +207,46 @@ export default {
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
       console.log("Received a pixel from server: ", pixel);
-      this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+      
+      if (!this.loaded) {
+        this.savedPixels.push(pixel);
+      } else {
+        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+      }
+    },
+    renderSavedPIxels() {
+      for (const pixel of this.savedPixels) {
+        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        console.log("rendering...");
+      }
+      console.log("values rendered");
+      this.savedPixels = []; // Clear saved pixels after replaying
     },
     onMouseDown(ev) {
+      let self = this;
       switch (ev.button) {
         case 0:
           this.dragdown = true;
           this.lastMovePos = { x: ev.clientX, y: ev.clientY };
           break;
         case 1:
-          this.pickColor({ x: ev.clientX, y: ev.clientY });
+          ev.preventDefault();
+          self.pickColor({ x: ev.clientX, y: ev.clientY });
           break;
         case 2:
           if (ev.ctrlKey) {
-            this.pickColor({ x: ev.clientX, y: ev.clientY });
+            ev.preventDefault();
+            self.pickColor({ x: ev.clientX, y: ev.clientY });
+            console.log("kek ended");
           } else {
             ev.preventDefault();
-            this.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
+            self.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
           }
       }
+      console.log(this.colorField.style.backgroundColor);
+      console.log(this.getSwatches()[this.activeSwatch]);
+      // console.log(this.currentSwatches[this.activeSwatch].style.backgroundColor);
+      // console.log(this.currentColorField.value);
     },
     drawPixel(pos, color) {
       pos = this.glWindow.click(pos);
@@ -194,7 +254,7 @@ export default {
         const oldColor = this.glWindow.getColor(pos);
         for (let i = 0; i < oldColor.length; i++) {
           if (oldColor[i] != color[i]) {
-            console.log("sending: ", pos.x, pos.y);
+            console.log("sending: ", pos.x, pos.y, color);
             this.sendPixel(pos.x, pos.y, color);
             return true;
           }
@@ -211,7 +271,9 @@ export default {
         hex += d;
       }
       this.colorField.value = hex.toUpperCase();
-      this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
+      var event = new Event('change');
+
+      this.colorField.dispatchEvent(event);
     },
     zoomIn(factor) {
       let zoom = this.glWindow.getZoom();
@@ -239,20 +301,20 @@ export default {
     },
     onChange() {
       let hex = this.colorField.value.replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
-      console.log(this.colorField.value.replace(/[^A-Fa-f0-9]/g, "").toUpperCase());
       hex = hex.substring(0, 6);
       while (hex.length < 6) {
         hex += "0";
       }
+      console.log(this.color);
       this.color[0] = parseInt(hex.substring(0, 2), 16);
       this.color[1] = parseInt(hex.substring(2, 4), 16);
       this.color[2] = parseInt(hex.substring(4, 6), 16);
+      console.log(this.color);
 
       this.palette[this.activeSwatch] = "#" + hex;
       this.colorField.value = this.palette[this.activeSwatch];
-      console.log(this.getSwatches);
 
-      this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
+      // this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
     },
     onTouchMove(ev) {
       this.touchID++;
@@ -279,6 +341,7 @@ export default {
         this.glWindow.move(movePos.x - this.lastMovePos.x, movePos.y - this.lastMovePos.y);
         this.glWindow.draw();
         this.lastMovePos = movePos;
+        console.log("ontouchmove");
       }
     },
     onWheel(ev) {
@@ -299,7 +362,6 @@ export default {
         document.body.style.cursor = "grab";
       }
       this.lastMovePos = movePos;
-      // console.log(movePos);
     },
     onTouchStart(ev) {
       ev.preventDefault();
@@ -321,12 +383,12 @@ export default {
       this.$data.touchID++;
       let elapsed = (new Date()).getTime() - this.touchstartTime;
       if (elapsed < 100) {
-        console.log(this.lastMovePos);
         this.drawPixel(this.lastMovePos, this.color);
       }
       if (ev.touches.length === 0) {
         this.touchScaling = false;
       }
+      console.log("touchend");
     }
   }
 }
@@ -363,6 +425,7 @@ body {
   height: 100%;
   background-color: #ffffff;
   transition: background 1s;
+  filter: drop-shadow(1px 1px grey);
 }
 
 #ui-wrapper>#color-wrapper,
@@ -408,6 +471,13 @@ body {
   width: 40%; /* Decrease width */
 }
 
+#loading-p {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	font-size: 1.4em;
+	transform: translate(-50%, -50%);
+}
 
 #zoom-wrapper {
   position: absolute;
