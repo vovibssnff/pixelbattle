@@ -78,11 +78,10 @@
 <style scoped>
 .radio-container {
   display: flex;
-  justify-content: center;
   align-items: center;
   flex-direction: column;
   height: 100vh;
-  margin-top: 20px; /* Add margin to push the radio container down */
+  margin-top: 5%; /* Add margin to push the radio container down */
 }
 
 .radio-container-container {

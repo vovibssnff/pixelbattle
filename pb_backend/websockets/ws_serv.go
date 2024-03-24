@@ -33,13 +33,13 @@ func (server *WsServer) Run() {
 	for {
 		select {
 		case client := <-server.register:
-			logrus.Info("Server received register request")
 			server.registerClient(client)
+			logrus.Info("Current users: ", len(server.clients))
 		case client := <-server.unregister:
-			logrus.Info("Server received unregister request")
 			server.unregisterClient(client)
+			logrus.Info("Current users: ", len(server.clients))
 		case pixel := <-server.broadcast:
-			logrus.Info("Server received pixel")
+			logrus.Info("Server received pixel: ", pixel)
 			server.setPixel(pixel)
 		}
 	}
@@ -63,7 +63,7 @@ func (server *WsServer) setPixel(pixel *models.Pixel) {
 		logrus.Error(err)
 		return
 	}
-	logrus.Info("Pixel written to redis db")
+	// logrus.Info("Pixel written to redis db")
 	for client := range server.clients {
 		client.send <- pixel
 	}

@@ -68,9 +68,9 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 }
 
 func (client *Client) readPump() {
-	logrus.Info("ReadPump routine running")
+	// logrus.Info("ReadPump routine running")
 	defer func() {
-		logrus.Info("Read pump disconnected")
+		// logrus.Info("Read pump disconnected")
 		client.disconnect()
 	}()
 	client.conn.SetReadLimit(maxMessageSize)
@@ -111,10 +111,10 @@ func (client *Client) readPump() {
 }
 
 func (client *Client) writePump() {
-	logrus.Info("WritePump routine running")
+	// logrus.Info("WritePump routine running")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		logrus.Info("Write pump disconnected")
+		// logrus.Info("Write pump disconnected")
 		ticker.Stop()
 		client.conn.Close()
 	}()
@@ -137,7 +137,8 @@ func (client *Client) writePump() {
 				return
 			}
 			w.Write(serialized)
-			logrus.Info("WritePump sent: ", serialized)
+			// logrus.Info("WritePump sent: ", serialized)
+			logrus.Info("Pixel sent")
 
 			if err := w.Close(); err != nil {
 				return

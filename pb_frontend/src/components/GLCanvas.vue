@@ -107,7 +107,7 @@ export default {
       try {
         this.getSwatches()[this.activeSwatch].style.border = '2px solid black';
       } catch{}
-      console.log(this.activeSwatch);
+      // console.log(this.activeSwatch);
       this.activeSwatch = index;
       this.getSwatches()[this.activeSwatch].style.border = '2px solid white';
       let hex = this.palette[this.activeSwatch];
@@ -115,13 +115,13 @@ export default {
       while (hex.length < 6) {
         hex += "0";
       }
-      console.log(hex);
-      console.log(this.color);
+      // console.log(hex);
+      // console.log(this.color);
       this.color[0] = parseInt(hex.substring(0, 2), 16);
       this.color[1] = parseInt(hex.substring(2, 4), 16);
       this.color[2] = parseInt(hex.substring(4, 6), 16);
       // this.color = this.palette[this.activeSwatch];
-      console.log(this.color);
+      // console.log(this.color);
     },
     setViewport() {
       const meta = document.createElement('meta');
@@ -175,13 +175,13 @@ export default {
           y: Math.floor(y),
           color: [color[0], color[1], color[2]],
         };
-        console.log(JSON.stringify(pixel));
+        // console.log(JSON.stringify(pixel));
         // this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]));
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;
         this.timerValue.style.visibility = "visible";
-        console.log(this.timerValue);
+        // console.log(this.timerValue);
         
         this.timer = setInterval(() => {
           if (this.seconds > 0) {
@@ -202,11 +202,11 @@ export default {
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
     onWebSocketOpen() {
-      console.log("damnit websocket connected");
+      // console.log("damnit websocket connected");
     },
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
-      console.log("Received a pixel from server: ", pixel);
+      // console.log("Received a pixel from server: ", pixel);
       
       if (!this.loaded) {
         this.savedPixels.push(pixel);
@@ -217,9 +217,9 @@ export default {
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {
         this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
-        console.log("rendering...");
+        // console.log("rendering...");
       }
-      console.log("values rendered");
+      // console.log("values rendered");
       this.savedPixels = []; // Clear saved pixels after replaying
     },
     onMouseDown(ev) {
@@ -243,8 +243,8 @@ export default {
             self.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
           }
       }
-      console.log(this.colorField.style.backgroundColor);
-      console.log(this.getSwatches()[this.activeSwatch]);
+      // console.log(this.colorField.style.backgroundColor);
+      // console.log(this.getSwatches()[this.activeSwatch]);
       // console.log(this.currentSwatches[this.activeSwatch].style.backgroundColor);
       // console.log(this.currentColorField.value);
     },
@@ -305,11 +305,11 @@ export default {
       while (hex.length < 6) {
         hex += "0";
       }
-      console.log(this.color);
+      // console.log(this.color);
       this.color[0] = parseInt(hex.substring(0, 2), 16);
       this.color[1] = parseInt(hex.substring(2, 4), 16);
       this.color[2] = parseInt(hex.substring(4, 6), 16);
-      console.log(this.color);
+      // console.log(this.color);
 
       this.palette[this.activeSwatch] = "#" + hex;
       this.colorField.value = this.palette[this.activeSwatch];
@@ -341,7 +341,7 @@ export default {
         this.glWindow.move(movePos.x - this.lastMovePos.x, movePos.y - this.lastMovePos.y);
         this.glWindow.draw();
         this.lastMovePos = movePos;
-        console.log("ontouchmove");
+        // console.log("ontouchmove");
       }
     },
     onWheel(ev) {
@@ -388,7 +388,7 @@ export default {
       if (ev.touches.length === 0) {
         this.touchScaling = false;
       }
-      console.log("touchend");
+      // console.log("touchend");
     }
   }
 }
