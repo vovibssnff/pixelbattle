@@ -36,7 +36,7 @@ export default {
   },
   beforeMount() {
     VKID.Config.set({
-      app: ,
+      app: 51845999,
       redirectUrl: 'https://' + window.location.hostname + '/api/login'
     }); 
     const button = document.getElementById('VKIDSDKAuthButton');

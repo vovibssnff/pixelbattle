@@ -72,7 +72,7 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	if (session.Values["Authenticated"] != "in_process") {
 		logrus.Warn("Unauthorized attempt to reach /faculty")
 		logrus.Info(session.Values)
-		http.Redirect(w, r, "login", http.StatusSeeOther)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 	facResp := service.ToFaculty(r)
@@ -86,6 +86,7 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	logrus.Info(session.Values)
 	session.Save(r, w)
 	logrus.Info("New register")
+	http.Redirect(w, r, "/main", http.StatusSeeOther)
 }
 
 func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Request, h, w uint) {

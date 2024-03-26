@@ -2,8 +2,8 @@
   <div>
     <app-header/>
   </div>
-  <div class="radio-container">
-    <div class="radio-container-container">
+  <div class="radio-container-container">
+    <form @submit.prevent="sendData">
       <label class="radio-label">
         <input type="radio" v-model="selectedFaculty" value="KTU"> КТУ
       </label>
@@ -19,8 +19,8 @@
       <label class="radio-label">
         <input type="radio" v-model="selectedFaculty" value="NOZH"> НОЖ
       </label>
-      <button class="send-button" @click="sendData">Подтвердить</button>
-    </div>
+      <button type="submit" class="send-button">Подтвердить</button>
+    </form>
   </div>
 </template>
   
@@ -59,17 +59,28 @@
       document.title='login'
     },
     methods: {
+        // sendData() {
+        //   console.log(this.selectedFaculty);
+        //   axios.post('/api/faculty', {
+        //     faculty: this.selectedFaculty,
+        //   }).then(
+        //     // this.currentAuthorized(true),
+        //     this.$router.push("/")
+        //   )
+        //     .catch(error => {
+        //         console.error(error);
+        //     });
+        // }
         sendData() {
-          console.log(this.selectedFaculty);
+          // Ensure a faculty is selected
+          if (!this.selectedFaculty) {
+            alert('Please select a faculty.');
+            return;
+          }
+
           axios.post('/api/faculty', {
-            faculty: this.selectedFaculty,
-          }).then(
-            // this.currentAuthorized(true),
-            this.$router.push("/")
-          )
-            .catch(error => {
-                console.error(error);
-            });
+            faculty: this.selectedFaculty
+          });
         }
     }
   }
