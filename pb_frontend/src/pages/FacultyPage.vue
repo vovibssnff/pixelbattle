@@ -2,26 +2,26 @@
   <div>
     <app-header/>
   </div>
-  <div class="radio-container-container">
-    <form @submit.prevent="sendData">
-      <label class="radio-label">
-        <input type="radio" v-model="selectedFaculty" value="KTU"> КТУ
-      </label>
-      <label class="radio-label">
-        <input type="radio" v-model="selectedFaculty" value="TINT"> ТИНТ
-      </label>
-      <label class="radio-label">
-        <input type="radio" v-model="selectedFaculty" value="FTMF"> ФТМФ
-      </label>
-      <label class="radio-label">
-        <input type="radio" v-model="selectedFaculty" value="FTMI"> ФТМИ
-      </label>
-      <label class="radio-label">
-        <input type="radio" v-model="selectedFaculty" value="NOZH"> НОЖ
-      </label>
-      <button type="submit" class="send-button">Подтвердить</button>
-    </form>
-  </div>
+  <form action="/api/faculty" method="POST">
+    <div class="radio-container">
+        <label class="radio-label">
+            <input type="radio" name="selectedFaculty" value="KTU" required> КТУ
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="selectedFaculty" value="TINT"> ТИНТ
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="selectedFaculty" value="FTMF"> ФТМФ
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="selectedFaculty" value="FTMI"> ФТМИ
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="selectedFaculty" value="NOZH"> НОЖ
+        </label>
+    </div>
+    <button type="submit" class="send-button">Подтвердить</button>
+</form>
 </template>
   
 <script>

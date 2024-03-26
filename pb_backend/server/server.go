@@ -87,6 +87,7 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	logrus.Info(session.Values)
 	session.Save(r, w)
 	logrus.Info("New register")
+
 }
 
 func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Request, h, w uint) {
