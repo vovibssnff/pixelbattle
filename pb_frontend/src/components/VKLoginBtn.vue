@@ -38,7 +38,7 @@ export default {
     VKID.Config.set({
       app: 51845999,
       redirectUrl: 'https://' + window.location.hostname + '/api/login'
-    }); 
+    });
     const button = document.getElementById('VKIDSDKAuthButton');
     if (button) {
       button.onclick = this.handleClick;
