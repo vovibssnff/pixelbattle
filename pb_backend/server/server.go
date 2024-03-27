@@ -50,8 +50,8 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		logrus.Info(session.Values)
 		session.Save(r, w)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
-	} else if service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"] == "in_process" {
-		session.Values["Authenticated"] = "in_process"
+	} else if (service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"]=="in_process") {
+		session.Values["Authenticated"]="in_process"
 		logrus.Info(session.Values)
 		session.Save(r, w)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
@@ -69,12 +69,11 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.store.Get(r, "user-session")
 	logrus.Info(session.Values)
-	if session.Values["Authenticated"] != "in_process" {
+	if (session.Values["Authenticated"] != "in_process") {
 		logrus.Warn("Unauthorized attempt to reach /faculty")
 		logrus.Info(session.Values)
-		http.Redirect(w, r, "login", http.StatusSeeOther)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
-		// http.RedirectHandler("/login", http.StatusSeeOther)
 	}
 	facResp := service.ToFaculty(r)
 	usr := service.GetUsr(s.userService, session.Values["ID"].(int))
@@ -87,12 +86,12 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	logrus.Info(session.Values)
 	session.Save(r, w)
 	logrus.Info("New register")
-
+	http.Redirect(w, r, "/main", http.StatusSeeOther)
 }
 
 func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Request, h, w uint) {
 	session, _ := server.store.Get(r, "user-session")
-	if session.Values["Authenticated"] != "true" {
+	if (session.Values["Authenticated"] != "true") {
 		logrus.Warn("Unauthorized attempt to reach /init_canvas")
 		http.Redirect(writer, r, "login", http.StatusSeeOther)
 		return

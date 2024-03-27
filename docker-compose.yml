@@ -15,12 +15,6 @@ services:
 
   backend:
     build: ./pb_backend
-    ports:
-      - "40000:40000"
-    security_opt:
-      - apparmor=unconfined
-    cap_add:
-      - SYS_PTRACE
     restart: unless-stopped
     environment:
       - REDIS_ADDR=redis:6379
