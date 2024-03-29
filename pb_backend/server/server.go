@@ -73,7 +73,6 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 		logrus.Warn("Unauthorized attempt to reach /faculty")
 		logrus.Info(session.Values)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
 	}
 	facResp := service.ToFaculty(r)
 	usr := service.GetUsr(s.userService, session.Values["ID"].(int))
