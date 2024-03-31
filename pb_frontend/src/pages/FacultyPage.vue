@@ -1,22 +1,22 @@
 <template>
   <div>
     <app-header/>
-    <form action="/api/faculty" method="POST" class="form-container">
+    <form action="/api/faculty" class="form-container">
       <div class="radio-container">
         <label class="radio-label">
-          <input type="radio" name="selectedFaculty" value="KTU" required> КТУ
+          <input type="radio" name="faculty" value="KTU" required> КТУ
         </label>
         <label class="radio-label">
-          <input type="radio" name="selectedFaculty" value="TINT"> ТИНТ
+          <input type="radio" name="faculty" value="TINT"> ТИНТ
         </label>
         <label class="radio-label">
-          <input type="radio" name="selectedFaculty" value="FTMF"> ФТМФ
+          <input type="radio" name="faculty" value="FTMF"> ФТМФ
         </label>
         <label class="radio-label">
-          <input type="radio" name="selectedFaculty" value="FTMI"> ФТМИ
+          <input type="radio" name="faculty" value="FTMI"> ФТМИ
         </label>
         <label class="radio-label">
-          <input type="radio" name="selectedFaculty" value="NOZH"> НОЖ
+          <input type="radio" name="faculty" value="NOZH"> НОЖ
         </label>
       </div>
       <button type="submit" class="send-button">Подтвердить</button>
@@ -26,35 +26,9 @@
 
 <script>
 import AppHeader from "@/components/AppHeader.vue";
-import { mapGetters } from "vuex";
-import axios from "axios";
 
 export default {
   components: {AppHeader},
-  computed: {
-    ...mapGetters('UserModule', ['getID', 'getAuthorized']),
-    currentID: {
-      get() {
-        return this.getID;
-      },
-      set(val) {
-        this.$store.commit('UserModule/setID', val)
-      }
-    },
-    currentAuthorized: {
-      get() {
-        return this.getAuthorized;
-      },
-      set(val) {
-        this.$store.commit('UserModule/setAuthorized', val)
-      }
-    }
-  },
-  data() {
-    return {
-      selectedFaculty: 'КТУ',
-    }
-  },
   mounted() {
     document.title='login'
   }

@@ -49,10 +49,6 @@ type AccessResp struct {
 	} `json:"response"`
 }
 
-type FacultyRequest struct {
-	Faculty string `json:"faculty"`
-}
-
 func NewAccessReq(v string, silent_token string, service_token string, uuid string) *AccessReq {
 	return &AccessReq{
 		V:           v,
@@ -106,13 +102,4 @@ func SilentToAccess(access_req AccessReq) string {
 	}
 
 	return accessResp.Response.AccessToken
-}
-
-func ToFaculty(r *http.Request) *FacultyRequest {
-	var reqBody FacultyRequest
-    err := json.NewDecoder(r.Body).Decode(&reqBody)
-    if err != nil {
-        logrus.Error(err)
-    }
-	return &reqBody
 }
