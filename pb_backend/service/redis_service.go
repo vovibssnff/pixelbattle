@@ -63,28 +63,39 @@ func CheckInitialized(rdb *redis.Client) bool {
 }
 
 func GetCanvas(rdb *redis.Client, img *Image) error {
-	keys, err := rdb.Keys(context.Background(), "*").Result()
-	if err != nil {
-		return err
-	}
-	var y, x uint
-	for _, key := range keys {
-		_, err := fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
-		if err != nil {
-			return err
-		}
-		jsonString, err := rdb.LRange(context.Background(), key, -1, -1).Result()
-		if err != nil {
-			return err
-		}
-		var deserialized models.RedisPixel
-		if err := deserialized.FromRedisFormat([]byte(jsonString[0])); err != nil {
-			return err
-		}
-		pixel := models.NewPixel(x, y, deserialized.Color)
-		img.Data = append(img.Data, *pixel)
-	}
-	return nil
+    ctx := context.Background()
+    keys, err := rdb.Keys(ctx, "pixel:*").Result()
+    if err != nil {
+        return err
+    }
+    pipe := rdb.Pipeline()
+    keyCmdMap := make(map[string]*redis.StringSliceCmd, len(keys))
+    for _, key := range keys {
+        cmd := pipe.LRange(ctx, key, -1, -1)
+        keyCmdMap[key] = cmd
+    }
+    _, err = pipe.Exec(ctx)
+    if err != nil {
+        return err
+    }
+    for key, cmd := range keyCmdMap {
+        jsonString, err := cmd.Result()
+        if err != nil {
+            return err
+        }
+        var deserialized models.RedisPixel
+        if err := deserialized.FromRedisFormat([]byte(jsonString[0])); err != nil {
+            return err
+        }
+        var y, x uint
+        _, err = fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
+        if err != nil {
+            return err
+        }
+        pixel := models.NewPixel(x, y, deserialized.Color)
+        img.Data = append(img.Data, *pixel)
+    }
+    return nil
 }
 
 func RegisterUser(rdb *redis.Client, usr models.User) error {

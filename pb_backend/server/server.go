@@ -90,14 +90,12 @@ func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Reque
 		http.Redirect(writer, r, "login", http.StatusSeeOther)
 		return
 	}
-	// logrus.Info("Received an init request")
 	img := service.NewImage(h, w)
 	service.GetCanvas(server.historyService, img)
 	b := server.imgService.GetImageBytes(img)
 	writer.Header().Set("Content-Length", strconv.Itoa(len(b)))
 	writer.Header().Set("Content-Type", "application/octet-stream")
 	writer.Header().Set("Cache-Control", "no-cache, no-store")
-	// logrus.Info("Canvas bytes sent")
 	writer.Write(b)
 }
 
