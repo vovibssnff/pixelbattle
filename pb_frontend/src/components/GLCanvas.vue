@@ -192,6 +192,15 @@ export default {
             this.timerValue.style.visibility = "hidden";
           }
         }, 1000);
+      } else {
+        this.timerValue.style.fontWeight = "bold"
+        this.timerValue.style.color = "firebrick"
+        this.timerValue.style.fontSize = "22px"
+        setInterval(() => {
+          this.timerValue.style.fontSize = "16px"
+          this.timerValue.style.fontWeight = "normal"
+          this.timerValue.style.color = "black"
+        }, 200);
       }
     },
     connectToWebSocket() {
@@ -512,6 +521,7 @@ body {
   top: 16px;
   right: 16px;
   font-size: 16px;
+  transition: all 0.5s ease-in-out 0.5s;
 }
 
 @media (hover: none) {
