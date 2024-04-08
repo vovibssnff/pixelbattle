@@ -35,9 +35,9 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	vk_resp := service.ToVKResponse(r.URL.Query())
 	req := service.NewAccessReq(s.apiVer, vk_resp.Token, s.serviceToken, vk_resp.UUID)
 	accessToken := service.SilentToAccess(*req)
-	if accessToken == "" {
-		//TODO handle
-	}
+	// if accessToken == "" {
+	// 	//TODO handle
+	// }
 	session.Values["ID"] = vk_resp.User.ID
 	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName)
 	if !service.UserExists(s.userService, vk_resp.User.ID) {
@@ -87,7 +87,7 @@ func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Reque
 	session, _ := server.store.Get(r, "user-session")
 	if (session.Values["Authenticated"] != "true") {
 		logrus.Warn("Unauthorized attempt to reach /init_canvas")
-		http.Redirect(writer, r, "login", http.StatusSeeOther)
+		http.Redirect(writer, r, "/login", http.StatusSeeOther)
 		return
 	}
 	img := service.NewImage(h, w)

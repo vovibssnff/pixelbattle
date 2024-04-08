@@ -42,6 +42,9 @@ export default {
   align-items: center;
   /* justify-content: center; */
   margin-top: 20px; /* Adjust this value as needed */
+  transition: background 1s;
+  filter: drop-shadow(1px 1px grey);
+  font-family: Arial, sans-serif;
 }
 
 .radio-container {
@@ -64,6 +67,8 @@ export default {
   border-radius: 5px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+  filter: drop-shadow(1px 1px grey);
+  font-family: Arial, sans-serif;
 }
 
 .send-button:hover {

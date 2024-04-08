@@ -62,6 +62,7 @@ export default {
       timerRunning: false,
       seconds: 0,
       timer: null,
+      secondTimer: null,
       timerValue: null,
       palette: [],
       activeSwatch: 0,
@@ -175,13 +176,10 @@ export default {
           y: Math.floor(y),
           color: [color[0], color[1], color[2]],
         };
-        // console.log(JSON.stringify(pixel));
-        // this.place.setPixel(pixel.x, pixel.y, new Uint8Array([0, 0, 0]));
         this.ws.send(JSON.stringify(pixel));
         
         this.seconds = 2;
         this.timerValue.style.visibility = "visible";
-        // console.log(this.timerValue);
         
         this.timer = setInterval(() => {
           if (this.seconds > 0) {
@@ -193,29 +191,26 @@ export default {
           }
         }, 1000);
       } else {
-        this.timerValue.style.fontWeight = "bold"
-        this.timerValue.style.color = "firebrick"
-        this.timerValue.style.fontSize = "22px"
-        setInterval(() => {
-          this.timerValue.style.fontSize = "16px"
-          this.timerValue.style.fontWeight = "normal"
-          this.timerValue.style.color = "black"
-        }, 200);
+        this.timerValue.style.fontWeight = "bold";
+        this.timerValue.style.color = "firebrick";
+        this.timerValue.style.fontSize = "22px";
+        clearInterval(this.secondTimer);
+        this.secondTimer = setInterval(() => {
+            // Apply new style which transitions smoothly due to the CSS
+            this.timerValue.style.fontSize = "16px";
+            this.timerValue.style.fontWeight = "normal";
+            this.timerValue.style.color = "black";
+        }, 1000);
       }
     },
     connectToWebSocket() {
       const url = new URL('/ws', location.href);
       url.protocol = 'wss';
       this.ws = new WebSocket(url);
-      this.ws.addEventListener('open', (event) => {this.onWebSocketOpen(event)});
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
-    },
-    onWebSocketOpen() {
-      // console.log("damnit websocket connected");
     },
     handleNewPixel(event) {
       const pixel = JSON.parse(event.data);
-      // console.log("Received a pixel from server: ", pixel);
       
       if (!this.loaded) {
         this.savedPixels.push(pixel);
@@ -226,10 +221,8 @@ export default {
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {
         this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
-        // console.log("rendering...");
       }
-      // console.log("values rendered");
-      this.savedPixels = []; // Clear saved pixels after replaying
+      this.savedPixels = [];
     },
     onMouseDown(ev) {
       let self = this;
@@ -246,16 +239,11 @@ export default {
           if (ev.ctrlKey) {
             ev.preventDefault();
             self.pickColor({ x: ev.clientX, y: ev.clientY });
-            console.log("kek ended");
           } else {
             ev.preventDefault();
             self.drawPixel({ x: ev.clientX, y: ev.clientY }, this.color);
           }
       }
-      // console.log(this.colorField.style.backgroundColor);
-      // console.log(this.getSwatches()[this.activeSwatch]);
-      // console.log(this.currentSwatches[this.activeSwatch].style.backgroundColor);
-      // console.log(this.currentColorField.value);
     },
     drawPixel(pos, color) {
       pos = this.glWindow.click(pos);
@@ -263,7 +251,6 @@ export default {
         const oldColor = this.glWindow.getColor(pos);
         for (let i = 0; i < oldColor.length; i++) {
           if (oldColor[i] != color[i]) {
-            console.log("sending: ", pos.x, pos.y, color);
             this.sendPixel(pos.x, pos.y, color);
             return true;
           }
