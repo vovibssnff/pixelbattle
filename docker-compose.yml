@@ -25,6 +25,7 @@ services:
       - CANVAS_HEIGHT=250
       - CANVAS_WIDTH=500
       - SERVICE_TOKEN=
+      - ADMIN_IDS=
       - API_VERSION=5.199
     depends_on:
       - redis

@@ -17,9 +17,10 @@ type Server struct {
 	serviceToken   string
 	apiVer         string
 	store          *sessions.CookieStore
+	admIds		   []int
 }
 
-func NewServer(imgService *service.ImageService, redisHistoryService *redis.Client, sessionStore *sessions.CookieStore, redisUserService *redis.Client, serviceToken string, apiVer string) *Server {
+func NewServer(imgService *service.ImageService, redisHistoryService *redis.Client, sessionStore *sessions.CookieStore, redisUserService *redis.Client, serviceToken string, apiVer string, ids []int) *Server {
 	return &Server{
 		imgService:     imgService,
 		historyService: redisHistoryService,
@@ -27,7 +28,17 @@ func NewServer(imgService *service.ImageService, redisHistoryService *redis.Clie
 		serviceToken:   serviceToken,
 		apiVer:         apiVer,
 		store:          sessionStore,
+		admIds: 		ids,
 	}
+}
+
+func (s *Server) isAdmin(id int) bool {
+	for _, admId := range s.admIds {
+		if id == admId {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +50,7 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	// 	//TODO handle
 	// }
 	session.Values["ID"] = vk_resp.User.ID
-	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName)
+	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName, vk_resp.User.ID)
 	if !service.UserExists(s.userService, vk_resp.User.ID) {
 		session.Values["Authenticated"] = "in_process"
 		redisUser := models.NewUser(vk_resp.User.ID, vk_resp.User.FirstName, vk_resp.User.LastName, accessToken)
@@ -48,8 +59,8 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		session.Save(r, w)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
-	} else if (service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"]=="in_process") {
-		session.Values["Authenticated"]="in_process"
+	} else if service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"] == "in_process" {
+		session.Values["Authenticated"] = "in_process"
 		session.Save(r, w)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 	} else {
@@ -64,7 +75,7 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.store.Get(r, "user-session")
-	if (session.Values["Authenticated"] != "in_process") {
+	if session.Values["Authenticated"] != "in_process" {
 		logrus.Warn("Unauthorized attempt to reach api/faculty")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
@@ -85,7 +96,7 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 
 func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Request, h, w uint) {
 	session, _ := server.store.Get(r, "user-session")
-	if (session.Values["Authenticated"] != "true") {
+	if session.Values["Authenticated"] != "true" {
 		logrus.Warn("Unauthorized attempt to reach /init_canvas")
 		http.Redirect(writer, r, "/login", http.StatusSeeOther)
 		return
@@ -96,6 +107,9 @@ func (server *Server) HandleInitCanvas(writer http.ResponseWriter, r *http.Reque
 	writer.Header().Set("Content-Length", strconv.Itoa(len(b)))
 	writer.Header().Set("Content-Type", "application/octet-stream")
 	writer.Header().Set("Cache-Control", "no-cache, no-store")
+	if server.isAdmin(session.Values["ID"].(int)) {
+		writer.Header().Set("Is-God", "true")
+	}
 	writer.Write(b)
 }
 

@@ -18,6 +18,7 @@ type Client struct {
 	userid        int
 	faculty 	  string
 	timer_service *redis.Client
+	isAdm		  bool
 }
 
 var upgrader = websocket.Upgrader{
@@ -32,19 +33,20 @@ const (
 	maxMessageSize = 10000
 )
 
-func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, redisClient *redis.Client) *Client {
+func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, redisClient *redis.Client, isAdm bool) *Client {
 	return &Client{
 		conn:          conn,
 		server:        server,
 		send:          make(chan *models.Pixel),
 		err:           make(chan *string),
 		userid:        id,
-		faculty: faculty,
+		faculty: 	   faculty,
 		timer_service: redisClient,
+		isAdm: 	   	   isAdm,
 	}
 }
 
-func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request) {
+func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request, ids []int) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	session, _ := server.store.Get(r, "user-session")
 
@@ -59,7 +61,15 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		return
 	}
 
-	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient)
+	admFlag := false
+
+	for _, admId := range ids {
+		if session.Values["ID"].(int) == admId {
+			admFlag = true
+		}
+	}
+
+	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, admFlag)
 
 	go client.writePump()
 	go client.readPump()
@@ -68,9 +78,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 }
 
 func (client *Client) readPump() {
-	// logrus.Info("ReadPump routine running")
 	defer func() {
-		// logrus.Info("Read pump disconnected")
 		client.disconnect()
 	}()
 	client.conn.SetReadLimit(maxMessageSize)
@@ -92,29 +100,29 @@ func (client *Client) readPump() {
 		}
 		deserialized.Userid = client.userid
 		deserialized.Faculty = client.faculty
-
-		//таймер чек по client.userid
-		exists, err := service.CheckTime(client.timer_service, client.userid)
-		if err != nil {
-			logrus.Error(err)
-		}
-
-		// if doesn't exist
-		if exists == 0 {
-			err := service.SetTimer(client.timer_service, client.userid, 2)
+		
+		if client.isAdm {
+			client.server.broadcast <- &deserialized
+		} else {
+			exists, err := service.CheckTime(client.timer_service, client.userid)
 			if err != nil {
 				logrus.Error(err)
 			}
-			client.server.broadcast <- &deserialized
+
+			if exists == 0 {
+				err := service.SetTimer(client.timer_service, client.userid, 2)
+				if err != nil {
+					logrus.Error(err)
+				}
+				client.server.broadcast <- &deserialized
+			}
 		}
 	}
 }
 
 func (client *Client) writePump() {
-	// logrus.Info("WritePump routine running")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		// logrus.Info("Write pump disconnected")
 		ticker.Stop()
 		client.conn.Close()
 	}()
@@ -137,7 +145,6 @@ func (client *Client) writePump() {
 				return
 			}
 			w.Write(serialized)
-			// logrus.Info("WritePump sent: ", serialized)
 			logrus.Info("Pixel sent")
 
 			if err := w.Close(); err != nil {

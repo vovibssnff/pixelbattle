@@ -7,8 +7,9 @@ import (
 	"pb_backend/service"
 	"pb_backend/websockets"
 	"strconv"
-	"github.com/gorilla/sessions"
+	"strings"
 	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,6 +25,14 @@ func main() {
 
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	apiVer := os.Getenv("API_VERSION")
+
+	adminIDsString := os.Getenv("ADMIN_IDS")
+	adminIDs := strings.Split(adminIDsString, ",")
+	var ids []int
+	for _, idStr := range adminIDs {
+		id, _ := strconv.Atoi(idStr)
+		ids = append(ids, id)
+	}
 
 	if os.Getenv("SESSION_KEY") == "" {
 		os.Setenv("SESSION_KEY", string(securecookie.GenerateRandomKey(32)))
@@ -45,11 +54,11 @@ func main() {
 	//client
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		redisTimerService := service.NewRedisClient(redis_db, redis_psw, redis_timer)
-		websockets.ServeWs(ws, redisTimerService, w, r)
+		websockets.ServeWs(ws, redisTimerService, w, r, ids)
 	})
 
 	imgService := service.NewImageService()
-	server := server.NewServer(imgService, redisHistoryService, sessionStore, redisUserService, serviceToken, apiVer)
+	server := server.NewServer(imgService, redisHistoryService, sessionStore, redisUserService, serviceToken, apiVer, ids)
 
 	server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
 

@@ -68,6 +68,7 @@ export default {
       activeSwatch: 0,
       loaded: false,
       savedPixels: [],
+      isGod: null
     }
   },
   created() {
@@ -139,6 +140,7 @@ export default {
         this.loaded = true;
         this.$data.place.loadingp.innerHTML = "";
         this.$data.place.uiwrapper.setAttribute("hide", true);
+        this.$data.isGod = resp.headers.get("Is-God");
 			})
       .catch((error) => {
         this.$router.push('/login');
@@ -168,15 +170,23 @@ export default {
 
       }
     },
-    sendPixel(x, y, color) {
-      if (!this.timerRunning) {
-        this.timerRunning = true;
-        const pixel = {
+    send(x, y, color) {
+      const pixel = {
           x: Math.floor(x),
           y: Math.floor(y),
           color: [color[0], color[1], color[2]],
         };
         this.ws.send(JSON.stringify(pixel));
+    },
+    sendPixel(x, y, color) {
+      console.log(this.isGod);
+      if (this.isGod=="true") {
+        this.send(x, y, color);
+        return;
+      }
+      if (!this.timerRunning) {
+        this.timerRunning = true;
+        this.send(x, y, color);
         
         this.seconds = 2;
         this.timerValue.style.visibility = "visible";
