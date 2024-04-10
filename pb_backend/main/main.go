@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"pb_backend/server"
@@ -8,9 +11,6 @@ import (
 	"pb_backend/websockets"
 	"strconv"
 	"strings"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -26,11 +26,12 @@ func main() {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	apiVer := os.Getenv("API_VERSION")
 
-	adminIDsString := os.Getenv("ADMIN_IDS")
-	adminIDs := strings.Split(adminIDsString, ",")
+	adminIDsString := strings.Trim(os.Getenv("ADMIN_IDS"), "[]")
+	idStrs := strings.Split(adminIDsString, ",")
 	var ids []int
-	for _, idStr := range adminIDs {
-		id, _ := strconv.Atoi(idStr)
+
+	for _, idStr := range idStrs {
+		id, _ := strconv.Atoi(strings.TrimSpace(idStr))
 		ids = append(ids, id)
 	}
 
