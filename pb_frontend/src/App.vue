@@ -8,4 +8,8 @@
 
 </style>
 <script setup>
+  import { useMeta } from 'vue-meta'
+  useMeta({
+    title: 'pixelbattle',
+  })
 </script>
