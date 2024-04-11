@@ -64,6 +64,8 @@ func (server *WsServer) setPixel(pixel *models.Pixel) {
 		return
 	}
 	// logrus.Info("Pixel written to redis db")
+	pixel.Userid = 0
+	pixel.Faculty = ""
 	for client := range server.clients {
 		client.send <- pixel
 	}
