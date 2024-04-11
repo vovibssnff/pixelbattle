@@ -12,7 +12,7 @@ import VKLoginBtn from "@/components/VKLoginBtn.vue";
 
 export default {
   components: {AppHeader, VKLoginBtn},
-  mounted() {
+  beforeCreate() {
     document.title='login'
   }
 }

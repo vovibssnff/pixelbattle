@@ -32,6 +32,7 @@ const router = createRouter({
   history: createWebHistory(process.env.BASE_URL)
 });
 
+
 // router.beforeEach((to, from, next) => {
 
 //   if (to.name == 'faculty' && store.geters["UserModule/getAuthorized"]=="in_progress") {
