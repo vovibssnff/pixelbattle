@@ -19,6 +19,7 @@ type Client struct {
 	faculty 	  string
 	timer_service *redis.Client
 	isAdm		  bool
+	ban_service   *redis.Client
 }
 
 var upgrader = websocket.Upgrader{
@@ -33,7 +34,7 @@ const (
 	maxMessageSize = 10000
 )
 
-func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, redisClient *redis.Client, isAdm bool) *Client {
+func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, redisClient *redis.Client, isAdm bool, banClient *redis.Client) *Client {
 	return &Client{
 		conn:          conn,
 		server:        server,
@@ -43,6 +44,7 @@ func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, r
 		faculty: 	   faculty,
 		timer_service: redisClient,
 		isAdm: 	   	   isAdm,
+		ban_service:   banClient,
 	}
 }
 
@@ -74,7 +76,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		}
 	}
 
-	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, blocked)
+	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, blocked, redisBannedService)
 
 	go client.writePump()
 	go client.readPump()
@@ -108,6 +110,9 @@ func (client *Client) readPump() {
 		
 		if client.isAdm {
 			client.server.broadcast <- &deserialized
+		} else if service.CheckBanned(client.ban_service, client.userid) {
+			logrus.Info("Request from banned usr")
+			return
 		} else {
 			exists, err := service.CheckTime(client.timer_service, client.userid)
 			if err != nil {
