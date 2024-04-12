@@ -30,7 +30,7 @@ import AppHeader from "@/components/AppHeader.vue";
 export default {
   components: {AppHeader},
   mounted() {
-    document.title='login'
+    document.title='MEGA PixelBattle: Faculty'
   }
 }
 </script>

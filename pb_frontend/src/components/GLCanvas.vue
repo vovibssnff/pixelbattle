@@ -82,7 +82,7 @@ export default {
     },
   },
   mounted() {
-    document.title='megapixelbattle'
+    document.title='MEGA PixelBattle'
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
     this.$data.timerValue = document.querySelector("#timer-value");
@@ -94,7 +94,7 @@ export default {
     this.initEventListeners();
     const platform = navigator.platform.toLowerCase();
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
-      console.log("oh my fucking god mobile user");
+      console.log("oh my ... god mobile user");
     }
     this.connectToWebSocket();
     // this.setSwatchesArr(this.$refs.swatches);
@@ -179,7 +179,7 @@ export default {
         this.ws.send(JSON.stringify(pixel));
     },
     sendPixel(x, y, color) {
-      console.log(this.isGod);
+      // console.log(this.isGod);
       if (this.isGod=="true") {
         this.send(x, y, color);
         return;
@@ -188,11 +188,11 @@ export default {
         this.timerRunning = true;
         this.send(x, y, color);
         
-        this.seconds = 2;
+        this.seconds = 3;
         this.timerValue.style.visibility = "visible";
         
         this.timer = setInterval(() => {
-          if (this.seconds > 0) {
+          if (this.seconds > 1) {
             this.seconds--;
           } else {
             clearInterval(this.timer);

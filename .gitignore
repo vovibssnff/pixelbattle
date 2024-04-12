@@ -1,2 +1,2 @@
-nginx/cert/megapixelbattle.crt
-nginx/cert/megapixelbattle.key
+pb_frontend/nginx/cert/megapixelbattle.crt
+pb_frontend/nginx/cert/megapixelbattle.key

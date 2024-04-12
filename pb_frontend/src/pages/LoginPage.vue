@@ -13,7 +13,7 @@ import VKLoginBtn from "@/components/VKLoginBtn.vue";
 export default {
   components: {AppHeader, VKLoginBtn},
   beforeCreate() {
-    document.title='login'
+    document.title='MEGA PixelBattle: Login'
   }
 }
 
