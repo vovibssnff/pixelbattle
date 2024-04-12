@@ -46,7 +46,7 @@ func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, r
 	}
 }
 
-func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request, ids []int) {
+func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request, admIds []int, redisBannedService *redis.Client) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	session, _ := server.store.Get(r, "user-session")
 
@@ -56,20 +56,25 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		return
 	}
 
+	blocked := false
+
+	if service.CheckBanned(redisBannedService, session.Values["ID"].(int)) {
+		logrus.Info("Request from banned usr")
+		return	
+	}
+
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 
-	admFlag := false
-
-	for _, admId := range ids {
+	for _, admId := range admIds {
 		if session.Values["ID"].(int) == admId {
-			admFlag = true
+			blocked = true
 		}
 	}
 
-	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, admFlag)
+	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, blocked)
 
 	go client.writePump()
 	go client.readPump()

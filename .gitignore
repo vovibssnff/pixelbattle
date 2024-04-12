@@ -1,2 +1,13 @@
-pb_frontend/nginx/cert/megapixelbattle.crt
-pb_frontend/nginx/cert/megapixelbattle.key
+nginx/cert/megapixelbattle.crt
+nginx/cert/megapixelbattle.key
+node_modules/
+package.json
+pb_backend/.idea/
+pb_frontend/.gitignore
+pb_frontend/nginx/cert
+redis/dump.rdb
+redis/redis_data/
+root/
+.gitignore
+.vscode
+package-lock.json

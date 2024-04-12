@@ -19,6 +19,7 @@ func main() {
 	redis_history, err := strconv.Atoi(os.Getenv("REDIS_HISTORY"))
 	redis_timer, err := strconv.Atoi(os.Getenv("REDIS_TIMER"))
 	redis_users, err := strconv.Atoi(os.Getenv("REDIS_USERS"))
+	redis_banned, err := strconv.Atoi(os.Getenv("REDIS_BANNED"))
 
 	canvas_height, err := strconv.Atoi(os.Getenv("CANVAS_HEIGHT"))
 	canvas_width, err := strconv.Atoi(os.Getenv("CANVAS_WIDTH"))
@@ -45,17 +46,18 @@ func main() {
 
 	redisHistoryService := service.NewRedisClient(redis_db, redis_psw, redis_history)
 	redisUserService := service.NewRedisClient(redis_db, redis_psw, redis_users)
+	redisBannedService := service.NewRedisClient(redis_db, redis_psw, redis_banned)
 
 	sessionStore := sessions.NewCookieStore([]byte(sessionKey))
 
 	//server
-	ws := websockets.NewWebSocketServer(redisHistoryService, sessionStore)
+	ws := websockets.NewWebSocketServer(redisHistoryService, sessionStore, redisBannedService)
 	go ws.Run()
 
 	//client
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		redisTimerService := service.NewRedisClient(redis_db, redis_psw, redis_timer)
-		websockets.ServeWs(ws, redisTimerService, w, r, ids)
+		websockets.ServeWs(ws, redisTimerService, w, r, ids, redisBannedService)
 	})
 
 	imgService := service.NewImageService()

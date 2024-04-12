@@ -14,16 +14,18 @@ type WsServer struct {
 	register   chan *Client
 	unregister chan *Client
 	redis_service *redis.Client
+	redis_banned *redis.Client
 	store 		*sessions.CookieStore
 }
 
-func NewWebSocketServer(redisService *redis.Client, sessionStore *sessions.CookieStore) *WsServer {
+func NewWebSocketServer(redisService *redis.Client, sessionStore *sessions.CookieStore, redisBanned *redis.Client) *WsServer {
 	return &WsServer{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan *models.Pixel),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		redis_service: redisService,
+		redis_banned: redisBanned,
 		store:		sessionStore,
 	}
 }

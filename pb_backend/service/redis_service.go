@@ -28,6 +28,14 @@ func WritePixel(rdb *redis.Client, p *models.Pixel) error {
 	return rdb.RPush(context.Background(), key, serializedRedisPixel).Err()
 }
 
+func CheckBanned(rdb *redis.Client, userid int) bool {
+	res, _ := rdb.Exists(context.Background(), strconv.Itoa(userid)).Result()
+	if res == 0 {
+		return false
+	} 
+	return true
+}
+
 func CheckTime(rdb *redis.Client, userid int) (int64, error) {
 	return rdb.Exists(context.Background(), strconv.Itoa(userid)).Result()
 }
@@ -76,7 +84,7 @@ func GetCanvas(rdb *redis.Client, img *Image) error {
     }
     _, err = pipe.Exec(ctx)
     if err != nil {
-        return err
+		return err
     }
     for key, cmd := range keyCmdMap {
         jsonString, err := cmd.Result()
