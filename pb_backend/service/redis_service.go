@@ -138,3 +138,11 @@ func GetUsr(rdb *redis.Client, usrID int) models.User {
 	usr.DeserializeUser([]byte(jsonUsr))
 	return usr
 }
+
+func DelUsr(rdb *redis.Client, usrID int) {
+	key := fmt.Sprintf("usr:%d", usrID)
+	_, err := rdb.Del(context.Background(), key).Result()
+	if err != nil {
+		logrus.Error(err)
+	}
+}

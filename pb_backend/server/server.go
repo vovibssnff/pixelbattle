@@ -51,10 +51,16 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	// }
 	session.Values["ID"] = vk_resp.User.ID
 	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName, vk_resp.User.ID)
-	if (vk_resp.User.FirstName=="" || vk_resp.User.LastName=="" || vk_resp.User.ID==0 || accessToken == "") {
+	
+	if (vk_resp.User.FirstName=="" || 
+		vk_resp.User.LastName=="" || 
+		vk_resp.User.ID==0 || 
+		accessToken == "" ||
+		service.IsBanned(vk_resp.User.ID, accessToken)) {
 		http.Error(w, "lol", http.StatusBadRequest)
 		return
 	}
+	
 	if !service.UserExists(s.userService, vk_resp.User.ID) {
 		session.Values["Authenticated"] = "in_process"
 		redisUser := models.NewUser(vk_resp.User.ID, vk_resp.User.FirstName, vk_resp.User.LastName, accessToken)

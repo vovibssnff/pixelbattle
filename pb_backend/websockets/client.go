@@ -48,8 +48,12 @@ func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, r
 	}
 }
 
-func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request, admIds []int, redisBannedService *redis.Client) {
+func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter, r *http.Request, admIds []int, redisBannedService *redis.Client, redisUserService *redis.Client) {
 	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
 	session, _ := server.store.Get(r, "user-session")
 
 	if session.Values["Authenticated"] != "true" {
@@ -58,15 +62,15 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		return
 	}
 
+	usrid := session.Values["ID"].(int)
 	blocked := false
-
-	if service.CheckBanned(redisBannedService, session.Values["ID"].(int)) {
-		logrus.Info("Request from banned usr")
-		return	
+	accessToken := service.GetUsr(redisUserService, usrid).AccessToken
+	if service.IsBanned(usrid, accessToken) {
+		service.DelUsr(redisUserService, usrid)
 	}
 
-	if err != nil {
-		logrus.Error(err)
+	if service.CheckBanned(redisBannedService, usrid) {
+		logrus.Info("Request from banned usr")
 		return
 	}
 
@@ -76,7 +80,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		}
 	}
 
-	client := NewClient(conn, server, session.Values["ID"].(int), session.Values["Faculty"].(string), redisClient, blocked, redisBannedService)
+	client := NewClient(conn, server, usrid, session.Values["Faculty"].(string), redisClient, blocked, redisBannedService)
 
 	go client.writePump()
 	go client.readPump()
@@ -155,7 +159,7 @@ func (client *Client) writePump() {
 				return
 			}
 			w.Write(serialized)
-			logrus.Info("Pixel sent")
+			// logrus.Info("Pixel sent")
 
 			if err := w.Close(); err != nil {
 				return

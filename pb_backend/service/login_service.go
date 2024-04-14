@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"github.com/romanraspopov/golang-vk-api"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
@@ -102,4 +103,22 @@ func SilentToAccess(access_req AccessReq) string {
 	}
 
 	return accessResp.Response.AccessToken
+}
+
+func IsBanned(userid int, accessToken string) bool {
+	client, err := vkapi.NewVKClientWithToken(accessToken, nil, true)
+	if err != nil {
+		logrus.Error(err)
+		return true
+	}
+	userInfo, err := client.UsersGet([]int{userid}, "Deactivated")
+	if err != nil {
+		logrus.Error(err)
+		return true
+	}
+	deactivated := userInfo[len(userInfo)-1].Deactivated
+	if (deactivated=="deleted" || deactivated=="banned") {
+		return true
+	}
+	return false
 }

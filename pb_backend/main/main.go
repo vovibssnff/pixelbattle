@@ -57,7 +57,7 @@ func main() {
 	//client
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		redisTimerService := service.NewRedisClient(redis_db, redis_psw, redis_timer)
-		websockets.ServeWs(ws, redisTimerService, w, r, ids, redisBannedService)
+		websockets.ServeWs(ws, redisTimerService, w, r, ids, redisBannedService, redisUserService)
 	})
 
 	imgService := service.NewImageService()
