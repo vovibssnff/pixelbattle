@@ -70,7 +70,7 @@ func main() {
 	})
 
 	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		server.HandleRegister(w, r)
+		server.HandleRegister(w, r, serviceToken)
 	})
 
 	http.HandleFunc("/api/faculty", func(w http.ResponseWriter, r *http.Request) {

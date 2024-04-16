@@ -55,6 +55,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 		return
 	}
 	session, _ := server.store.Get(r, "user-session")
+	logrus.Info(session.Values)
 
 	if session.Values["Authenticated"] != "true" {
 		logrus.Warn("Unauthorized attempt to reach /ws")
@@ -64,10 +65,10 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 
 	usrid := session.Values["ID"].(int)
 	blocked := false
-	accessToken := service.GetUsr(redisUserService, usrid).AccessToken
-	if service.IsBanned(usrid, accessToken) {
-		service.DelUsr(redisUserService, usrid)
-	}
+	// accessToken := service.GetUsr(redisUserService, usrid).AccessToken
+	// if service.IsBanned() {
+	// 	service.DelUsr(redisUserService, usrid)
+	// }
 
 	if service.CheckBanned(redisBannedService, usrid) {
 		logrus.Info("Request from banned usr")

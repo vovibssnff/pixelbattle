@@ -2,11 +2,13 @@ package service
 
 import (
 	"encoding/json"
-	"github.com/romanraspopov/golang-vk-api"
-	"github.com/sirupsen/logrus"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+
+	// "github.com/romanraspopov/golang-vk-api"
+	"github.com/sirupsen/logrus"
 )
 
 type VKResponse struct {
@@ -29,11 +31,30 @@ type VKUser struct {
 	Phone      string `json:"phone"`
 }
 
+type User struct {
+	ID              int    `json:"id"`
+	Deactivated     string `json:"deactivated"`
+	FirstName       string `json:"first_name"`
+	LastName        string `json:"last_name"`
+	CanAccessClosed bool   `json:"can_access_closed"`
+	IsClosed        bool   `json:"is_closed"`
+}
+
+type VKCheckUser struct {
+	Response []User `json:"response"`
+}
+
 type AccessReq struct {
 	V           string `json:"v"`
 	SilentToken string `json:"token"`
 	AccessToken string `json:"access_token"`
 	UUID        string `json:"uuid"`
+}
+
+type CheckReq struct {
+	UserIds     string `json:"user_ids"`
+	AccessToken string `json:"access_token"`
+	V           string `json:"v"`
 }
 
 type AccessResp struct {
@@ -48,6 +69,14 @@ type AccessResp struct {
 		SourceDescription        string `json:"source_description"`
 		ExpiresIn                int    `json:"expires_in"`
 	} `json:"response"`
+}
+
+func NewCheckReq(userId int, serviceToken string, v string) *CheckReq {
+	return &CheckReq{
+		UserIds:     strconv.Itoa(userId),
+		AccessToken: serviceToken,
+		V:           v,
+	}
 }
 
 func NewAccessReq(v string, silent_token string, service_token string, uuid string) *AccessReq {
@@ -86,8 +115,7 @@ func SilentToAccess(access_req AccessReq) string {
 	}
 
 	defer response.Body.Close()
-	logrus.Info(response.Body)
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 
 	if err != nil {
 		logrus.Error(err)
@@ -105,19 +133,35 @@ func SilentToAccess(access_req AccessReq) string {
 	return accessResp.Response.AccessToken
 }
 
-func IsBanned(userid int, accessToken string) bool {
-	client, err := vkapi.NewVKClientWithToken(accessToken, nil, true)
+func IsBanned(checkReq CheckReq) bool {
+	logrus.Info()
+	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
+		"user_ids":     {checkReq.UserIds},
+		"access_token": {checkReq.AccessToken},
+		"v":            {checkReq.V},
+	})
+
 	if err != nil {
 		logrus.Error(err)
 		return true
 	}
-	userInfo, err := client.UsersGet([]int{userid}, "Deactivated")
+
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+
 	if err != nil {
 		logrus.Error(err)
 		return true
 	}
-	deactivated := userInfo[len(userInfo)-1].Deactivated
-	if (deactivated=="deleted" || deactivated=="banned") {
+
+	var usr VKCheckUser
+	err = json.Unmarshal([]byte(string(body)), &usr)
+	if err != nil {
+		logrus.Error(err)
+		return true
+	}
+	if usr.Response[0].Deactivated == "banned" || usr.Response[0].Deactivated == "deleted" {
+		logrus.Info("Login request from vk banned usr: ", usr.Response[0].ID)
 		return true
 	}
 	return false

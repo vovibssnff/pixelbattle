@@ -41,7 +41,7 @@ func (s *Server) isAdmin(id int) bool {
 	return false
 }
 
-func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request, serviceToken string) {
 	session, _ := s.store.Get(r, "user-session")
 	vk_resp := service.ToVKResponse(r.URL.Query())
 	req := service.NewAccessReq(s.apiVer, vk_resp.Token, s.serviceToken, vk_resp.UUID)
@@ -56,7 +56,7 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		vk_resp.User.LastName=="" || 
 		vk_resp.User.ID==0 || 
 		accessToken == "" ||
-		service.IsBanned(vk_resp.User.ID, accessToken)) {
+		service.IsBanned(*service.NewCheckReq(vk_resp.User.ID, serviceToken, s.apiVer))) {
 		http.Error(w, "lol", http.StatusBadRequest)
 		return
 	}
@@ -68,10 +68,12 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			logrus.Error(err)
 		}
 		session.Save(r, w)
+		logrus.Info("not exists: ", session.Values)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 	} else if service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"] == "in_process" {
 		session.Values["Authenticated"] = "in_process"
 		session.Save(r, w)
+		logrus.Info("exists/in_process: ", session.Values)
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 	} else {
 		logrus.Info("New login")
@@ -79,12 +81,14 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		usr := service.GetUsr(s.userService, vk_resp.User.ID)
 		session.Values["Faculty"] = usr.Faculty
 		session.Save(r, w)
+		logrus.Info("default login: ", session.Values)
 		http.Redirect(w, r, "/main", http.StatusSeeOther)
 	}
 }
 
 func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.store.Get(r, "user-session")
+	logrus.Info("api/faculty: ", session.Values)
 	if session.Values["Authenticated"] != "in_process" {
 		logrus.Warn("Unauthorized attempt to reach api/faculty")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
