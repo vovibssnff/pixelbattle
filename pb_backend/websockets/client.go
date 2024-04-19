@@ -116,7 +116,7 @@ func (client *Client) readPump() {
 		if client.isAdm {
 			client.server.broadcast <- &deserialized
 		} else if service.CheckBanned(client.ban_service, client.userid) {
-			logrus.Info("Request from banned usr")
+			logrus.Info("Request from banned usr: ", client.userid)
 			return
 		} else {
 			exists, err := service.CheckTime(client.timer_service, client.userid)

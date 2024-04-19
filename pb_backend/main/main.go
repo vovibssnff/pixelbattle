@@ -49,7 +49,7 @@ func main() {
 	redisBannedService := service.NewRedisClient(redis_db, redis_psw, redis_banned)
 
 	sessionStore := sessions.NewCookieStore([]byte(sessionKey))
-
+	sessionStore.Options.MaxAge = 1800
 	//server
 	ws := websockets.NewWebSocketServer(redisHistoryService, sessionStore, redisBannedService)
 	go ws.Run()
