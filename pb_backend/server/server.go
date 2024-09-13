@@ -17,7 +17,7 @@ type Server struct {
 	serviceToken   string
 	apiVer         string
 	store          *sessions.CookieStore
-	admIds		   []int
+	admIds         []int
 }
 
 func NewServer(imgService *service.ImageService, redisHistoryService *redis.Client, sessionStore *sessions.CookieStore, redisUserService *redis.Client, serviceToken string, apiVer string, ids []int) *Server {
@@ -28,7 +28,7 @@ func NewServer(imgService *service.ImageService, redisHistoryService *redis.Clie
 		serviceToken:   serviceToken,
 		apiVer:         apiVer,
 		store:          sessionStore,
-		admIds: 		ids,
+		admIds:         ids,
 	}
 }
 
@@ -51,16 +51,21 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request, serviceT
 	// }
 	session.Values["ID"] = vk_resp.User.ID
 	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName, vk_resp.User.ID)
-	
-	if (vk_resp.User.FirstName=="" || 
-		vk_resp.User.LastName=="" || 
-		vk_resp.User.ID==0 || 
-		accessToken == "" ||
-		service.IsBanned(*service.NewCheckReq(vk_resp.User.ID, serviceToken, s.apiVer))) {
+
+	// if accessToken == "" {
+	// 	http.Error(w, "kek", http.StatusBadRequest)
+	// 	return
+	// }
+
+	if vk_resp.User.FirstName == "" ||
+		vk_resp.User.LastName == "" ||
+		vk_resp.User.ID == 0 ||
+		// accessToken == "" ||
+		service.IsBanned(*service.NewCheckReq(vk_resp.User.ID, serviceToken, s.apiVer)) {
 		http.Error(w, "lol", http.StatusBadRequest)
 		return
 	}
-	
+
 	if !service.UserExists(s.userService, vk_resp.User.ID) {
 		session.Values["Authenticated"] = "in_process"
 		redisUser := models.NewUser(vk_resp.User.ID, vk_resp.User.FirstName, vk_resp.User.LastName, accessToken)
@@ -104,6 +109,7 @@ func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	session.Values["Authenticated"] = "true"
 	session.Values["Faculty"] = faculty
 	session.Save(r, w)
+	service.IncrementOverallRegistrations()
 	logrus.Info("New register")
 	http.Redirect(w, r, "/main", http.StatusSeeOther)
 }

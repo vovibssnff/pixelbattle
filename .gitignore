@@ -1,5 +1,4 @@
-nginx/cert/megapixelbattle.crt
-nginx/cert/megapixelbattle.key
+pb_frontend/nginx/cert/
 node_modules/
 package.json
 pb_backend/.idea/

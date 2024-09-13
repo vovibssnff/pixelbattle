@@ -1,6 +1,6 @@
 FROM golang:latest
 
-WORKDIR /app
+WORKDIR app
 COPY go.* ./
 RUN go mod download
 

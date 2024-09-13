@@ -23,13 +23,24 @@ services:
       - REDIS_TIMER=1
       - REDIS_USERS=3
       - REDIS_BANNED=4
-      - CANVAS_HEIGHT=250
-      - CANVAS_WIDTH=500
+      - CANVAS_HEIGHT=10
+      - CANVAS_WIDTH=20
       - SERVICE_TOKEN=
       - ADMIN_IDS=
       - API_VERSION=5.199
     depends_on:
       - redis
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana-enterprise
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
 
   nginx:
     build: ./pb_frontend

@@ -54,6 +54,8 @@ func main() {
 	ws := websockets.NewWebSocketServer(redisHistoryService, sessionStore, redisBannedService)
 	go ws.Run()
 
+	go service.StartHeatmapUpdater(redisHistoryService)
+
 	//client
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		redisTimerService := service.NewRedisClient(redis_db, redis_psw, redis_timer)
@@ -65,18 +67,25 @@ func main() {
 
 	server.WhiteCanvasInit(uint(canvas_height), uint(canvas_width))
 
-	http.HandleFunc("/init_canvas", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/init_canvas", service.InstrumentHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.HandleInitCanvas(w, r, uint(canvas_height), uint(canvas_width))
-	})
+	})))
 
-	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/api/login", service.InstrumentHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.HandleRegister(w, r, serviceToken)
-	})
+	})))
 
-	http.HandleFunc("/api/faculty", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/api/faculty", service.InstrumentHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.HandleFaculty(w, r)
-	})
+	})))
 
+	go func() {
+		err := http.ListenAndServe(":9090", service.MetricsHandler())
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}()
+	//http.Handle("/metrics", promhttp.Handler())
 	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		panic(err)

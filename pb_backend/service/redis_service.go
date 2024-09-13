@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 	"pb_backend/models"
 	"strconv"
 	"time"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
 )
 
 func NewRedisClient(addr string, password string, db int) *redis.Client {
@@ -32,7 +32,7 @@ func CheckBanned(rdb *redis.Client, userid int) bool {
 	res, _ := rdb.Exists(context.Background(), strconv.Itoa(userid)).Result()
 	if res == 0 {
 		return false
-	} 
+	}
 	return true
 }
 
@@ -70,40 +70,71 @@ func CheckInitialized(rdb *redis.Client) bool {
 	return dbSize != 0
 }
 
+func loadHeatMap(rdb *redis.Client) ([]models.HeatMapUnit, error) {
+	res := make([]models.HeatMapUnit, 0)
+	var y, x int
+	ctx := context.Background()
+	keys, err := rdb.Keys(ctx, "pixel:*").Result()
+	if err != nil {
+		return nil, err
+	}
+	pipe := rdb.Pipeline()
+	lenCmds := make([]*redis.IntCmd, len(keys))
+	for i, key := range keys {
+		lenCmds[i] = pipe.LLen(ctx, key)
+	}
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i, key := range keys {
+		length, err := lenCmds[i].Result()
+		if err != nil {
+			return nil, err
+		}
+		_, err = fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, models.HeatMapUnit{X: uint(x), Y: uint(y), Len: uint(length)})
+	}
+	return res, nil
+}
+
 func GetCanvas(rdb *redis.Client, img *Image) error {
-    ctx := context.Background()
-    keys, err := rdb.Keys(ctx, "pixel:*").Result()
-    if err != nil {
-        return err
-    }
-    pipe := rdb.Pipeline()
-    keyCmdMap := make(map[string]*redis.StringSliceCmd, len(keys))
-    for _, key := range keys {
-        cmd := pipe.LRange(ctx, key, -1, -1)
-        keyCmdMap[key] = cmd
-    }
-    _, err = pipe.Exec(ctx)
-    if err != nil {
+	ctx := context.Background()
+	keys, err := rdb.Keys(ctx, "pixel:*").Result()
+	if err != nil {
 		return err
-    }
-    for key, cmd := range keyCmdMap {
-        jsonString, err := cmd.Result()
-        if err != nil {
-            return err
-        }
-        var deserialized models.RedisPixel
-        if err := deserialized.FromRedisFormat([]byte(jsonString[0])); err != nil {
-            return err
-        }
-        var y, x uint
-        _, err = fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
-        if err != nil {
-            return err
-        }
-        pixel := models.NewPixel(x, y, deserialized.Color)
-        img.Data = append(img.Data, *pixel)
-    }
-    return nil
+	}
+	pipe := rdb.Pipeline()
+	keyCmdMap := make(map[string]*redis.StringSliceCmd, len(keys))
+	for _, key := range keys {
+		cmd := pipe.LRange(ctx, key, -1, -1)
+		keyCmdMap[key] = cmd
+	}
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return err
+	}
+	for key, cmd := range keyCmdMap {
+		jsonString, err := cmd.Result()
+		if err != nil {
+			return err
+		}
+		var deserialized models.RedisPixel
+		if err := deserialized.FromRedisFormat([]byte(jsonString[0])); err != nil {
+			return err
+		}
+		var y, x uint
+		_, err = fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
+		if err != nil {
+			return err
+		}
+		pixel := models.NewPixel(x, y, deserialized.Color)
+		img.Data = append(img.Data, *pixel)
+	}
+	return nil
 }
 
 func RegisterUser(rdb *redis.Client, usr models.User) error {

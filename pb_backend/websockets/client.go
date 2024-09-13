@@ -1,13 +1,13 @@
 package websockets
 
 import (
+	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"pb_backend/models"
 	"pb_backend/service"
 	"time"
-	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -16,9 +16,9 @@ type Client struct {
 	send          chan *models.Pixel
 	err           chan *string
 	userid        int
-	faculty 	  string
+	faculty       string
 	timer_service *redis.Client
-	isAdm		  bool
+	isAdm         bool
 	ban_service   *redis.Client
 }
 
@@ -41,9 +41,9 @@ func NewClient(conn *websocket.Conn, server *WsServer, id int, faculty string, r
 		send:          make(chan *models.Pixel),
 		err:           make(chan *string),
 		userid:        id,
-		faculty: 	   faculty,
+		faculty:       faculty,
 		timer_service: redisClient,
-		isAdm: 	   	   isAdm,
+		isAdm:         isAdm,
 		ban_service:   banClient,
 	}
 }
@@ -112,7 +112,7 @@ func (client *Client) readPump() {
 		}
 		deserialized.Userid = client.userid
 		deserialized.Faculty = client.faculty
-		
+
 		if client.isAdm {
 			client.server.broadcast <- &deserialized
 		} else if service.CheckBanned(client.ban_service, client.userid) {
