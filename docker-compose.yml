@@ -25,9 +25,9 @@ services:
       - REDIS_BANNED=4
       - CANVAS_HEIGHT=10
       - CANVAS_WIDTH=20
-      - SERVICE_TOKEN=
-      - ADMIN_IDS=
-      - API_VERSION=5.199
+      - SERVICE_TOKEN=${SERVICE_TOKEN}
+      - ADMIN_IDS=${ADMIN_IDS}
+      - API_VERSION=${API_VERSION}
     depends_on:
       - redis
 
@@ -39,8 +39,6 @@ services:
   grafana:
     image: grafana/grafana-enterprise
     restart: unless-stopped
-    ports:
-      - "3000:3000"
 
   nginx:
     build: ./pb_frontend
@@ -55,3 +53,4 @@ services:
     depends_on:
       - backend
       - redis
+      - grafana

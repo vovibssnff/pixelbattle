@@ -2,12 +2,12 @@ package service
 
 import (
 	"bytes"
+	"github.com/sirupsen/logrus"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
 	"pb_backend/models"
-	"github.com/sirupsen/logrus"
 )
 
 type Image struct {
@@ -51,12 +51,11 @@ func (img *Image) toRGBA() *image.RGBA {
 
 func (service *ImageService) GetImageBytes(img *Image) []byte {
 	logrus.Info("Entered GetImageBytes")
-	
+
 	rgba := img.toRGBA()
 	var buf bytes.Buffer
 	err := png.Encode(&buf, rgba)
 	if err != nil {
-		logrus.Error("shit shit")
 		logrus.Error(err)
 	}
 	return buf.Bytes()

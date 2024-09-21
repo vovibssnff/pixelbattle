@@ -1,3 +1,4 @@
+ .env
 pb_frontend/nginx/cert/
 node_modules/
 package.json

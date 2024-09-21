@@ -64,7 +64,7 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 	}
 
 	usrid := session.Values["ID"].(int)
-	blocked := false
+	isAdm := false
 	// accessToken := service.GetUsr(redisUserService, usrid).AccessToken
 	// if service.IsBanned() {
 	// 	service.DelUsr(redisUserService, usrid)
@@ -77,11 +77,11 @@ func ServeWs(server *WsServer, redisClient *redis.Client, w http.ResponseWriter,
 
 	for _, admId := range admIds {
 		if session.Values["ID"].(int) == admId {
-			blocked = true
+			isAdm = true
 		}
 	}
 
-	client := NewClient(conn, server, usrid, session.Values["Faculty"].(string), redisClient, blocked, redisBannedService)
+	client := NewClient(conn, server, usrid, session.Values["Faculty"].(string), redisClient, isAdm, redisBannedService)
 
 	go client.writePump()
 	go client.readPump()

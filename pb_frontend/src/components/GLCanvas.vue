@@ -96,7 +96,7 @@ export default {
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
       console.log("oh my ... god mobile user");
     }
-    this.connectToWebSocket();
+    this.connectToWebSocket("/ws");
     // this.setSwatchesArr(this.$refs.swatches);
     // this.setField(document.querySelector("#color-field"));
     window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
@@ -213,8 +213,8 @@ export default {
         }, 1000);
       }
     },
-    connectToWebSocket() {
-      const url = new URL('/ws', location.href);
+    connectToWebSocket(endpoint) {
+      const url = new URL(endpoint, location.href);
       url.protocol = 'wss';
       this.ws = new WebSocket(url);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});

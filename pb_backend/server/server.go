@@ -52,15 +52,10 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request, serviceT
 	session.Values["ID"] = vk_resp.User.ID
 	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName, vk_resp.User.ID)
 
-	// if accessToken == "" {
-	// 	http.Error(w, "kek", http.StatusBadRequest)
-	// 	return
-	// }
-
 	if vk_resp.User.FirstName == "" ||
 		vk_resp.User.LastName == "" ||
 		vk_resp.User.ID == 0 ||
-		// accessToken == "" ||
+		accessToken == "" ||
 		service.IsBanned(*service.NewCheckReq(vk_resp.User.ID, serviceToken, s.apiVer)) {
 		http.Error(w, "lol", http.StatusBadRequest)
 		return
