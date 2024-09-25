@@ -39,6 +39,8 @@ services:
   grafana:
     image: grafana/grafana-enterprise
     restart: unless-stopped
+    environment:
+      - GF_LOG_LEVEL=error
 
   nginx:
     build: ./pb_frontend
