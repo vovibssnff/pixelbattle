@@ -1,13 +1,14 @@
 package server
 
 import (
-	"github.com/gorilla/sessions"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
+	"encoding/json"
 	"net/http"
 	"pb_backend/models"
 	"pb_backend/service"
 	"strconv"
+	"github.com/gorilla/sessions"
+	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -43,47 +44,58 @@ func (s *Server) isAdmin(id int) bool {
 
 func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request, serviceToken string) {
 	session, _ := s.store.Get(r, "user-session")
-	vk_resp := service.ToVKResponse(r.URL.Query())
-	req := service.NewAccessReq(s.apiVer, vk_resp.Token, s.serviceToken, vk_resp.UUID)
-	accessToken := service.SilentToAccess(*req)
+	var usr service.VKUserData
+	err := json.NewDecoder(r.Body).Decode(&usr)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+
+	// vk_resp := service.ToVKResponse(r.URL.Query())
+	// req := service.NewAccessReq(s.apiVer, vk_resp.Token, s.serviceToken, vk_resp.UUID)
+	// accessToken := service.SilentToAccess(*req)
 	// if accessToken == "" {
 	// 	//TODO handle
 	// }
-	session.Values["ID"] = vk_resp.User.ID
-	logrus.Info("Login request from ", vk_resp.User.FirstName, vk_resp.User.LastName, vk_resp.User.ID)
+	session.Values["ID"] = usr.UserID
 
-	if vk_resp.User.FirstName == "" ||
-		vk_resp.User.LastName == "" ||
-		vk_resp.User.ID == 0 ||
-		accessToken == "" ||
-		service.IsBanned(*service.NewCheckReq(vk_resp.User.ID, serviceToken, s.apiVer)) {
+	logrus.Info("Login request from ", usr.UserID)
+
+	if usr.UserID == 0 ||
+		usr.AccessToken == "" {
+		// service.IsBanned(*service.NewCheckReq(usr.UserID, serviceToken, s.apiVer)) {
 		http.Error(w, "lol", http.StatusBadRequest)
 		return
 	}
 
-	if !service.UserExists(s.userService, vk_resp.User.ID) {
+	status := ""
+
+	if !service.UserExists(s.userService, usr.UserID) {
 		session.Values["Authenticated"] = "in_process"
-		redisUser := models.NewUser(vk_resp.User.ID, vk_resp.User.FirstName, vk_resp.User.LastName, accessToken)
+		redisUser := models.NewUser(usr.UserID, "Lol", "Kekov", usr.AccessToken, usr.RefreshToken, usr.IDToken, usr.DeviceID)
 		if err := service.RegisterUser(s.userService, *redisUser); err != nil {
 			logrus.Error(err)
 		}
 		session.Save(r, w)
 		logrus.Info("not exists: ", session.Values)
-		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
-	} else if service.GetUsr(s.userService, vk_resp.User.ID).Faculty == "" || session.Values["Authenticated"] == "in_process" {
+		status = "redirect_to_faculty"
+
+	} else if service.GetUsr(s.userService, usr.UserID).Faculty == "" || session.Values["Authenticated"] == "in_process" {
 		session.Values["Authenticated"] = "in_process"
 		session.Save(r, w)
 		logrus.Info("exists/in_process: ", session.Values)
-		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
+		status = "redirect_to_faculty"
 	} else {
-		logrus.Info("New login")
 		session.Values["Authenticated"] = "true"
-		usr := service.GetUsr(s.userService, vk_resp.User.ID)
+		usr := service.GetUsr(s.userService, usr.UserID)
 		session.Values["Faculty"] = usr.Faculty
 		session.Save(r, w)
 		logrus.Info("default login: ", session.Values)
-		http.Redirect(w, r, "/main", http.StatusSeeOther)
+		status = "redirect_to_main"
 	}
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"status": status}
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) HandleFaculty(w http.ResponseWriter, r *http.Request) {
