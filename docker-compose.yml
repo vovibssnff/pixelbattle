@@ -35,6 +35,8 @@ services:
     image: prom/prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--log.level=info"
 
   grafana:
     image: grafana/grafana-enterprise

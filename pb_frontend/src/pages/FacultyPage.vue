@@ -41,7 +41,7 @@ export default {
   flex-direction: column;
   align-items: center;
   /* justify-content: center; */
-  margin-top: 20px; /* Adjust this value as needed */
+  margin-top: 20px;
   transition: background 1s;
   filter: drop-shadow(1px 1px grey);
   font-family: Arial, sans-serif;

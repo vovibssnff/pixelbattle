@@ -72,7 +72,13 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request, serviceT
 
 	if !service.UserExists(s.userService, usr.UserID) {
 		session.Values["Authenticated"] = "in_process"
-		redisUser := models.NewUser(usr.UserID, "Lol", "Kekov", usr.AccessToken, usr.RefreshToken, usr.IDToken, usr.DeviceID)
+		usrInfo, err := service.GetUsrInfo(*service.NewNameReq(usr.UserID, usr.AccessToken, s.apiVer))
+		if err != nil {
+			logrus.Error(err)
+			http.Error(w, "lol", http.StatusTeapot)
+			return
+		}
+		redisUser := models.NewUser(usr.UserID, usrInfo.FirstName, usrInfo.LastName, usr.AccessToken, usr.RefreshToken, usr.IDToken, usr.DeviceID)
 		if err := service.RegisterUser(s.userService, *redisUser); err != nil {
 			logrus.Error(err)
 		}

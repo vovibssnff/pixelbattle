@@ -2,11 +2,12 @@ package service
 
 import (
 	"encoding/json"
-	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
 )
 
 type VKUserData struct {
@@ -45,7 +46,7 @@ type User struct {
 	IsClosed        bool   `json:"is_closed"`
 }
 
-type VKCheckUser struct {
+type VKUsrArray struct {
 	Response []User `json:"response"`
 }
 
@@ -56,8 +57,8 @@ type AccessReq struct {
 	UUID        string `json:"uuid"`
 }
 
-type CheckReq struct {
-	UserIds     string `json:"user_ids"`
+type NameReq struct {
+	UserId      string `json:"user_ids"`
 	AccessToken string `json:"access_token"`
 	V           string `json:"v"`
 }
@@ -76,10 +77,10 @@ type AccessResp struct {
 	} `json:"response"`
 }
 
-func NewCheckReq(userId int, serviceToken string, v string) *CheckReq {
-	return &CheckReq{
-		UserIds:     strconv.Itoa(userId),
-		AccessToken: serviceToken,
+func NewNameReq(userId int, accessToken string, v string) *NameReq {
+	return &NameReq{
+		UserId:      strconv.Itoa(userId),
+		AccessToken: accessToken,
 		V:           v,
 	}
 }
@@ -105,10 +106,6 @@ func ToVKResponse(query url.Values) *VKResponse {
 	}
 	return &vkResponse
 }
-
-// func ToVKUserData(r )
-
-// func GetUsrInfo(accessToken string)
 
 func SilentToAccess(access_req AccessReq) string {
 	response, err := http.PostForm("https://api.vk.com/method/auth.exchangeSilentAuthToken", url.Values{
@@ -142,8 +139,32 @@ func SilentToAccess(access_req AccessReq) string {
 	return accessResp.Response.AccessToken
 }
 
+func GetUsrInfo(nameReq NameReq) (User, error) {
+	var usr User
+	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
+		"user_ids":     {nameReq.UserId},
+		"access_token": {nameReq.AccessToken},
+		"v":            {nameReq.V},
+	})
+	if err != nil {
+		return usr, err
+	}
+	logrus.Info(response)
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return usr, err
+	}
+	var usrs VKUsrArray
+	err = json.Unmarshal([]byte(string(body)), &usrs)
+	if err != nil {
+		return usr, err
+	}
+	usr = usrs.Response[0]
+	return usr, nil
+}
+
 // func IsBanned(checkReq CheckReq) bool {
-// 	logrus.Info()
 // 	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
 // 		"user_ids":     {checkReq.UserIds},
 // 		"access_token": {checkReq.AccessToken},
@@ -155,8 +176,8 @@ func SilentToAccess(access_req AccessReq) string {
 // 		return true
 // 	}
 
-// 	defer response.Body.Close()
-// 	body, err := io.ReadAll(response.Body)
+// defer response.Body.Close()
+// body, err := io.ReadAll(response.Body)
 
 // 	if err != nil {
 // 		logrus.Error(err)

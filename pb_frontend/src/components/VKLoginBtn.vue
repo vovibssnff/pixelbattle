@@ -1,8 +1,5 @@
 <template>
-  <div>
-    <!-- The container for the VKID widget -->
-    <div ref="vkidContainer"></div>
-  </div>
+  <div ref="vkidContainer" class="vkid-widget"></div>
 </template>
 
 <script>
@@ -100,9 +97,16 @@ export default {
       });
     },
     vkidOnError(error) {
-      // Handle error
       console.error('VKID Error:', error);
     }
   }
 }
 </script>
+
+<style scoped>
+.vkid-widget {
+  display: grid;
+  place-content: center;
+  margin-top: 20px;
+}
+</style>
