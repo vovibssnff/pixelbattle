@@ -10,14 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type VKUserData struct {
-	UserID       int    `json:"userID"`
-	DeviceID     string `json:"deviceID"`
-	RefreshToken string `json:"refreshToken"`
-	AccessToken  string `json:"accessToken"`
-	IDToken      string `json:"idToken"`
-}
-
 type VKResponse struct {
 	Type      string `json:"type"`
 	Auth      int    `json:"auth"`
@@ -40,13 +32,14 @@ type VKUser struct {
 
 type User struct {
 	ID              int    `json:"id"`
+	Deactivated     string `json:"deactivated"`
 	FirstName       string `json:"first_name"`
 	LastName        string `json:"last_name"`
 	CanAccessClosed bool   `json:"can_access_closed"`
 	IsClosed        bool   `json:"is_closed"`
 }
 
-type VKUsrArray struct {
+type VKCheckUser struct {
 	Response []User `json:"response"`
 }
 
@@ -57,8 +50,8 @@ type AccessReq struct {
 	UUID        string `json:"uuid"`
 }
 
-type NameReq struct {
-	UserId      string `json:"user_ids"`
+type CheckReq struct {
+	UserIds     string `json:"user_ids"`
 	AccessToken string `json:"access_token"`
 	V           string `json:"v"`
 }
@@ -77,10 +70,10 @@ type AccessResp struct {
 	} `json:"response"`
 }
 
-func NewNameReq(userId int, accessToken string, v string) *NameReq {
-	return &NameReq{
-		UserId:      strconv.Itoa(userId),
-		AccessToken: accessToken,
+func NewCheckReq(userId int, serviceToken string, v string) *CheckReq {
+	return &CheckReq{
+		UserIds:     strconv.Itoa(userId),
+		AccessToken: serviceToken,
 		V:           v,
 	}
 }
@@ -139,61 +132,61 @@ func SilentToAccess(access_req AccessReq) string {
 	return accessResp.Response.AccessToken
 }
 
-func GetUsrInfo(nameReq NameReq) (User, error) {
-	var usr User
+// func GetUsrInfo(nameReq CheckReq) (User, error) {
+// 	var usr User
+// 	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
+// 		"user_ids":     {nameReq.UserIds},
+// 		"access_token": {nameReq.AccessToken},
+// 		"v":            {nameReq.V},
+// 	})
+// 	if err != nil {
+// 		return usr, err
+// 	}
+// 	logrus.Info(response)
+// 	defer response.Body.Close()
+// 	body, err := io.ReadAll(response.Body)
+// 	if err != nil {
+// 		return usr, err
+// 	}
+// 	var usrs VKUsrArray
+// 	err = json.Unmarshal([]byte(string(body)), &usrs)
+// 	if err != nil {
+// 		return usr, err
+// 	}
+// 	usr = usrs.Response[0]
+// 	return usr, nil
+// }
+
+func IsBanned(checkReq CheckReq) bool {
+	logrus.Info()
 	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
-		"user_ids":     {nameReq.UserId},
-		"access_token": {nameReq.AccessToken},
-		"v":            {nameReq.V},
+		"user_ids":     {checkReq.UserIds},
+		"access_token": {checkReq.AccessToken},
+		"v":            {checkReq.V},
 	})
+
 	if err != nil {
-		return usr, err
+		logrus.Error(err)
+		return true
 	}
-	logrus.Info(response)
+
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
+
 	if err != nil {
-		return usr, err
+		logrus.Error(err)
+		return true
 	}
-	var usrs VKUsrArray
-	err = json.Unmarshal([]byte(string(body)), &usrs)
+
+	var usr VKCheckUser
+	err = json.Unmarshal([]byte(string(body)), &usr)
 	if err != nil {
-		return usr, err
+		logrus.Error(err)
+		return true
 	}
-	usr = usrs.Response[0]
-	return usr, nil
+	if usr.Response[0].Deactivated == "banned" || usr.Response[0].Deactivated == "deleted" {
+		logrus.Info("Login request from vk banned usr: ", usr.Response[0].ID)
+		return true
+	}
+	return false
 }
-
-// func IsBanned(checkReq CheckReq) bool {
-// 	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
-// 		"user_ids":     {checkReq.UserIds},
-// 		"access_token": {checkReq.AccessToken},
-// 		"v":            {checkReq.V},
-// 	})
-
-// 	if err != nil {
-// 		logrus.Error(err)
-// 		return true
-// 	}
-
-// defer response.Body.Close()
-// body, err := io.ReadAll(response.Body)
-
-// 	if err != nil {
-// 		logrus.Error(err)
-// 		return true
-// 	}
-
-// 	var usr VKCheckUser
-// 	err = json.Unmarshal([]byte(string(body)), &usr)
-// 	if err != nil {
-// 		logrus.Error(err)
-// 		return true
-// 	}
-// 	logrus.Info(usr)
-// 	if usr.Response[0].Deactivated == "banned" || usr.Response[0].Deactivated == "deleted" {
-// 		logrus.Info("Login request from vk banned usr: ", usr.Response[0].ID)
-// 		return true
-// 	}
-// 	return false
-// }
