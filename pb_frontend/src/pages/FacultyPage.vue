@@ -20,7 +20,21 @@
           <input type="radio" name="faculty" value="NOZH"> НОЖ
         </label>
       </div>
-      <button type="submit" class="send-button">Подтвердить</button>
+      <br/>
+      <div class="tutorial">
+      Слушай же, о путник, и ведай, как управляться с волшебной палитрой:
+      <br/><br/>
+      ПКМ (передвижение пальца на телефоне) — держи перо крепко, дабы узоры чертить.<br/>
+      ЛКМ (касание экрана на телефоне) — ведай путь свой верно, дабы по холсту странствовать.<br/>
+      CTRL + ПКМ (зажать 1 секунду на телефоне) — познай цвет истинный, да занеси его в палитру свою.<br/><br/>
+      <span>В помощь тебе — <a target="_blank" href="https://color-hex.com">цветная книга мудрецов</a></span><br/>
+      <br/>
+      Время течет, как река, и ставить пиксели дозволено лишь раз в три удара сердца.
+      <br/>
+      <br/>
+      </div>
+
+      <button type="submit" class="send-button">Играть</button>
     </form>
   </div>
 </template>
@@ -42,7 +56,11 @@ export default {
   font-size: 18px;  
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: start;
+  padding: 20px;
+  padding-top: 50px;
+  max-width: 100dvh;
+  overflow: scroll;
   box-sizing: border-box;
   position: fixed;
   background-image: url("@/img/paper-bg.jpg");
@@ -140,6 +158,11 @@ input[type="radio"]:checked ~ label {
 h2 {
   margin: 0;
   margin-top: 30px;
+  color: #134293;
+}
+
+
+a {
   color: #134293;
 }
 </style>
