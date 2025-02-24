@@ -1,7 +1,7 @@
 <template>
   <div oncontextmenu="return false;">
     <canvas @touchstart="onTouchStart" @mousedown="onMouseDown"
-    @touchend="onTouchEnd" @mousemove="coordsUpdate" 
+    @touchend="onTouchEnd" @mousemove="coordsUpdate"
     @contextmenu="() => {return false;}" id="viewport-canvas"></canvas>
     <div id="ui-wrapper" hide="true">
       <p id="loading-p"></p>
@@ -21,7 +21,29 @@
 
         <input @change="onChange" id="color-field" type="text" :placeholder="palette[activeSwatch]" :value="palette[activeSwatch]" />
         <!-- <input @change="onChange" id="color-field" type="text" placeholder="#000000" value="#000000" /> -->
-      </div>
+      </div>  
+
+      <label for="checkbox" id="howto">?</label>
+      <input hidden type="checkbox" id="checkbox">
+      <label for="checkbox" class="modal-overlay">
+        <div class="modal">
+          <!-- <h1>Добро пожаловать на Pixelbattle!</h1> -->
+<h1>О мудром владении цветами и пергаментом на веб-сайте</h1><br/><br/>
+
+Слушай же, о путник, и ведай, как управляться с волшебной палитрой:
+<br/><br/>
+ПКМ — держи перо крепко, дабы узоры чертить.<br/>
+ЛКМ — ведай путь свой верно, дабы по холсту странствовать.<br/>
+CTRL + ПКМ — познай цвет истинный, да занеси его в палитру свою.<br/><br/>
+<span>В помощь тебе — <a href="https://color-hex.com">цветная книга мудрецов</a></span><br/>
+<br/>
+Время течет, как река, и ставить пиксели дозволено лишь раз в три удара сердца.
+<br/>
+Пусть же рука твоя будет тверда, а дух — неколебим. Веди перо свое, дабы создать творение, коему позавидуют сами небеса!
+          <label for="checkbox">X</label>
+        </div>
+      </label>
+
       <div id="zoom-wrapper">
         <button @click="() => {this.zoomOut(1.2);}" class="zoom-button" id="zoom-out">-</button>
         <button @click="() => {this.zoomIn(1.2);}" class="zoom-button" id="zoom-in">+</button>
@@ -29,8 +51,7 @@
       <div id="cursor-info">
         <span id="x-coordinate">{{ Math.floor(this.val_x) }}</span>, <span id="y-coordinate">{{ Math.floor(this.val_y) }}</span>
       </div>
-      <div id="timer">
-        <span id="timer-value">{{ this.seconds }}</span>
+      <div id="timer">{{ this.seconds }}
       </div>
     </div>
   </div>
@@ -78,40 +99,77 @@ export default {
     loaded(newVal) {
       if (newVal) {
         this.renderSavedPIxels();
+        
       }
     },
   },
   mounted() {
-    document.title='MEGA PixelBattle'
+    document.title='Pixelbattle'
+    this.$data.howToOpen = 0
+
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
-    this.$data.timerValue = document.querySelector("#timer-value");
+    this.$data.timerValue = document.querySelector("#timer");
+    this.$data.cursorInfo = document.querySelector("#cursor-info");
+    this.$data.swatches = document.getElementsByClassName("color-swatch");
     this.$data.glWindow = new GLWindow(this.$data.cvs);
     this.$data.place = new Place(this.$data.glWindow, document.querySelector("#ui-wrapper"), document.querySelector("#loading-p"));
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
-    this.initConnection("/init_canvas");
-    this.initEventListeners();
+    if (process.env.NODE_ENV === 'production') {
+      console.log("production")
+      this.initConnection("/init_canvas");
+      this.connectToWebSocket("/ws");
+      this.initEventListeners();
+    } else {
+      console.log("dev")
+      this.loaded = true;
+      this.ws = {}
+      this.ws.send = function() { return; };
+
+      // Create canvas element
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 200;
+      const ctx = canvas.getContext('2d');
+      const grad=ctx.createLinearGradient(0,0, 280,0);
+      grad.addColorStop(0, "lightblue");
+      grad.addColorStop(1, "darkblue");
+
+      // Fill rectangle with gradient
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+        this.$data.place.setImage(blob);
+      })
+      this.$data.place.loadingp.innerHTML = "";
+      this.$data.place.uiwrapper.setAttribute("hide", true);
+      this.$data.isGod = true;
+      this.initEventListeners();
+      
+    }
     const platform = navigator.platform.toLowerCase();
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
       console.log("oh my ... god mobile user");
     }
-    this.connectToWebSocket("/ws");
     // this.setSwatchesArr(this.$refs.swatches);
     // this.setField(document.querySelector("#color-field"));
-    window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
+    // window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
   },
   methods: {
-    getSwatches() {
-      return this.$refs.swatches;
-    },
     selectSwatch(index) {
+      if (this.activeSwatch == index) {
+        return;
+      }
       try {
-        this.getSwatches()[this.activeSwatch].style.border = '2px solid black';
+        this.swatches[this.activeSwatch].style.borderWidth = '0';
+        this.swatches[this.activeSwatch].style.width = '30px';
       } catch{}
       // console.log(this.activeSwatch);
       this.activeSwatch = index;
-      this.getSwatches()[this.activeSwatch].style.border = '2px solid white';
+      this.swatches[this.activeSwatch].style.borderWidth = '2px 3px';
+      this.swatches[this.activeSwatch].style.width = '31px';
       let hex = this.palette[this.activeSwatch];
       hex = hex.substring(1, 7);
       while (hex.length < 6) {
@@ -189,7 +247,7 @@ export default {
         this.send(x, y, color);
         
         this.seconds = 3;
-        this.timerValue.style.visibility = "visible";
+        this.timerValue.style.opacity = 1;
         
         this.timer = setInterval(() => {
           if (this.seconds > 1) {
@@ -197,19 +255,24 @@ export default {
           } else {
             clearInterval(this.timer);
             this.timerRunning = false;
-            this.timerValue.style.visibility = "hidden";
+            this.timerValue.style.opacity = 0;
           }
         }, 1000);
       } else {
         this.timerValue.style.fontWeight = "bold";
         this.timerValue.style.color = "firebrick";
-        this.timerValue.style.fontSize = "22px";
+        this.timerValue.style.fontSize = "28px";
+        this.timerValue.style.width = "30px";
+        this.timerValue.style.borderColor = "firebrick"
+        this.timer
         clearInterval(this.secondTimer);
         this.secondTimer = setInterval(() => {
             // Apply new style which transitions smoothly due to the CSS
             this.timerValue.style.fontSize = "16px";
             this.timerValue.style.fontWeight = "normal";
-            this.timerValue.style.color = "black";
+            this.timerValue.style.color = "#134293";
+            this.timerValue.style.width = "20px";
+            this.timerValue.style.borderColor = "#134293"
         }, 1000);
       }
     },
@@ -320,7 +383,7 @@ export default {
       this.palette[this.activeSwatch] = "#" + hex;
       this.colorField.value = this.palette[this.activeSwatch];
 
-      // this.getSwatches()[this.activeSwatch].style.backgroundColor = hex;
+      // this.swatches[this.activeSwatch].style.backgroundColor = hex;
     },
     onTouchMove(ev) {
       this.touchID++;
@@ -401,10 +464,15 @@ export default {
 </script>
 
 <style scoped>
+@font-face {
+  font-family: 'Calligrapher';
+  src: url('@/fonts/calligrapher.ttf') format('truetype');
+}
+
 * {
   padding: 0;
   margin: 0;
-  font-family: monospace;
+  font-family: 'Calligrapher', Times, serif;
 }
 
 body {
@@ -420,7 +488,8 @@ body {
   image-rendering: pixelated;
   width: 100vw;
   height: 100vh;
-  background-color: #e0e0e0;
+  background-image: url("@/img/bg.jpg");
+  background-size: cover;
 }
 
 #ui-wrapper {
@@ -431,7 +500,9 @@ body {
   height: 100%;
   background-color: #ffffff;
   transition: background 1s;
-  filter: drop-shadow(1px 1px grey);
+
+  color: black;
+  /* filter: drop-shadow(1px 1px grey); */
 }
 
 #ui-wrapper>#color-wrapper,
@@ -455,26 +526,43 @@ body {
   left: 16px;
   display: flex;
   flex-direction: row;
+  width: min-content;
+  border: 2px solid #134293;
+  background-color: #E1DBCE;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .color-swatch {
   width: 30px;
   height: 30px;
   background-color: #000000;
-  border: 2px solid black;
+  /* border: px solid #134293; */
+  border-width: 0;
+  border-style: solid;
+  border-color: #134293;
   cursor: pointer;
   pointer-events: all;
+  box-sizing: border-box;
+}
+
+.color-swatch:first-of-type {
+  border-width: 2px 3px;
+  width: 31px;
 }
 
 #color-field { 
-  font-size: 16px;
+  font-size: 18px;
+  color: black;
   height: 30px;
-  padding: 1px;
+  line-height: 30px;
+  box-sizing: border-box;
+  margin-left: 6px;
   border: none;
   outline: none;
   pointer-events: all;
   background-color: transparent; /* Remove white background */
-  width: 40%; /* Decrease width */
+  width: 8.5ch;
 }
 
 #loading-p {
@@ -489,36 +577,80 @@ body {
   position: absolute;
   bottom: 16px;
   right: 16px;
+  border-radius: 10px;
+  border: 2px solid #134293;
+  background-color: #E1DBCE;
 }
 
 .zoom-button {
-  width: 36px;
-  height: 36px;
+  color: #134293;
+  font-family: monospace;
+  width: 30px;
+  height: 30px;
   border: none;
   background: none;
   outline: none;
-  background-color: red;
   font-size: 24px;
-  background-color: #ffffff;
-  border: 2px solid black;
   cursor: pointer;
   pointer-events: all;
   user-select: none;
 }
 
+.zoom-button:first-of-type {
+  border-right: 2px solid #134293
+}
+
 #cursor-info {
   position: absolute;
+  color: black;
+  background-color: #E1DBCE;
+  padding: 5px;
+  width: 50px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  border: 2px solid #134293;
+  border-radius: 10px;
   top: 16px;
-  left: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 16px;
 }
 
 #timer {
   position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  top: 60px;
+  left: 50%;
+  width: 20px;
+  padding: 5px;
+  color: black;
+  border-radius: 10px;
+  text-align: center;
+  background-color: #E1DBCE;
+  border: 2px solid #134293;
+  transform: translateX(-50%);
+  font-size: 16px;
+  transition: all 0.2s ease-in-out;
+}
+
+#howto {
+  position: absolute;
   top: 16px;
   right: 16px;
   font-size: 16px;
-  transition: all 0.5s ease-in-out 0.5s;
+  text-align: center;
+  border-radius: 10px;
+  background-color: #E1DBCE;
+  border: 2px solid #134293;
+  line-height: 30px;
+  width: 30px;
+  height: 30px;
+  cursor: help;
+  user-select: none;
+  z-index: 1;
+  pointer-events: all;
 }
 
 @media (hover: none) {
@@ -529,5 +661,70 @@ body {
   #help-text-mobile {
     display: inline;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease-in-out;
+  z-index: 100;
+}
+
+.modal {
+  font-size: 18px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  /* justify-content: center; */
+  padding: 50px;
+  padding-inline: 10%;
+  box-sizing: border-box;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 90%;
+  transform: translate(-50%, -52%);
+  background-image: url("@/img/paper-bg.jpg");
+  background-size: cover;
+  transition: all 0.5s ease-in-out;
+  border: 2px solid #134293;
+  text-align: center;
+}
+
+input:checked ~ .modal-overlay {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+input:checked ~ .modal-overlay .modal {
+  transform: translate(-50%, -50%);
+}
+
+.modal-overlay label {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  color: #134293;
+}
+
+h1, h2, h3 {
+  color: #134293;
+  padding-inline: 10%;
+}
+
+@media (max-width: 600px) {
+  .modal {
+    font-size: 14px;
+  }
+}
+
+a {
+  color: #134293;
 }
 </style>
