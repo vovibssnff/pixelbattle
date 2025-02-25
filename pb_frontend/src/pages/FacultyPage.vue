@@ -59,13 +59,13 @@ export default {
   justify-content: start;
   padding: 20px;
   padding-top: 50px;
-  max-width: 100dvh;
+  max-width: 100dvw;
   overflow: scroll;
   box-sizing: border-box;
   position: fixed;
   background-image: url("@/img/paper-bg.jpg");
   background-size: cover;
-  transition: all 0.5s ease-in-out;
+  /* transition: all 0.5s ease-in-out; */
   text-align: center;
   position: absolute;
   width: 100dvw;

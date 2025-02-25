@@ -53,6 +53,16 @@ CTRL + ПКМ (зажать 1 секунду на телефоне) — позн
       </div>
       <div id="timer">{{ this.seconds }}
       </div>
+      <a target="_blank" href="https://t.me/itmominigames" id="running-line">
+        <div id="ad">
+          <p>Переходи в канал</p>
+          <svg class="svg-icon" style="width: 30px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M417.28 795.733333l11.946667-180.48 327.68-295.253333c14.506667-13.226667-2.986667-19.626667-22.186667-8.106667L330.24 567.466667 155.306667 512c-37.546667-10.666667-37.973333-36.693333 8.533333-55.466667l681.386667-262.826666c31.146667-14.08 61.013333 7.68 49.066666 55.466666l-116.053333 546.56c-8.106667 38.826667-31.573333 48.213333-64 30.293334L537.6 695.466667l-84.906667 82.346666c-9.813333 9.813333-17.92 17.92-35.413333 17.92z" fill="" /></svg>
+        </div>
+        <div id="tales-array">
+          <div class="tales" ref="firstTales"></div>
+          <div class="tales" ref="secondTales"></div>
+        </div>
+      </a>
     </div>
   </div>
 </template>
@@ -104,8 +114,40 @@ export default {
     },
   },
   mounted() {
-    document.title='Pixelbattle'
-    this.$data.howToOpen = 0
+    document.title='Pixelbattle';
+
+    fetch("https://ruddnev.github.io/pixelbattle-tales/tales.txt") // Replace with your actual file URL
+      .then(response => response.text())
+      .then(text => {
+        // Split by newlines, remove empty lines, and shuffle
+        let talesArray = text.trim().replace("ё", "е").split("\n").filter(line => line.length > 0);
+        talesArray.sort(() => Math.random() - 0.5);
+
+        // Populate both .tales divs
+        let firstTales = this.$refs.firstTales;
+        let secondTales = this.$refs.secondTales;
+
+        // Clear existing content
+        firstTales.innerHTML = "";
+        secondTales.innerHTML = "";
+
+        // Add shuffled tales to both containers
+        talesArray.forEach(tale => {
+          let span = document.createElement("span");
+          span.textContent = tale;
+          firstTales.appendChild(span);
+          secondTales.appendChild(span.cloneNode(true));
+        });
+
+        let totalLength = text.length; // Total characters in file
+        let duration = totalLength / 10; // Example formula: 1s per 100 chars, min 5s
+
+        // Apply animation duration dynamically
+        firstTales.style.animationDuration = `${duration}s`;
+        secondTales.style.animationDuration = `${duration}s`;
+
+      })
+      .catch(error => console.error("Error fetching tales:", error));
 
     this.$data.colorField = document.querySelector("#color-field");
     this.$data.cvs = document.querySelector("#viewport-canvas");
@@ -190,6 +232,7 @@ export default {
       document.head.appendChild(meta);
     },
     initConnection(endpoint) {
+      this.$data.place.loadingp.style.color = "white"
       this.$data.place.loadingp.innerHTML = "loading canvas"
       fetch(endpoint)
 			.then(async resp => {
@@ -544,6 +587,7 @@ body {
   cursor: pointer;
   pointer-events: all;
   box-sizing: border-box;
+  transition: border 0.1s ease-in-out;
 }
 
 .color-swatch:first-of-type {
@@ -612,7 +656,7 @@ body {
   text-align: center;
   border: 2px solid #134293;
   border-radius: 10px;
-  top: 16px;
+  top: 46px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 16px;
@@ -622,7 +666,7 @@ body {
   position: absolute;
   opacity: 0;
   pointer-events: none;
-  top: 60px;
+  top: 90px;
   left: 50%;
   width: 20px;
   padding: 5px;
@@ -638,7 +682,7 @@ body {
 
 #howto {
   position: absolute;
-  top: 16px;
+  top: 46px;
   right: 16px;
   font-size: 16px;
   text-align: center;
@@ -727,5 +771,67 @@ h1, h2, h3 {
 
 a {
   color: #134293;
+}
+
+#running-line {
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 30px;
+  display: flex;
+  background-color: #E1DBCE;
+  border-bottom: 2px solid #134293;
+  pointer-events: all;
+  text-decoration: none;
+}
+
+#ad {
+  background-color: #134293;
+  width: min-content;
+  display: flex;
+  color: white;
+  border-radius: 0 8px 8px 0;
+  padding-inline: 8px;
+  text-wrap: nowrap;
+  gap: 5px;
+  line-height: 30px;
+  font-size: 18px;
+  z-index: 2;
+}
+
+#tales-array {
+  position: relative;
+  line-height: 30px;
+  box-sizing: border-box;
+
+  display: flex;
+  gap: 50px;
+}
+
+.tales {
+  box-sizing: border-box;
+  display: flex;
+  gap: 30px;
+  flex-shrink: 0;
+  margin: 0;
+  margin-left: 20px;
+  min-width: 100%;
+  animation-name: marqueeLine;
+  animation-duration: 5s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  user-select: none;
+  color: black;
+}
+
+@keyframes marqueeLine {
+  from {
+    transform: translateX(0);
+  }
+  
+  to {
+    transform: translateX(-100%);
+  }
 }
 </style>
