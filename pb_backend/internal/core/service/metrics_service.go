@@ -1,9 +1,9 @@
 package service
 
 import (
-	"fmt"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
+	// "fmt"
+	// "github.com/redis/go-redis/v9"
+	// "github.com/sirupsen/logrus"
 	"net/http"
 	"time"
 
@@ -70,27 +70,27 @@ func init() {
 	prometheus.MustRegister(heatmapMetrics)
 }
 
-func updateHeatMap(rdb *redis.Client) {
-	heatmap, err := loadHeatMap(rdb)
-	if err != nil {
-		logrus.Error(err)
-	}
-	for _, val := range heatmap {
-		heatmapMetrics.WithLabelValues(fmt.Sprintf("%d", val.X), fmt.Sprintf("%d", val.Y)).Set(float64(val.Len))
-	}
-}
+// func updateHeatMap(rdb *redis.Client) {
+// 	heatmap, err := loadHeatMap(rdb)
+// 	if err != nil {
+// 		logrus.Error(err)
+// 	}
+// 	for _, val := range heatmap {
+// 		heatmapMetrics.WithLabelValues(fmt.Sprintf("%d", val.X), fmt.Sprintf("%d", val.Y)).Set(float64(val.Len))
+// 	}
+// }
 
-func StartHeatmapUpdater(rdb *redis.Client) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			updateHeatMap(rdb)
-			logrus.Info("HeatMap updated")
-		}
-	}
-}
+// func StartHeatmapUpdater(rdb *redis.Client) {
+// 	ticker := time.NewTicker(30 * time.Second)
+// 	defer ticker.Stop()
+// 	for {
+// 		select {
+// 		case <-ticker.C:
+// 			updateHeatMap(rdb)
+// 			logrus.Info("HeatMap updated")
+// 		}
+// 	}
+// }
 
 func InstrumentHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,5 +7,5 @@ RUN go mod download
 COPY . .
 # COPY pixels pixels
 # COPY server server
-CMD ["go", "run", "./main/main.go"]
+CMD ["go", "run", "./cmd/app/main.go"]
 
