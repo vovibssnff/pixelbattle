@@ -1,4 +1,4 @@
-package service
+package vk
 
 import (
 	"encoding/json"
@@ -7,10 +7,22 @@ import (
 	"net/url"
 	"strconv"
 
-	// "github.com/romanraspopov/golang-vk-api"
 	"github.com/sirupsen/logrus"
 )
 
+type VKAuthProvider struct {
+	ServiceToken string
+	ApiVer       string
+}
+
+func NewVKAuthProvider(serviceToken, apiVer string) *VKAuthProvider {
+	return &VKAuthProvider{
+		ServiceToken: serviceToken,
+		ApiVer:       apiVer,
+	}
+}
+
+// VKResponse represents the response from VK API.
 type VKResponse struct {
 	Type      string `json:"type"`
 	Auth      int    `json:"auth"`
@@ -22,6 +34,7 @@ type VKResponse struct {
 	LoadUsers bool   `json:"loadExternalUsers"`
 }
 
+// VKUser represents a VK user.
 type VKUser struct {
 	ID         int    `json:"id"`
 	FirstName  string `json:"first_name"`
@@ -31,6 +44,7 @@ type VKUser struct {
 	Phone      string `json:"phone"`
 }
 
+// User represents a user in the system.
 type User struct {
 	ID              int    `json:"id"`
 	Deactivated     string `json:"deactivated"`
@@ -40,10 +54,12 @@ type User struct {
 	IsClosed        bool   `json:"is_closed"`
 }
 
+// VKCheckUser represents the response from VK API for user checks.
 type VKCheckUser struct {
 	Response []User `json:"response"`
 }
 
+// AccessReq represents a request for exchanging a silent token for an access token.
 type AccessReq struct {
 	V           string `json:"v"`
 	SilentToken string `json:"token"`
@@ -51,12 +67,14 @@ type AccessReq struct {
 	UUID        string `json:"uuid"`
 }
 
+// CheckReq represents a request for checking user status.
 type CheckReq struct {
 	UserIds     string `json:"user_ids"`
 	AccessToken string `json:"access_token"`
 	V           string `json:"v"`
 }
 
+// AccessResp represents the response from VK API for access token exchange.
 type AccessResp struct {
 	Response struct {
 		AccessToken              string `json:"access_token"`
@@ -71,29 +89,12 @@ type AccessResp struct {
 	} `json:"response"`
 }
 
-func NewCheckReq(userId int, serviceToken string, v string) *CheckReq {
-	return &CheckReq{
-		UserIds:     strconv.Itoa(userId),
-		AccessToken: serviceToken,
-		V:           v,
-	}
-}
-
-func NewAccessReq(v string, silent_token string, service_token string, uuid string) *AccessReq {
-	return &AccessReq{
-		V:           v,
-		SilentToken: silent_token,
-		AccessToken: service_token,
-		UUID:        uuid,
-	}
-}
-
-func ToVKResponse(query url.Values) *VKResponse {
+// ToVKResponse converts URL query parameters to a VKResponse.
+func (s *VKAuthProvider) toVkResponse(query url.Values) *VKResponse {
 	decoded, err := url.QueryUnescape(query.Get("payload"))
 	if err != nil {
 		logrus.Error(err)
 	}
-	logrus.Info(decoded)
 	var vkResponse VKResponse
 	if err := json.Unmarshal([]byte(decoded), &vkResponse); err != nil {
 		logrus.Error(err)
@@ -101,12 +102,13 @@ func ToVKResponse(query url.Values) *VKResponse {
 	return &vkResponse
 }
 
-func SilentToAccess(access_req AccessReq) string {
+// SilentToAccess exchanges a silent token for an access token.
+func (s *VKAuthProvider) silentToAccess(accessReq AccessReq) string {
 	response, err := http.PostForm("https://api.vk.com/method/auth.exchangeSilentAuthToken", url.Values{
-		"v":            {access_req.V},
-		"token":        {access_req.SilentToken},
-		"access_token": {access_req.AccessToken},
-		"uuid":         {access_req.UUID},
+		"v":            {accessReq.V},
+		"token":        {accessReq.SilentToken},
+		"access_token": {accessReq.AccessToken},
+		"uuid":         {accessReq.UUID},
 	})
 
 	if err != nil {
@@ -121,7 +123,6 @@ func SilentToAccess(access_req AccessReq) string {
 		logrus.Error(err)
 		return ""
 	}
-	logrus.Info(string(body))
 
 	var accessResp AccessResp
 	err = json.Unmarshal([]byte(string(body)), &accessResp)
@@ -133,8 +134,9 @@ func SilentToAccess(access_req AccessReq) string {
 	return accessResp.Response.AccessToken
 }
 
-func IsBanned(checkReq CheckReq) bool {
-	logrus.Info()
+// IsBanned checks if a user is banned or deleted.
+func (s *VKAuthProvider) isBanned(userID int) bool {
+	checkReq := s.newCheckReq(userID)
 	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
 		"user_ids":     {checkReq.UserIds},
 		"access_token": {checkReq.AccessToken},
@@ -165,4 +167,39 @@ func IsBanned(checkReq CheckReq) bool {
 		return true
 	}
 	return false
+}
+
+// newCheckReq creates a new CheckReq for checking user status.
+func (s *VKAuthProvider) newCheckReq(userID int) *CheckReq {
+	return &CheckReq{
+		UserIds:     strconv.Itoa(userID),
+		AccessToken: s.ServiceToken,
+		V:           s.ApiVer,
+	}
+}
+
+// newAccessReq creates a new AccessReq for exchanging a silent token.
+func (s *VKAuthProvider) newAccessReq(silentToken, uuid string) *AccessReq {
+	return &AccessReq{
+		V:           s.ApiVer,
+		SilentToken: silentToken,
+		AccessToken: s.ServiceToken,
+		UUID:        uuid,
+	}
+}
+
+func (s *VKAuthProvider) ValidVkUser(usr *VKUser, accessToken string) bool {
+	if usr.FirstName == "" || usr.LastName == "" || usr.ID == 0 ||
+		accessToken == "" || s.isBanned(usr.ID) {
+		return false
+	}
+	return true
+}
+
+// returns VK access token
+func (s *VKAuthProvider) Register(r *http.Request) (*VKUser, string) {
+	vkResp := s.toVkResponse(r.URL.Query())
+	accessReq := s.newAccessReq(vkResp.Token, vkResp.UUID)
+
+	return &vkResp.User, s.silentToAccess(*accessReq)
 }

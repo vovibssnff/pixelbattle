@@ -16,8 +16,6 @@ export default {
     document.title='MEGA PixelBattle: Login'
   }
 }
-
-
 </script>
 
 <style scoped>

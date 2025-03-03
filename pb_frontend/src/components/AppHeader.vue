@@ -17,7 +17,7 @@ export default {
 
 .banner {
   width: 100%;
-  height: auto; /* This ensures the image maintains its aspect ratio */
-  display: block; /* Ensures that the image behaves as a block element */
+  height: auto;
+  display: block;
 }
 </style>

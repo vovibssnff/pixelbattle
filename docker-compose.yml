@@ -16,18 +16,8 @@ services:
   backend:
     build: ./pb_backend
     restart: unless-stopped
-    environment:
-      - REDIS_ADDR=redis:6379
-      - REDIS_PSW=redis
-      - REDIS_HISTORY=2
-      - REDIS_TIMER=1
-      - REDIS_USERS=3
-      - REDIS_BANNED=4
-      - CANVAS_HEIGHT=${CANVAS_HEIGHT}
-      - CANVAS_WIDTH=${CANVAS_WIDTH}
-      - SERVICE_TOKEN=${SERVICE_TOKEN}
-      - ADMIN_IDS=${ADMIN_IDS}
-      - API_VERSION=${API_VERSION}
+    env_file:
+      - ./pb_backend/app.env
     depends_on:
       - redis
 
@@ -35,6 +25,8 @@ services:
     image: prom/prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--log.level=info"
 
   grafana:
     image: grafana/grafana-enterprise
