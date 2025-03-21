@@ -19,7 +19,7 @@ func NewUserService(userRepo domain.UserRepository, admIds []int) *UserService {
 
 func (s *UserService) CreateUser(id int, firstName, lastName, accessToken string) *domain.User {
 	return &domain.User{
-		ID:          id,
+		ID:          id, // style
 		FirstName:   firstName,
 		LastName:    lastName,
 		AccessToken: accessToken,
@@ -54,7 +54,7 @@ func (s *UserService) IsUserBanned(ctx context.Context, userid int) bool {
 func (s *UserService) IsAdmin(id int) bool {
 	for _, admId := range s.admIds {
 		if id == admId {
-			return true
+			return true 
 		}
 	}
 	return false

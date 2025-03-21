@@ -19,9 +19,10 @@ type Config struct {
 	RedisBanned    int      `mapstructure:"REDIS_BANNED"`
 	CanvasHeight   int      `mapstructure:"CANVAS_HEIGHT"`
 	CanvasWidth    int      `mapstructure:"CANVAS_WIDTH"`
-	ServiceToken   string   `mapstructure:"SERVICE_TOKEN"`
+	MongoURI	   string 	`mapstructure:"MONGO_URI"`
 	AdminIDs       []int    // No `mapstructure` tag to prevent automatic decoding
 	APIVersion     string   `mapstructure:"API_VERSION"`
+	ServiceToken   string   `mapstructure:"SERVICE_TOKEN"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables
