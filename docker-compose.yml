@@ -13,6 +13,32 @@ services:
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
 
+  mongodb:
+    image: mongo:latest
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb/data:/data/db
+      - ./mongodb/mongod.conf:/etc/mongod.conf
+      - ./mongodb/logs:/var/log/mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    command: mongod --config /etc/mongod.conf
+
+  migrator:
+    build:
+      context: ./pb_backend
+      dockerfile: Dockerfile
+    command: ["go", "run", "./cmd/migrator/main.go"]
+    env_file:
+      - ./pb_backend/app.env
+    depends_on:
+      - redis
+      - mongodb
+    restart: "no"
+
   backend:
     build: ./pb_backend
     restart: unless-stopped
@@ -20,6 +46,8 @@ services:
       - ./pb_backend/app.env
     depends_on:
       - redis
+      - mongodb
+      - migrator
 
   prometheus:
     image: prom/prometheus

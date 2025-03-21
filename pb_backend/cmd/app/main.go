@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"net/http"
+	"pb_backend/internal/adapters/mongo"
+	mongo_repo "pb_backend/internal/adapters/mongo/repository"
 	"pb_backend/internal/adapters/redis"
-	"pb_backend/internal/adapters/redis/repository"
+	redis_repo "pb_backend/internal/adapters/redis/repository"
 	"pb_backend/internal/adapters/rest"
 	vk "pb_backend/internal/adapters/vk_auth"
 	"pb_backend/internal/adapters/websockets"
@@ -27,20 +29,26 @@ func main() {
 	}
 
 	canvasDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
-	usrDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisUsers)
-	banListDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisBanned)
+	// usrDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisUsers)
+	// banListDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisBanned)
 	timerDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisTimer)
 
-	canvasRepo := repository.NewCanvasRepository(canvasDatabase)
-	usrRepo := repository.NewUserRepository(usrDatabase, banListDatabase)
+	mongoUserDatabase, err := mongo.NewMongoConnection(config.MongoURI, "pixelbattle")
+	if err != nil {
+		logrus.Error(err)
+	}
 
-	timerRepo := repository.NewTimerRepo(timerDatabase)
+	canvasRepo := redis_repo.NewCanvasRepository(canvasDatabase)
+	// usrRepo := redis_repo.NewUserRepository(usrDatabase, banListDatabase)
+	mongoUsrRepo := mongo_repo.NewUserRepository(mongoUserDatabase)
+
+	timerRepo := redis_repo.NewTimerRepo(timerDatabase)
 
 	sessionStore := sessions.NewCookieStore([]byte(string(securecookie.GenerateRandomKey(32))))
 	sessionStore.Options.MaxAge = 1800
 
 	canvasService := service.NewCanvasService(*canvasRepo)
-	usrService := service.NewUserService(*usrRepo, config.AdminIDs)
+	usrService := service.NewUserService(mongoUsrRepo, config.AdminIDs)
 	timerService := service.NewTimerService(*timerRepo, 3)
 	sessionService := service.NewSessionService(sessionStore)
 	vkAuthProvider := vk.NewVKAuthProvider(config.ServiceToken, config.APIVersion)
