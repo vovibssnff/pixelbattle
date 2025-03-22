@@ -7,25 +7,58 @@ services:
     command: redis-server /etc/redis/redis.conf
     volumes:
       - ./redis/redis_data:/data
-      - ./redis/redis.conf:/etc/redis/redis.conf
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
     environment:
       - REDIS_PASSWORD=redis
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
 
-  mongodb:
+  # mongodb:
+  #   image: mongo:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - ./mongodb/data:/data/db
+  #     - ./mongodb/mongod.conf:/etc/mongod.conf
+  #     - ./mongodb/logs:/var/log/mongodb
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=root
+  #     - MONGO_INITDB_ROOT_PASSWORD=root
+  #   command: mongod --config /etc/mongod.conf
+
+  mongo-a:
     image: mongo:latest
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./mongodb/data:/data/db
-      - ./mongodb/mongod.conf:/etc/mongod.conf
-      - ./mongodb/logs:/var/log/mongodb
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=root
-    command: mongod --config /etc/mongod.conf
+    volumes:
+      - ./mongodb:/mongo:ro
+      - data-a:/data
+    restart: unless-stopped
+    command: /mongo/entrypoint.sh create
+  mongo-b:
+    image: mongo:latest
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    volumes:
+      - ./mongodb:/mongo:ro
+      # - ./mongodb/mongodb.key:/key:ro
+      - data-b:/data
+    restart: unless-stopped
+    command: /mongo/entrypoint.sh
+  mongo-c:
+    image: mongo:latest
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    volumes:
+      - ./mongodb:/mongo:ro
+      # - ./mongodb/mongodb.key:/key:ro
+      - data-c:/data
+    restart: unless-stopped
+    command: /mongo/entrypoint.sh
 
   migrator:
     build:
@@ -36,7 +69,7 @@ services:
       - ./pb_backend/app.env
     depends_on:
       - redis
-      - mongodb
+      - mongo-a
     restart: "no"
 
   backend:
@@ -46,13 +79,13 @@ services:
       - ./pb_backend/app.env
     depends_on:
       - redis
-      - mongodb
+      - mongo-a
       - migrator
 
   prometheus:
     image: prom/prometheus
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--log.level=info"
 
@@ -68,11 +101,16 @@ services:
     ports:
       - "443:443"
     volumes:
-      - ./pb_frontend/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./pb_frontend/nginx/cert/megapixelbattle.crt:/etc/nginx/ssl/megapixelbattle.crt
-      - ./pb_frontend/nginx/cert/megapixelbattle.key:/etc/nginx/ssl/megapixelbattle.key
-      - ./pb_frontend/dist:/usr/share/nginx/html
+      - ./pb_frontend/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./pb_frontend/nginx/cert/megapixelbattle.crt:/etc/nginx/ssl/megapixelbattle.crt:ro
+      - ./pb_frontend/nginx/cert/megapixelbattle.key:/etc/nginx/ssl/megapixelbattle.key:ro
+      - ./pb_frontend/dist:/usr/share/nginx/html:ro
     depends_on:
       - backend
       - redis
       - grafana
+
+volumes:
+  data-a:
+  data-b:
+  data-c:
