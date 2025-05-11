@@ -11,3 +11,4 @@ root/
 .gitignore
 .vscode
 package-lock.json
+mongo-key

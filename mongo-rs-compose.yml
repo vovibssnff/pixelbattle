@@ -1,0 +1,57 @@
+services:
+  mongo-a:
+    image: mongo:latest
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    volumes:
+      - mongo-data-a:/data
+      - ./mongo-key:/mongo-key:ro
+    restart: unless-stopped
+    entrypoint:
+      - bash
+      - -c
+      - |
+         cp /mongo-key /mongodb.key
+         chmod 400 /mongodb.key
+         chown 999:999 /mongodb.key
+         exec docker-entrypoint.sh $@
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /mongodb.key
+  mongo-b:
+    extends: mongo-a
+    entrypoint:
+      - bash
+      - -c
+      - |
+         cp /mongo-key /mongodb.key
+         chmod 400 /mongodb.key
+         chown 999:999 /mongodb.key
+         exec docker-entrypoint.sh $@
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /mongodb.key
+    volumes:
+      - mongo-data-b:/data
+  mongo-c:
+    extends: mongo-a
+    volumes:
+      - mongo-data-c:/data
+    entrypoint:
+      - bash
+      - -c
+      - |
+         cp /mongo-key /mongodb.key
+         chmod 400 /mongodb.key
+         chown 999:999 /mongodb.key
+         exec docker-entrypoint.sh $@
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /mongodb.key
+    depends_on:
+      mongo-a:
+        condition: service_started
+        required: false
+      mongo-b:
+        condition: service_started
+        required: false
+
+volumes:
+  mongo-data-a:
+  mongo-data-b:
+  mongo-data-c:
