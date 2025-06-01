@@ -25,7 +25,7 @@ services:
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=root
-    command: mongod --config /etc/mongod.conf
+    command: --bind_ip_all
 
   migrator:
     build:
