@@ -8,7 +8,7 @@ import (
 	"pb_backend/internal/adapters/redis"
 	redis_repo "pb_backend/internal/adapters/redis/repository"
 	"pb_backend/internal/adapters/rest"
-	vk "pb_backend/internal/adapters/vk_auth"
+	vk "pb_backend/internal/adapters/vk_api"
 	"pb_backend/internal/adapters/websockets"
 	"pb_backend/internal/core/service"
 	"pb_backend/internal/utils"

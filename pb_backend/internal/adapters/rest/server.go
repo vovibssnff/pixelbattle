@@ -2,7 +2,7 @@ package rest
 
 import (
 	"net/http"
-	vk "pb_backend/internal/adapters/vk_auth"
+	vk "pb_backend/internal/adapters/vk_api"
 	"pb_backend/internal/core/domain"
 
 	"github.com/gorilla/mux"
