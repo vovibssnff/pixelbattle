@@ -56,7 +56,7 @@ func (server *WsServer) Run() {
 			logrus.Info("Current users: ", len(server.clients))
 		case pixel := <-server.broadcast:
 			tp = "pixel"
-			logrus.Info("Server received pixel: ", pixel)
+			// logrus.Info("Server received pixel: ", pixel)
 			server.setPixel(pixel)
 		}
 		service.ObserveWebSocketMessageDuration(tp, start)

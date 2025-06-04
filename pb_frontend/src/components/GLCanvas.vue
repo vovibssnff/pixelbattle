@@ -331,12 +331,13 @@ export default {
       if (!this.loaded) {
         this.savedPixels.push(pixel);
       } else {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        console.log(pixel);
+        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([pixel.color[0], pixel.color[1], pixel.color[2]]));
       }
     },
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        this.place.setPixel(pixel.x, pixel.y, new Uint8Array([pixel.color[0], pixel.color[1], pixel.color[2]]));
       }
       this.savedPixels = [];
     },
