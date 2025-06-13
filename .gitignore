@@ -1,4 +1,5 @@
  .env
+pb_backend/app.env
 pb_frontend/nginx/cert/
 node_modules/
 package.json
@@ -7,7 +8,10 @@ pb_frontend/.gitignore
 pb_frontend/nginx/cert
 redis/dump.rdb
 redis/redis_data/
+mongodb/data/
+mongodb/logs/
 root/
 .gitignore
 .vscode
 package-lock.json
+dump.json
