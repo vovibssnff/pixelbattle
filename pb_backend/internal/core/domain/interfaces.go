@@ -73,3 +73,28 @@ type SessionService interface {
 	GetUserID(session *sessions.Session) int
 	GetFaculty(session *sessions.Session) string
 }
+
+type InfluxDBAdapter interface {
+	// RecordPixelChange records a pixel change event in the database
+	RecordPixelChange(ctx context.Context, p *Pixel) error
+
+	// GetHeatmapData retrieves heatmap data showing pixel change frequency
+	GetHeatmapData(ctx context.Context) (map[string]int, error)
+
+	// GetMostActiveZone identifies the zone with highest activity in given resolution
+	GetMostActiveZone(ctx context.Context, resolution int) (int, int, error)
+
+	// Close cleans up the database connection
+	Close()
+}
+
+type HeatmapService interface {
+	// RecordPixelChange records a pixel change in the database
+	RecordPixelChange(ctx context.Context, p *Pixel) error
+
+	// GetHeatmapData returns heatmap data showing pixel change activity
+	GetHeatmapData(ctx context.Context) (map[string]int, error)
+
+	// CheckAndAlertMostActiveZone checks for the most active zone and sends alerts if activity exceeds threshold
+	CheckAndAlertMostActiveZone(ctx context.Context, resolution int, threshold int) error
+}

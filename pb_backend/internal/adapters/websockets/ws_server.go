@@ -20,6 +20,7 @@ type WsServer struct {
 	timerService   domain.TimerService
 	userService    domain.UserService
 	canvasService  domain.CanvasService
+	heatmapService domain.HeatmapService
 }
 
 func NewWebSocketServer(
@@ -27,6 +28,7 @@ func NewWebSocketServer(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	canvasService domain.CanvasService,
+	heatmapService domain.HeatmapService,
 ) *WsServer {
 	return &WsServer{
 		clients:        make(map[*Client]bool),
@@ -37,6 +39,7 @@ func NewWebSocketServer(
 		timerService:   timerService,
 		userService:    userService,
 		canvasService:  canvasService,
+		heatmapService: heatmapService,
 	}
 }
 
@@ -58,6 +61,7 @@ func (server *WsServer) Run() {
 			tp = "pixel"
 			// logrus.Info("Server received pixel: ", pixel)
 			server.setPixel(pixel)
+			server.heatmapService.RecordPixelChange(context.Background(), pixel)
 		}
 		service.ObserveWebSocketMessageDuration(tp, start)
 	}
@@ -92,9 +96,10 @@ func StartWebSocketServer(
 	canvasService domain.CanvasService,
 	timerService domain.TimerService,
 	userService domain.UserService,
+	heatmapService domain.HeatmapService,
 	router *mux.Router,
 ) {
-	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService)
+	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, heatmapService)
 	go ws.Run()
 
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

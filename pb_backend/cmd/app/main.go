@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"pb_backend/internal/adapters/influxdb"
 	"pb_backend/internal/adapters/mongo"
 	mongo_repo "pb_backend/internal/adapters/mongo/repository"
 	"pb_backend/internal/adapters/redis"
@@ -43,6 +44,7 @@ func main() {
 	mongoUsrRepo := mongo_repo.NewUserRepository(mongoUserDatabase)
 
 	timerRepo := redis_repo.NewTimerRepo(timerDatabase)
+	influxdbAdapter := influxdb.NewInfluxDBAdapter(config.InfluxURI, config.InfluxToken)
 
 	sessionStore := sessions.NewCookieStore([]byte(string(securecookie.GenerateRandomKey(32))))
 	sessionStore.Options.MaxAge = 1800
@@ -52,6 +54,7 @@ func main() {
 	timerService := service.NewTimerService(*timerRepo, 3)
 	sessionService := service.NewSessionService(sessionStore)
 	vkAuthProvider := vk.NewVKAuthProvider(config.ServiceToken, config.APIVersion)
+	heatmapService := service.NewHeatmapService(influxdbAdapter, config.TGBotToken, config.TGChatID)
 
 	if !canvasService.IsCanvasInitialized(context.Background()) {
 		logrus.Info("Initializing canvas with white pixels")
@@ -64,7 +67,7 @@ func main() {
 	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService, timerService,
 		config.CanvasHeight, config.CanvasWidth, router)
 
-	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router)
+	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, heatmapService, router)
 
 	logrus.Info("Starting server on port 8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

@@ -20,9 +20,13 @@ type Config struct {
 	CanvasHeight   int      `mapstructure:"CANVAS_HEIGHT"`
 	CanvasWidth    int      `mapstructure:"CANVAS_WIDTH"`
 	MongoURI	   string 	`mapstructure:"MONGO_URI"`
+	InfluxURI	   string   `mapstructure:"INFLUXDB_URI"`
+	InfluxToken	   string 	`mapstructure:"INFLUXDB_TOKEN"`
 	AdminIDs       []int    // No `mapstructure` tag to prevent automatic decoding
 	APIVersion     string   `mapstructure:"API_VERSION"`
 	ServiceToken   string   `mapstructure:"SERVICE_TOKEN"`
+	TGBotToken 	   string 	`mapstructure:"TG_BOT_TOKEN"`
+	TGChatID       string 	`mapstructure:"TG_CHAT_ID"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables
