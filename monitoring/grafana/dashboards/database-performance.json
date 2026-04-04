@@ -6,6 +6,7 @@
   "id": null,
   "links": [],
   "liveNow": false,
+  "description": "Live DB metrics from Prometheus. Python `plot-graphs.py` compares **offline** throughput & P95 from `results/benchmarks/*.json` per scenario—use this dashboard for production traffic; open generated PNG/Markdown for lab runs.",
   "panels": [
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -35,9 +36,16 @@
           "expr": "histogram_quantile(0.95, sum by (le, operation, storage_type) (rate(database_operation_duration_seconds_bucket[5m])))",
           "legendFormat": "P95 {{operation}} ({{storage_type}})",
           "refId": "B"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.99, sum by (le, operation, storage_type) (rate(database_operation_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99 {{operation}} ({{storage_type}})",
+          "refId": "C"
         }
       ],
-      "title": "Database operation duration",
+      "description": "P50/P95/P99 from `database_operation_duration_seconds`—closest live analogue to latency percentiles in `generate-report.py`.",
+      "title": "Database operation duration (P50 / P95 / P99)",
       "type": "timeseries"
     },
     {

@@ -37,12 +37,14 @@ benchmark_k6_results_dir: "{{ benchmark_results_root }}/k6"
 benchmark_report_script: "{{ benchmark_project_root }}/benchmark/reporting/generate-report.py"
 benchmark_plot_script: "{{ benchmark_project_root }}/benchmark/reporting/plot-graphs.py"
 
-# When set (e.g. 192.168.122.71), k6, Prometheus collection, and DB benchmarks use this host
-# for published ports (8080, 9090, 6379, 5432, 27017). Run the playbooks on your laptop with
-# connection: local and override with -e benchmark_remote_host=YOUR_VM_IP
-benchmark_remote_host: ""
+# When the play runs on localhost (laptop) but Docker/stack lives on another machine, set this
+# so Redis/Postgres waits, k6, Go benches, and Prometheus collection hit that host's ports.
+# Override with: -e benchmark_remote_host=IP, inventory host var below, or env BENCHMARK_REMOTE_HOST.
+# (If you instead SSH the play onto the VM with target_hosts=benchmark_vm, leave this empty:
+# the stack is then localhost *on the VM*, which is correct.)
+benchmark_remote_host: "{{ (lookup('ansible.builtin.env', 'BENCHMARK_REMOTE_HOST') | default('', true)) | trim }}"
 
-# Hostname/IP for stack endpoints (localhost or benchmark_remote_host)
+# Hostname/IP for stack endpoints — NOT the Ansible SSH target; this is where Redis/Postgres/etc. listen.
 benchmark_target_host: "{{ (benchmark_remote_host | default('') | trim) if (benchmark_remote_host | default('') | trim | length > 0) else 'localhost' }}"
 
 # k6 WebSocket target host:port

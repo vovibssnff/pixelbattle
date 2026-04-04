@@ -6,7 +6,10 @@ all:
       hosts:
         localhost:
           ansible_connection: local
-          # Uncomment or pass -e to aim k6 / Prometheus / DB bench at a deployed stack:
+          # Play still targets *this machine* (Ansible localhost). benchmark_remote_host tells the
+          # role where the *stack* is: unset = Redis/Postgres/k6 probe localhost:6379/5432/8080.
+          # For a VM-only stack, set one of: uncomment below, -e benchmark_remote_host=IP, or
+          # export BENCHMARK_REMOTE_HOST=IP
           # benchmark_remote_host: "192.168.122.71"
 
     # Remote VM with deployed stack (same paths as deploy playbook: /opt/pixelbattle).

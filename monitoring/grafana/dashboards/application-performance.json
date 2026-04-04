@@ -6,7 +6,72 @@
   "id": null,
   "links": [],
   "liveNow": false,
+  "description": "Live traffic from Prometheus. Offline DB benchmark tables (throughput, P50/P95/P99 per scenario) are produced by `benchmark/reporting/generate-report.py` and `plot-graphs.py` from `results/benchmarks/*.json`—different workload than steady-state HTTP, but latency percentiles here mirror that style (P50/P95/P99 from histograms).",
   "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 100}]},
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 12, "x": 0, "y": 0},
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(rate(requests_per_second[5m]))",
+          "refId": "A"
+        }
+      ],
+      "description": "Total HTTP request rate: `sum(rate(requests_per_second[5m]))`. The metric is a counter (name is historical); `rate()` gives req/s.",
+      "title": "Total HTTP RPS",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 12, "x": 12, "y": 0},
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(rate(websocket_message_duration_seconds_count[5m]))",
+          "refId": "A"
+        }
+      ],
+      "description": "WebSocket event throughput from the `websocket_message_duration_seconds` histogram (`_count` series).",
+      "title": "WebSocket events / sec (all types)",
+      "type": "stat"
+    },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "fieldConfig": {
@@ -17,7 +82,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
       "id": 1,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -35,9 +100,16 @@
           "expr": "histogram_quantile(0.95, sum by (le, type) (rate(websocket_message_duration_seconds_bucket[5m])))",
           "legendFormat": "P95 {{type}}",
           "refId": "B"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.99, sum by (le, type) (rate(websocket_message_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99 {{type}}",
+          "refId": "C"
         }
       ],
-      "title": "WebSocket message duration",
+      "description": "P50/P95/P99 for WS loop iterations (connect / disconnect / pixel)—parallel to percentile style in Python DB plots.",
+      "title": "WebSocket message duration (P50 / P95 / P99)",
       "type": "timeseries"
     },
     {
@@ -50,7 +122,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
       "id": 2,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -60,11 +132,12 @@
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "expr": "current_users",
-          "legendFormat": "users",
+          "legendFormat": "connections",
           "refId": "A"
         }
       ],
-      "title": "Current users",
+      "description": "Gauge `current_users`: live /ws connections (increment on connect, decrement on disconnect). Not DB user count or HTTP visitors—open the app with an active WebSocket to see non-zero.",
+      "title": "Active WebSocket connections",
       "type": "timeseries"
     },
     {
@@ -77,7 +150,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
       "id": 3,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -91,7 +164,8 @@
           "refId": "A"
         }
       ],
-      "title": "HTTP request rate",
+      "description": "RPS split by route. Same counter as Total HTTP RPS—`rate(requests_per_second)` per labels.",
+      "title": "HTTP RPS by path and method",
       "type": "timeseries"
     },
     {
@@ -104,7 +178,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
       "id": 4,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -113,12 +187,25 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.50, sum by (le, path, method) (rate(request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50 {{method}} {{path}}",
+          "refId": "B"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "expr": "histogram_quantile(0.95, sum by (le, path, method) (rate(request_duration_seconds_bucket[5m])))",
           "legendFormat": "P95 {{method}} {{path}}",
           "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.99, sum by (le, path, method) (rate(request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99 {{method}} {{path}}",
+          "refId": "C"
         }
       ],
-      "title": "HTTP request duration (P95)",
+      "description": "Latency percentiles from `request_duration_seconds` histogram—same idea as P50/P95/P99 in the Python benchmark report (different signal: live HTTP vs Go DB bench JSON).",
+      "title": "HTTP request duration (P50 / P95 / P99)",
       "type": "timeseries"
     },
     {
@@ -131,7 +218,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
       "id": 5,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -158,7 +245,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
       "id": 6,
       "options": {
         "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},

@@ -20,13 +20,13 @@ function benchmarkWsURL(hostPort) {
 // Heavy load configuration
 export const options = {
   stages: [
-    { duration: '3m', target: 100 },  // Ramp up to 100 VUs
-    { duration: '9m', target: 500 },  // Ramp up to 500 VUs
-    { duration: '3m', target: 0 },   // Ramp down
+    { duration: '90s', target: 100 },  // Ramp up to 100 VUs
+    { duration: '270s', target: 500 },  // Ramp up to 500 VUs
+    { duration: '90s', target: 0 },   // Ramp down
   ],
   thresholds: {
     'ws_connecting': ['rate<0.05'],      // Less than 5% connection failures
-    'ws_session_duration': ['p(95)<15000'], // 95% of sessions complete in under 15s
+    'ws_session_duration': ['p(95)<7500'], // 95% of sessions complete in under 7.5s
   },
 };
 
@@ -42,7 +42,7 @@ export default function () {
       console.log(`VU ${__VU}: connected`);
 
       // Place pixels at ~30 messages per minute (every 2 seconds)
-      const pixelInterval = randomIntBetween(1500, 3000);
+      const pixelInterval = randomIntBetween(750, 1500);
       let pixelCount = 0;
       const maxPixels = randomIntBetween(20, 50); // 20-50 pixels per session
 
@@ -92,8 +92,8 @@ export default function () {
       console.error(`VU ${__VU}: WebSocket error: ${e}`);
     });
 
-    // Close connection after session duration (1m to 3m)
-    const sessionDuration = randomIntBetween(60000, 180000);
+    // Close connection after session duration (30s to 90s)
+    const sessionDuration = randomIntBetween(30000, 90000);
     socket.setTimeout(function () {
       console.log(`VU ${__VU}: Session timeout after ${sessionDuration}ms`);
       socket.close();
@@ -102,6 +102,6 @@ export default function () {
 
   check(res, { 
     'Connected successfully': (r) => r && r.status === 101,
-    'Session duration OK': (r) => r && r.timings.duration < 180000,
+    'Session duration OK': (r) => r && r.timings.duration < 90000,
   });
 }
