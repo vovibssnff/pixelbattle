@@ -15,20 +15,25 @@ deploy_cert_cn: "megapixelbattle.ru"
 deploy_cert_days: 365
 deploy_cert_force_regenerate: false
 
-# Backend configuration (app.env)
+# Backend configuration (app.env) — keys must match pb_backend/internal/utils/config.go
 deploy_backend_env:
-  REDIS_HOST: "redis"
-  REDIS_PORT: "6379"
-  REDIS_PASSWORD: "redis"
-  MONGO_HOST: "mongodb"
-  MONGO_PORT: "27017"
-  MONGO_USER: "root"
-  MONGO_PASSWORD: "root"
+  STORAGE_TYPE: "redis"
+  REDIS_ADDR: "redis:6379"
+  REDIS_PSW: "redis"
+  REDIS_HISTORY: "0"
+  REDIS_TIMER: "1"
+  REDIS_USERS: "2"
+  REDIS_BANNED: "3"
+  MONGO_URI: "mongodb://root:root@mongodb:27017"
   POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
   POSTGRES_USER: "pixelbattle"
   POSTGRES_PASSWORD: "pixelbattle"
   POSTGRES_DB: "pixelbattle"
+  CANVAS_HEIGHT: "250"
+  CANVAS_WIDTH: "500"
+  API_VERSION: "5.131"
+  SERVICE_TOKEN: ""
 
 # Runtime directories that docker compose volumes expect
 deploy_data_dirs:
