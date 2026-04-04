@@ -38,6 +38,7 @@ deploy_backend_env:
   CANVAS_WIDTH: "500"
   API_VERSION: "5.131"
   SERVICE_TOKEN: ""
+  WS_ALLOW_ANONYMOUS: "true"
 
 # Runtime directories that docker compose volumes expect
 deploy_data_dirs:
