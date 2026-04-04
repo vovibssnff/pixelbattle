@@ -40,15 +40,26 @@
   tags: [setup]
   when: benchmark_storage_type == 'sqlite'
   block:
-    - name: Create SQLite data directory
+    - name: Create SQLite data directory (root-owned deploy tree)
       ansible.builtin.file:
-        path: "{{ benchmark_project_root }}/sqlite"
+        path: "{{ benchmark_project_root }}/pb_backend/sqlite"
         state: directory
         mode: "0755"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+      when: benchmark_opt_sqlite_chown | default(false)
+
+    - name: Create SQLite data directory (local checkout)
+      ansible.builtin.file:
+        path: "{{ benchmark_project_root }}/pb_backend/sqlite"
+        state: directory
+        mode: "0755"
+      when: not (benchmark_opt_sqlite_chown | default(false))
 
     - name: Report SQLite ready
       ansible.builtin.debug:
-        msg: "SQLite directory created at {{ benchmark_project_root }}/sqlite"
+        msg: "SQLite directory at {{ benchmark_project_root }}/pb_backend/sqlite"
 
 - name: Setup Redis
   tags: [setup]
@@ -60,13 +71,16 @@
       changed_when: false
       failed_when: false
 
-    - name: Wait for Redis port to be reachable
-      ansible.builtin.wait_for:
-        host: localhost
-        port: 6379
-        delay: 2
-        timeout: 30
-      when: benchmark_redis_container.stdout != ""
+    # Redis often has no host port published; check readiness inside the container.
+    - name: Wait for Redis to respond (docker exec)
+      ansible.builtin.command:
+        cmd: "docker exec {{ benchmark_redis_container.stdout | trim }} redis-cli ping"
+      register: benchmark_redis_ping
+      until: benchmark_redis_ping.stdout is search("PONG")
+      retries: 15
+      delay: 2
+      changed_when: false
+      when: benchmark_redis_container.stdout | length > 0
 
     - name: Report Redis ready
       ansible.builtin.debug:

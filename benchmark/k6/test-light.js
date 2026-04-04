@@ -1,6 +1,16 @@
-import { randomString, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+import { randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 import ws from 'k6/ws';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
+import { vu } from 'k6/execution';
+
+/** Matches FacultyPage / backend validation when WS_ALLOW_ANONYMOUS=true */
+const FACULTIES = ['KTU', 'TINT', 'FTMF', 'FTMI', 'NOZH'];
+
+function benchmarkWsURL(hostPort = 'localhost:8080') {
+  const uid = vu.idInTest * 100000000 + vu.iterationInTest;
+  const faculty = FACULTIES[randomIntBetween(0, FACULTIES.length - 1)];
+  return `ws://${hostPort}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
+}
 
 // Light load configuration
 export const options = {
@@ -19,7 +29,7 @@ const CANVAS_WIDTH = 500;
 const CANVAS_HEIGHT = 250;
 
 export default function () {
-  const url = "ws://localhost:8080/ws";
+  const url = benchmarkWsURL();
   const params = { tags: { test_type: 'light_load' } };
 
   const res = ws.connect(url, params, function (socket) {

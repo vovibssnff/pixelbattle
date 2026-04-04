@@ -38,6 +38,10 @@ type Config struct {
 	
 	// MongoDB configuration
 	MongoURI	   string 	`mapstructure:"MONGO_URI"`
+
+	// WebSocket: when true, /ws accepts connections without a session (k6/load tests).
+	// Anonymous clients use admin-style pixel path to avoid one shared timer key. Do not enable in production.
+	WSAllowAnonymous bool `mapstructure:"WS_ALLOW_ANONYMOUS"`
 	
 	// VK API configuration
 	AdminIDs       []int    // No `mapstructure` tag to prevent automatic decoding

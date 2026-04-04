@@ -117,7 +117,10 @@ func main() {
 	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService, timerService,
 		config.CanvasHeight, config.CanvasWidth, router)
 
-	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router)
+	if config.WSAllowAnonymous {
+		logrus.Warn("WS_ALLOW_ANONYMOUS is enabled: /ws accepts connections without auth (for benchmarks only)")
+	}
+	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router, config.WSAllowAnonymous)
 
 	logrus.Info("Starting server on port 8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

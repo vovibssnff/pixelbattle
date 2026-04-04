@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -56,32 +57,69 @@ func NewClient(
 }
 
 func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
+	var userid int
+	var faculty string
+	var isAdm bool
+
+	if server.allowAnonymousWS {
+		// Load-test mode: no session. k6 passes uid & faculty query params (per-VU identity, timer like real users).
+		q := r.URL.Query()
+		uidStr := q.Get("uid")
+		if uidStr == "" {
+			http.Error(w, "missing query: uid (required for anonymous benchmark WebSocket)", http.StatusBadRequest)
+			return
+		}
+		parsed, err := strconv.Atoi(uidStr)
+		if err != nil || parsed <= 0 {
+			http.Error(w, "invalid uid", http.StatusBadRequest)
+			return
+		}
+		userid = parsed
+		faculty = q.Get("faculty")
+		if faculty == "" {
+			faculty = "KTU"
+		}
+		switch faculty {
+		case "KTU", "TINT", "FTMF", "FTMI", "NOZH":
+		default:
+			http.Error(w, "invalid faculty (use KTU|TINT|FTMF|FTMI|NOZH)", http.StatusBadRequest)
+			return
+		}
+		isAdm = server.userService.IsAdmin(userid)
+		if server.userService.IsUserBanned(r.Context(), userid) {
+			logrus.Info("Anonymous WS rejected: banned uid ", userid)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		logrus.Debugf("WebSocket anonymous benchmark uid=%d faculty=%s isAdm=%v", userid, faculty, isAdm)
+	} else {
+		session, err := server.sessionService.GetSession(r)
+		if err != nil {
+			logrus.Error("Failed to get session: ", err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if !server.sessionService.IsAuthenticated(session) {
+			logrus.Warn("Unauthorized attempt to reach /ws")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		userid = server.sessionService.GetUserID(session)
+		faculty = server.sessionService.GetFaculty(session)
+		isAdm = server.userService.IsAdmin(userid)
+
+		if server.userService.IsUserBanned(r.Context(), userid) {
+			logrus.Info("Request from banned user: ", userid)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logrus.Error(err)
-		return
-	}
-
-	session, err := server.sessionService.GetSession(r)
-	if err != nil {
-		logrus.Error("Failed to get session: ", err)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	if !server.sessionService.IsAuthenticated(session) {
-		logrus.Warn("Unauthorized attempt to reach /ws")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userid := server.sessionService.GetUserID(session)
-	faculty := server.sessionService.GetFaculty(session)
-
-	isAdm := server.userService.IsAdmin(userid)
-
-	if server.userService.IsUserBanned(r.Context(), userid) {
-		logrus.Info("Request from banned user: ", userid)
 		return
 	}
 

@@ -7,15 +7,18 @@ all:
         localhost:
           ansible_connection: local
 
-    # Remote VMs: uncomment and fill in to run benchmarks on a remote machine.
-    # The VM must have Go 1.22+, k6, Python 3 with matplotlib/numpy,
-    # and the pixelbattle project checked out.
-    # Override benchmark_project_root to match the checkout path on the VM.
-    #
-    # vms:
-    #   hosts:
-    #     benchmark_vm:
-    #       ansible_host: 192.168.1.100
-    #       ansible_user: ubuntu
-    #       ansible_python_interpreter: /usr/bin/python3
-    #       benchmark_project_root: /home/ubuntu/pixelbattle
+    # Remote VM with deployed stack (same paths as deploy playbook: /opt/pixelbattle).
+    vms:
+      hosts:
+        benchmark_vm:
+          ansible_host: 192.168.122.71
+          ansible_user: vovi
+          ansible_ssh_pass: vovi
+          ansible_become_password: vovi
+          ansible_python_interpreter: /usr/bin/python3
+          benchmark_project_root: /opt/pixelbattle
+          # Stack lives under /opt (root); write results under the SSH user home.
+          benchmark_results_root: /home/vovi/pixelbattle-benchmark-results
+          benchmark_opt_sqlite_chown: true
+          # No project venv on server; use system Python with numpy/matplotlib installed.
+          benchmark_python_interpreter: /usr/bin/python3

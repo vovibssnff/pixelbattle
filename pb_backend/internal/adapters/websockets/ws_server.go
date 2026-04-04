@@ -12,14 +12,15 @@ import (
 )
 
 type WsServer struct {
-	clients        map[*Client]bool
-	broadcast      chan *domain.Pixel
-	register       chan *Client
-	unregister     chan *Client
-	sessionService domain.SessionService
-	timerService   domain.TimerService
-	userService    domain.UserService
-	canvasService  domain.CanvasService
+	clients          map[*Client]bool
+	broadcast        chan *domain.Pixel
+	register         chan *Client
+	unregister       chan *Client
+	sessionService   domain.SessionService
+	timerService     domain.TimerService
+	userService      domain.UserService
+	canvasService    domain.CanvasService
+	allowAnonymousWS bool
 }
 
 func NewWebSocketServer(
@@ -27,16 +28,18 @@ func NewWebSocketServer(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	canvasService domain.CanvasService,
+	allowAnonymousWS bool,
 ) *WsServer {
 	return &WsServer{
-		clients:        make(map[*Client]bool),
-		broadcast:      make(chan *domain.Pixel),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		sessionService: sessionService,
-		timerService:   timerService,
-		userService:    userService,
-		canvasService:  canvasService,
+		clients:          make(map[*Client]bool),
+		broadcast:        make(chan *domain.Pixel),
+		register:         make(chan *Client),
+		unregister:       make(chan *Client),
+		sessionService:   sessionService,
+		timerService:     timerService,
+		userService:      userService,
+		canvasService:    canvasService,
+		allowAnonymousWS: allowAnonymousWS,
 	}
 }
 
@@ -93,8 +96,9 @@ func StartWebSocketServer(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	router *mux.Router,
+	allowAnonymousWS bool,
 ) {
-	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService)
+	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, allowAnonymousWS)
 	go ws.Run()
 
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

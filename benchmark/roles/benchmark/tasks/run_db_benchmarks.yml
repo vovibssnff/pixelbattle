@@ -19,6 +19,18 @@
   when: benchmark_go_check.rc != 0
   tags: [db_bench]
 
+# go benchmark writes ./sqlite under pb_backend; /opt deploys are often root-owned.
+- name: Ensure pb_backend/sqlite is writable by the SSH user
+  ansible.builtin.file:
+    path: "{{ benchmark_project_root }}/pb_backend/sqlite"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  become: true
+  when: benchmark_opt_sqlite_chown | default(false)
+  tags: [db_bench]
+
 - name: Run database-level benchmark for each storage type
   ansible.builtin.command:
     cmd: >-

@@ -17,11 +17,11 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .smart-captcha {
   margin-top: 15px;
   margin-bottom: 20px;
 }
 </style>
+
 
