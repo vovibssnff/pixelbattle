@@ -4,6 +4,9 @@
     cmd: docker compose up -d --build --force-recreate --pull always
     chdir: "{{ deploy_project_dir }}"
   register: deploy_compose_result
+  until: deploy_compose_result.rc == 0
+  retries: "{{ deploy_compose_retries }}"
+  delay: "{{ deploy_compose_retry_delay }}"
   changed_when: >-
     'Started' in deploy_compose_result.stderr
     or 'Creating' in deploy_compose_result.stderr

@@ -15,6 +15,10 @@ deploy_cert_cn: "megapixelbattle.ru"
 deploy_cert_days: 365
 deploy_cert_force_regenerate: false
 
+# docker compose up can fail on transient Docker Hub TLS/network errors; retry before failing.
+deploy_compose_retries: 5
+deploy_compose_retry_delay: 45
+
 # Backend configuration (app.env) — keys must match pb_backend/internal/utils/config.go
 deploy_backend_env:
   STORAGE_TYPE: "redis"
@@ -41,7 +45,5 @@ deploy_data_dirs:
   - "{{ deploy_project_dir }}/postgres/data"
   - "{{ deploy_project_dir }}/mongodb/data"
   - "{{ deploy_project_dir }}/mongodb/logs"
-  - "{{ deploy_project_dir }}/monitoring/prometheus_data"
-  - "{{ deploy_project_dir }}/monitoring/grafana/data"
   - "{{ deploy_project_dir }}/monitoring/grafana/provisioning"
   - "{{ deploy_project_dir }}/monitoring/grafana/dashboards"
