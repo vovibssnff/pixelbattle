@@ -1,0 +1,15 @@
+---
+profile: production
+
+exclude_paths:
+  - .venv/
+  - .cache/
+
+warn_list:
+  - no-changed-when
+
+enable_list:
+  - fqcn-builtins
+  - no-free-form
+
+offline: true

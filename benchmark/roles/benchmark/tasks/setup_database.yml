@@ -1,0 +1,87 @@
+---
+- name: Validate storage type
+  ansible.builtin.assert:
+    that:
+      - benchmark_storage_type in ['redis', 'postgres', 'sqlite']
+    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid values: redis, postgres, sqlite"
+    success_msg: "Storage type validated: {{ benchmark_storage_type }}"
+  tags: [setup]
+
+- name: Ensure results root directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_results_root }}"
+    state: directory
+    mode: "0755"
+  tags: [setup]
+
+- name: Setup PostgreSQL
+  tags: [setup]
+  when: benchmark_storage_type == 'postgres'
+  block:
+    - name: Check PostgreSQL container is running
+      ansible.builtin.command: docker ps --filter "name=postgres" --format "{{ '{{' }}.Names{{ '}}' }}"
+      register: benchmark_postgres_container
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for PostgreSQL port to be reachable
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 5432
+        delay: 2
+        timeout: 30
+      when: benchmark_postgres_container.stdout != ""
+
+    - name: Report PostgreSQL ready
+      ansible.builtin.debug:
+        msg: "PostgreSQL is ready"
+
+- name: Setup SQLite
+  tags: [setup]
+  when: benchmark_storage_type == 'sqlite'
+  block:
+    - name: Create SQLite data directory
+      ansible.builtin.file:
+        path: "{{ benchmark_project_root }}/sqlite"
+        state: directory
+        mode: "0755"
+
+    - name: Report SQLite ready
+      ansible.builtin.debug:
+        msg: "SQLite directory created at {{ benchmark_project_root }}/sqlite"
+
+- name: Setup Redis
+  tags: [setup]
+  when: benchmark_storage_type == 'redis'
+  block:
+    - name: Check Redis container is running
+      ansible.builtin.command: docker ps --filter "name=redis" --format "{{ '{{' }}.Names{{ '}}' }}"
+      register: benchmark_redis_container
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for Redis port to be reachable
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 6379
+        delay: 2
+        timeout: 30
+      when: benchmark_redis_container.stdout != ""
+
+    - name: Report Redis ready
+      ansible.builtin.debug:
+        msg: "Redis is ready"
+
+- name: Write setup log
+  ansible.builtin.copy:
+    content: |
+      Database Setup Log
+      ==================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Storage Type: {{ benchmark_storage_type }}
+      Project Root: {{ benchmark_project_root }}
+
+      Setup completed successfully.
+    dest: "{{ benchmark_results_root }}/setup_log_{{ benchmark_storage_type }}_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+  tags: [setup]

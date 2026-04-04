@@ -1,0 +1,76 @@
+{
+  "dashboard": {
+    "title": "Database Comparison",
+    "tags": ["comparison", "benchmark"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Write Throughput Comparison",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(database_operation_total{operation=\"write\"}[5m])",
+            "legendFormat": "{{storage_type}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Writes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Read Latency Comparison (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(database_operation_duration_seconds_bucket{operation=\"read\"}[5m]))",
+            "legendFormat": "P95 - {{storage_type}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Write Latency Comparison (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(database_operation_duration_seconds_bucket{operation=\"write\"}[5m]))",
+            "legendFormat": "P95 - {{storage_type}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Error Rate Comparison",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(database_operation_total{status=\"error\"}[5m])",
+            "legendFormat": "{{storage_type}} - {{operation}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Errors/sec"},
+          {"format": "short"}
+        ]
+      }
+    ]
+  }
+}

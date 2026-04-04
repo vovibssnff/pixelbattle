@@ -11,15 +11,35 @@ import (
 
 // Config holds the application configuration values
 type Config struct {
+	// Storage configuration
+	StorageType    string   `mapstructure:"STORAGE_TYPE"` // "redis", "postgres", or "sqlite"
+	
+	// Redis configuration
 	RedisAddr      string   `mapstructure:"REDIS_ADDR"`
 	RedisPsw       string   `mapstructure:"REDIS_PSW"`
 	RedisHistory   int      `mapstructure:"REDIS_HISTORY"`
 	RedisTimer     int      `mapstructure:"REDIS_TIMER"`
 	RedisUsers     int      `mapstructure:"REDIS_USERS"`
 	RedisBanned    int      `mapstructure:"REDIS_BANNED"`
+	
+	// PostgreSQL configuration
+	PostgresHost   string   `mapstructure:"POSTGRES_HOST"`
+	PostgresPort   string   `mapstructure:"POSTGRES_PORT"`
+	PostgresUser   string   `mapstructure:"POSTGRES_USER"`
+	PostgresPassword string `mapstructure:"POSTGRES_PASSWORD"`
+	PostgresDB     string   `mapstructure:"POSTGRES_DB"`
+	
+	// SQLite configuration
+	SQLitePath     string   `mapstructure:"SQLITE_PATH"`
+	
+	// Canvas configuration
 	CanvasHeight   int      `mapstructure:"CANVAS_HEIGHT"`
 	CanvasWidth    int      `mapstructure:"CANVAS_WIDTH"`
+	
+	// MongoDB configuration
 	MongoURI	   string 	`mapstructure:"MONGO_URI"`
+	
+	// VK API configuration
 	AdminIDs       []int    // No `mapstructure` tag to prevent automatic decoding
 	APIVersion     string   `mapstructure:"API_VERSION"`
 	ServiceToken   string   `mapstructure:"SERVICE_TOKEN"`

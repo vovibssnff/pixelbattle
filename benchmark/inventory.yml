@@ -1,0 +1,21 @@
+---
+all:
+  children:
+    # Default target: run everything locally against the local Docker stack.
+    local:
+      hosts:
+        localhost:
+          ansible_connection: local
+
+    # Remote VMs: uncomment and fill in to run benchmarks on a remote machine.
+    # The VM must have Go 1.22+, k6, Python 3 with matplotlib/numpy,
+    # and the pixelbattle project checked out.
+    # Override benchmark_project_root to match the checkout path on the VM.
+    #
+    # vms:
+    #   hosts:
+    #     benchmark_vm:
+    #       ansible_host: 192.168.1.100
+    #       ansible_user: ubuntu
+    #       ansible_python_interpreter: /usr/bin/python3
+    #       benchmark_project_root: /home/ubuntu/pixelbattle

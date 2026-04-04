@@ -1,0 +1,11 @@
+---
+# Run locally:  ansible-playbook playbooks/setup_database.yml [-e benchmark_storage_type=postgres]
+# Run on a VM:  ansible-playbook playbooks/setup_database.yml -e target_hosts=benchmark_vm -e benchmark_storage_type=postgres
+- name: Setup Database
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Setup database
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: setup_database.yml

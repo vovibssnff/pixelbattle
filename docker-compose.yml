@@ -13,6 +13,23 @@ services:
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
 
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=pixelbattle
+      - POSTGRES_PASSWORD=pixelbattle
+      - POSTGRES_DB=pixelbattle
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixelbattle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mongodb:
     image: mongo:latest
     restart: unless-stopped
@@ -44,23 +61,46 @@ services:
     restart: unless-stopped
     env_file:
       - ./pb_backend/app.env
+    ports:
+      - "8080:8080"
+      - "9090:9090"
     depends_on:
       - redis
+      - postgres
       - mongodb
       - migrator
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
+    restart: unless-stopped
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus_data:/prometheus
     command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
       - "--log.level=info"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
 
   grafana:
-    image: grafana/grafana-enterprise
+    image: grafana/grafana-enterprise:latest
     restart: unless-stopped
     environment:
       - GF_LOG_LEVEL=error
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./monitoring/grafana/data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
 
   nginx:
     build: ./pb_frontend

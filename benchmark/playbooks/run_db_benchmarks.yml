@@ -1,0 +1,12 @@
+---
+# Run locally:     ansible-playbook playbooks/run_db_benchmarks.yml
+# Run on a VM:     ansible-playbook playbooks/run_db_benchmarks.yml -e target_hosts=benchmark_vm
+# Override params: -e "benchmark_canvas_height=250 benchmark_canvas_width=500 benchmark_concurrent_writers=20"
+- name: Run Database-Level Benchmarks
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Run database benchmarks
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_db_benchmarks.yml

@@ -1,0 +1,35 @@
+---
+- name: Ensure certificate directory exists
+  ansible.builtin.file:
+    path: "{{ deploy_cert_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Check if certificates already exist
+  ansible.builtin.stat:
+    path: "{{ deploy_cert_dir }}/{{ deploy_cert_name }}.crt"
+  register: deploy_cert_stat
+
+- name: Generate self-signed SSL certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes
+      -days {{ deploy_cert_days }}
+      -newkey rsa:2048
+      -keyout {{ deploy_cert_dir }}/{{ deploy_cert_name }}.key
+      -out {{ deploy_cert_dir }}/{{ deploy_cert_name }}.crt
+      -subj "/C={{ deploy_cert_country }}/ST={{ deploy_cert_state }}/L={{ deploy_cert_city }}/O={{ deploy_cert_org }}/CN={{ deploy_cert_cn }}"
+    creates: "{{ deploy_cert_dir }}/{{ deploy_cert_name }}.crt"
+  when: not deploy_cert_stat.stat.exists or deploy_cert_force_regenerate
+
+- name: Set private key permissions
+  ansible.builtin.file:
+    path: "{{ deploy_cert_dir }}/{{ deploy_cert_name }}.key"
+    mode: "0600"
+  when: not deploy_cert_stat.stat.exists or deploy_cert_force_regenerate
+
+- name: Set certificate permissions
+  ansible.builtin.file:
+    path: "{{ deploy_cert_dir }}/{{ deploy_cert_name }}.crt"
+    mode: "0644"
+  when: not deploy_cert_stat.stat.exists or deploy_cert_force_regenerate

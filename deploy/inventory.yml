@@ -1,0 +1,18 @@
+---
+all:
+  children:
+    pixelbattle_servers:
+      hosts:
+        pixelbattle_vm:
+          ansible_host: 192.168.122.71
+          ansible_user: vovi
+          ansible_python_interpreter: /usr/bin/python3
+      vars:
+        deploy_git_repo: "https://github.com/vovibssnff/pixelbattle.git"
+        deploy_git_branch: "benchmarks"
+
+    local:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_become: false

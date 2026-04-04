@@ -1,0 +1,25 @@
+---
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ deploy_project_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Clone or update application repository
+  ansible.builtin.git:
+    repo: "{{ deploy_git_repo }}"
+    dest: "{{ deploy_project_dir }}"
+    version: "{{ deploy_git_branch }}"
+    force: true
+  no_log: true
+
+- name: Create runtime data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ deploy_data_dirs }}"
+  loop_control:
+    label: "{{ item | basename }}"

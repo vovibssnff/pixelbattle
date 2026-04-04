@@ -1,0 +1,84 @@
+{
+  "dashboard": {
+    "title": "Database Performance",
+    "tags": ["database", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Database Operation Duration (P50, P95, P99)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(database_operation_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50 - {{operation}} ({{storage_type}})"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(database_operation_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 - {{operation}} ({{storage_type}})"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(database_operation_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99 - {{operation}} ({{storage_type}})"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Duration"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Database Operation Throughput",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(database_operation_total[5m])",
+            "legendFormat": "{{operation}} - {{storage_type}} ({{status}})"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Operations/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Database Connection Pool",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "database_connection_pool_size",
+            "legendFormat": "{{storage_type}} - {{state}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Connections"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Database Operation Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(database_operation_total{status=\"error\"}[5m])",
+            "legendFormat": "{{operation}} - {{storage_type}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Errors/sec"},
+          {"format": "short"}
+        ]
+      }
+    ]
+  }
+}

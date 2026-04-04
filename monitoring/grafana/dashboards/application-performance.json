@@ -1,0 +1,116 @@
+{
+  "dashboard": {
+    "title": "Application Performance",
+    "tags": ["application", "websocket"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "WebSocket Message Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(websocket_message_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50 - {{type}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(websocket_message_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 - {{type}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(websocket_message_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99 - {{type}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Duration"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Current Users",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "current_users",
+            "legendFormat": "Active Users"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Users"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "HTTP Request Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(requests_per_second[5m])",
+            "legendFormat": "{{method}} {{path}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "HTTP Request Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(request_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 - {{method}} {{path}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Duration"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Pixel Write Queue Depth",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "pixel_write_queue_depth",
+            "legendFormat": "Queue Depth"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Pending Writes"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Overall Registrations",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(overall_registrations[5m])",
+            "legendFormat": "Registrations/sec"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Registrations/sec"},
+          {"format": "short"}
+        ]
+      }
+    ]
+  }
+}

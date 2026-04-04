@@ -1,0 +1,4 @@
+ansible>=13.5.0
+ansible-lint>=26.4.0
+matplotlib>=3.10.0
+numpy>=2.2.0

@@ -1,0 +1,6 @@
+---
+- name: Restart containers
+  ansible.builtin.command:
+    cmd: docker compose restart
+    chdir: "{{ deploy_project_dir }}"
+  changed_when: true

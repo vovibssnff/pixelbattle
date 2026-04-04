@@ -1,0 +1,8 @@
+---
+- name: Write backend environment file
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ deploy_project_dir }}/pb_backend/app.env"
+    owner: root
+    group: root
+    mode: "0600"

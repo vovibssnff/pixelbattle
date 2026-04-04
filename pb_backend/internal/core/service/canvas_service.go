@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"pb_backend/internal/adapters/redis/repository"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
 	"time"
@@ -12,10 +11,10 @@ import (
 )
 
 type CanvasService struct {
-	canvasRepo repository.CanvasRepository
+	canvasRepo domain.CanvasRepository
 }
 
-func NewCanvasService(canvasRepo repository.CanvasRepository) *CanvasService {
+func NewCanvasService(canvasRepo domain.CanvasRepository) *CanvasService {
 	return &CanvasService{
 		canvasRepo: canvasRepo,
 	}

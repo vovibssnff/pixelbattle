@@ -1,0 +1,8 @@
+---
+# Run locally:     ansible-playbook playbooks/full_benchmark_suite.yml
+# Run on a VM:     ansible-playbook playbooks/full_benchmark_suite.yml -e target_hosts=benchmark_vm
+- name: Full Benchmark Suite
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  roles:
+    - role: benchmark

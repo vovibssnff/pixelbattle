@@ -1,0 +1,35 @@
+---
+- name: Display deployment parameters
+  ansible.builtin.debug:
+    msg:
+      - "Deploying pixelbattle"
+      - "Repository: {{ deploy_git_repo }}"
+      - "Branch: {{ deploy_git_branch }}"
+      - "Target directory: {{ deploy_project_dir }}"
+  tags: [always]
+
+- name: Clone project from git
+  ansible.builtin.include_tasks: clone.yml
+  tags: [clone]
+
+- name: Generate SSL certificates
+  ansible.builtin.include_tasks: certificates.yml
+  tags: [certificates]
+
+- name: Configure application
+  ansible.builtin.include_tasks: configure.yml
+  tags: [configure]
+
+- name: Build and deploy containers
+  ansible.builtin.include_tasks: build_and_deploy.yml
+  tags: [deploy]
+
+- name: Display deployment result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "Pixelbattle deployed successfully!"
+      - "HTTPS: https://{{ deploy_cert_cn }}"
+      - "Grafana: https://{{ deploy_cert_cn }}/panel"
+      - "=========================================="
+  tags: [always]

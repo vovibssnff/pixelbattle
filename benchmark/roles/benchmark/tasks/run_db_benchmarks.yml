@@ -1,0 +1,79 @@
+---
+- name: Ensure benchmark results directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_results_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [db_bench]
+
+- name: Check Go is installed
+  ansible.builtin.command: which go
+  register: benchmark_go_check
+  changed_when: false
+  failed_when: false
+  tags: [db_bench]
+
+- name: Fail if Go is not installed
+  ansible.builtin.fail:
+    msg: "Go is not installed. Please install Go 1.22+ to run database benchmarks."
+  when: benchmark_go_check.rc != 0
+  tags: [db_bench]
+
+- name: Run database-level benchmark for each storage type
+  ansible.builtin.command:
+    cmd: >-
+      go run ./cmd/benchmark/main.go
+      -storage={{ item }}
+      -output={{ benchmark_results_dir }}/{{ item }}_benchmark_{{ ansible_date_time.epoch }}.json
+      -height={{ benchmark_canvas_height }}
+      -width={{ benchmark_canvas_width }}
+      -writers={{ benchmark_concurrent_writers }}
+      -history={{ benchmark_history_multiplier }}
+    chdir: "{{ benchmark_project_root }}/pb_backend"
+  register: benchmark_db_runs
+  loop: "{{ benchmark_storage_types }}"
+  loop_control:
+    label: "benchmark {{ item }}"
+  changed_when: false
+  tags: [db_bench]
+
+- name: Display benchmark output per storage type
+  ansible.builtin.debug:
+    msg: "{{ item.item }}: {{ item.stdout_lines | default([]) | join('\n') }}"
+  loop: "{{ benchmark_db_runs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  tags: [db_bench]
+
+- name: Write benchmark execution log
+  ansible.builtin.copy:
+    content: |
+      Benchmark Execution Log
+      =======================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Storage Types: {{ benchmark_storage_types | join(', ') }}
+      Canvas Size: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}
+      Concurrent Writers: {{ benchmark_concurrent_writers }}
+      History Multiplier: {{ benchmark_history_multiplier }}
+
+      Results:
+      {% for result in benchmark_db_runs.results %}
+      - {{ result.item }}: {{ 'SUCCESS' if result.rc == 0 else 'FAILED' }}
+        stdout: {{ result.stdout_lines | default([]) | join('\n        ') }}
+        stderr: {{ result.stderr_lines | default([]) | join('\n        ') }}
+      {% endfor %}
+    dest: "{{ benchmark_results_dir }}/benchmark_log_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+  tags: [db_bench]
+
+- name: List generated benchmark result files
+  ansible.builtin.find:
+    paths: "{{ benchmark_results_dir }}"
+    patterns: "*.json"
+  register: benchmark_result_files
+  tags: [db_bench]
+
+- name: Report generated file count
+  ansible.builtin.debug:
+    msg: "Generated {{ benchmark_result_files.files | length }} result file(s) in {{ benchmark_results_dir }}"
+  tags: [db_bench]

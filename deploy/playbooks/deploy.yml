@@ -1,0 +1,22 @@
+---
+- name: Deploy pixelbattle application
+  hosts: "{{ target_hosts | default('pixelbattle_servers') }}"
+  become: true
+
+  pre_tasks:
+    - name: Verify Docker is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+
+    - name: Install git and openssl
+      ansible.builtin.apt:
+        name:
+          - git
+          - openssl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: deploy

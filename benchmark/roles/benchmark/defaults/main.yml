@@ -1,0 +1,44 @@
+---
+# role_path = benchmark/roles/benchmark
+# dirname x3 → benchmark/roles → benchmark → project root
+benchmark_project_root: "{{ role_path | dirname | dirname | dirname }}"
+
+# Python interpreter: project-wide venv at repo root
+benchmark_python_interpreter: "{{ benchmark_project_root + '/.venv/bin/python' }}"
+
+# Storage backends to benchmark (full suite)
+benchmark_storage_types:
+  - redis
+  - postgres
+  - sqlite
+
+# k6 load test tiers (full suite)
+benchmark_test_types:
+  - light
+  - medium
+  - heavy
+
+# Single-step defaults (override with -e for individual playbooks)
+benchmark_storage_type: redis
+benchmark_test_type: light
+
+# Database benchmark parameters
+benchmark_canvas_height: 250
+benchmark_canvas_width: 500
+benchmark_concurrent_writers: 10
+benchmark_history_multiplier: 1
+
+# Results layout (all under benchmark_project_root/results/)
+benchmark_results_root: "{{ benchmark_project_root }}/results"
+benchmark_results_dir: "{{ benchmark_results_root }}/benchmarks"
+benchmark_k6_results_dir: "{{ benchmark_results_root }}/k6"
+
+# Reporting script paths
+benchmark_report_script: "{{ benchmark_project_root }}/benchmark/reporting/generate-report.py"
+benchmark_plot_script: "{{ benchmark_project_root }}/benchmark/reporting/plot-graphs.py"
+
+# Prometheus endpoint for metric collection
+benchmark_prometheus_url: "http://localhost:9090"
+
+# Number of Docker log lines to capture per container
+benchmark_docker_log_tail: 1000
