@@ -1,6 +1,9 @@
 ---
-# Run locally:     ansible-playbook playbooks/full_benchmark_suite.yml
-# Run on a VM:     ansible-playbook playbooks/full_benchmark_suite.yml -e target_hosts=benchmark_vm
+# Run on your laptop (default): targets inventory group `local` — k6/Go hit localhost Docker unless you set:
+#   ansible-playbook playbooks/full_benchmark_suite.yml -e benchmark_remote_host=192.168.122.71
+# Run the role on the VM (optional): -e target_hosts=benchmark_vm
+# Pull results from VM to repo ./results/... after a VM-side run:
+#   ansible-playbook playbooks/sync_results_from_vm.yml
 - name: Full Benchmark Suite
   hosts: "{{ target_hosts | default('local') }}"
   gather_facts: true

@@ -1,7 +1,7 @@
 ---
 # Run locally:  ansible-playbook playbooks/collect_results.yml
 # Run on a VM:  ansible-playbook playbooks/collect_results.yml -e target_hosts=benchmark_vm
-# Override Prometheus endpoint: -e "benchmark_prometheus_url=http://prometheus:9090"
+# Remote stack on another host: -e benchmark_remote_host=192.168.122.71 (sets benchmark_prometheus_url)
 - name: Collect Benchmark Results and Logs
   hosts: "{{ target_hosts | default('local') }}"
   gather_facts: true

@@ -4,6 +4,10 @@
     msg:
       - "Starting full benchmark suite"
       - "Project root: {{ benchmark_project_root }}"
+      - "Remote stack host (empty = local Docker): {{ benchmark_remote_host | default('') }}"
+      - "Target host for services: {{ benchmark_target_host }}"
+      - "k6 BENCHMARK_HOST: {{ benchmark_k6_address }}"
+      - "Prometheus URL: {{ benchmark_prometheus_url }}"
       - "Storage types: {{ benchmark_storage_types | join(', ') }}"
       - "Test types: {{ benchmark_test_types | join(', ') }}"
       - "Canvas: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}"

@@ -1,116 +1,191 @@
 {
-  "dashboard": {
-    "title": "Application Performance",
-    "tags": ["application", "websocket"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "10s",
-    "panels": [
-      {
-        "id": 1,
-        "title": "WebSocket Message Duration",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.50, rate(websocket_message_duration_seconds_bucket[5m]))",
-            "legendFormat": "P50 - {{type}}"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(websocket_message_duration_seconds_bucket[5m]))",
-            "legendFormat": "P95 - {{type}}"
-          },
-          {
-            "expr": "histogram_quantile(0.99, rate(websocket_message_duration_seconds_bucket[5m]))",
-            "legendFormat": "P99 - {{type}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "s", "label": "Duration"},
-          {"format": "short"}
-        ]
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "s"
+        },
+        "overrides": []
       },
-      {
-        "id": 2,
-        "title": "Current Users",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "targets": [
-          {
-            "expr": "current_users",
-            "legendFormat": "Active Users"
-          }
-        ],
-        "yaxes": [
-          {"format": "short", "label": "Users"},
-          {"format": "short"}
-        ]
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
       },
-      {
-        "id": 3,
-        "title": "HTTP Request Rate",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-        "targets": [
-          {
-            "expr": "rate(requests_per_second[5m])",
-            "legendFormat": "{{method}} {{path}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "reqps", "label": "Requests/sec"},
-          {"format": "short"}
-        ]
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.50, sum by (le, type) (rate(websocket_message_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50 {{type}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.95, sum by (le, type) (rate(websocket_message_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95 {{type}}",
+          "refId": "B"
+        }
+      ],
+      "title": "WebSocket message duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "short"
+        },
+        "overrides": []
       },
-      {
-        "id": 4,
-        "title": "HTTP Request Duration",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.95, rate(request_duration_seconds_bucket[5m]))",
-            "legendFormat": "P95 - {{method}} {{path}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "s", "label": "Duration"},
-          {"format": "short"}
-        ]
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
       },
-      {
-        "id": 5,
-        "title": "Pixel Write Queue Depth",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
-        "targets": [
-          {
-            "expr": "pixel_write_queue_depth",
-            "legendFormat": "Queue Depth"
-          }
-        ],
-        "yaxes": [
-          {"format": "short", "label": "Pending Writes"},
-          {"format": "short"}
-        ]
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "current_users",
+          "legendFormat": "users",
+          "refId": "A"
+        }
+      ],
+      "title": "Current users",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "reqps"
+        },
+        "overrides": []
       },
-      {
-        "id": 6,
-        "title": "Overall Registrations",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
-        "targets": [
-          {
-            "expr": "rate(overall_registrations[5m])",
-            "legendFormat": "Registrations/sec"
-          }
-        ],
-        "yaxes": [
-          {"format": "short", "label": "Registrations/sec"},
-          {"format": "short"}
-        ]
-      }
-    ]
-  }
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum by (path, method) (rate(requests_per_second[5m]))",
+          "legendFormat": "{{method}} {{path}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.95, sum by (le, path, method) (rate(request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95 {{method}} {{path}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP request duration (P95)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 5,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "pixel_write_queue_depth",
+          "legendFormat": "depth",
+          "refId": "A"
+        }
+      ],
+      "title": "Pixel write queue depth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 6,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "rate(overall_registrations[5m])",
+          "legendFormat": "registrations/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Registration rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["application", "websocket"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Application Performance",
+  "uid": "app-performance",
+  "version": 1,
+  "weekStart": ""
 }

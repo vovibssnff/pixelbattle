@@ -5,10 +5,16 @@ import { vu } from 'k6/execution';
 
 const FACULTIES = ['KTU', 'TINT', 'FTMF', 'FTMI', 'NOZH'];
 
-function benchmarkWsURL(hostPort = 'localhost:8080') {
+function benchmarkHostPort() {
+  const h = __ENV.BENCHMARK_HOST;
+  return h && String(h).length > 0 ? String(h) : 'localhost:8080';
+}
+
+function benchmarkWsURL(hostPort) {
+  const hp = hostPort || benchmarkHostPort();
   const uid = vu.idInTest * 100000000 + vu.iterationInTest;
   const faculty = FACULTIES[randomIntBetween(0, FACULTIES.length - 1)];
-  return `ws://${hostPort}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
+  return `ws://${hp}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
 }
 
 // Medium load configuration
@@ -28,7 +34,7 @@ const CANVAS_WIDTH = 500;
 const CANVAS_HEIGHT = 250;
 
 export default function () {
-  const url = benchmarkWsURL();
+  const url = benchmarkWsURL(benchmarkHostPort());
   const params = { tags: { test_type: 'medium_load' } };
 
   const res = ws.connect(url, params, function (socket) {

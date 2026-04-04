@@ -228,7 +228,9 @@
 
 - name: Collect Docker container logs
   tags: [collect]
-  when: benchmark_docker_check.rc == 0
+  when:
+    - benchmark_docker_check.rc == 0
+    - benchmark_collect_docker_logs | bool
   block:
     - name: Define containers to collect logs from
       ansible.builtin.set_fact:

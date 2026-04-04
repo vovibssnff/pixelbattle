@@ -18,23 +18,16 @@
   tags: [setup]
   when: benchmark_storage_type == 'postgres'
   block:
-    - name: Check PostgreSQL container is running
-      ansible.builtin.command: docker ps --filter "name=postgres" --format "{{ '{{' }}.Names{{ '}}' }}"
-      register: benchmark_postgres_container
-      changed_when: false
-      failed_when: false
-
-    - name: Wait for PostgreSQL port to be reachable
+    - name: Wait for PostgreSQL port
       ansible.builtin.wait_for:
-        host: localhost
+        host: "{{ benchmark_target_host }}"
         port: 5432
         delay: 2
-        timeout: 30
-      when: benchmark_postgres_container.stdout != ""
+        timeout: 60
 
     - name: Report PostgreSQL ready
       ansible.builtin.debug:
-        msg: "PostgreSQL is ready"
+        msg: "PostgreSQL is ready at {{ benchmark_target_host }}:5432"
 
 - name: Setup SQLite
   tags: [setup]
@@ -65,26 +58,16 @@
   tags: [setup]
   when: benchmark_storage_type == 'redis'
   block:
-    - name: Check Redis container is running
-      ansible.builtin.command: docker ps --filter "name=redis" --format "{{ '{{' }}.Names{{ '}}' }}"
-      register: benchmark_redis_container
-      changed_when: false
-      failed_when: false
-
-    # Redis often has no host port published; check readiness inside the container.
-    - name: Wait for Redis to respond (docker exec)
-      ansible.builtin.command:
-        cmd: "docker exec {{ benchmark_redis_container.stdout | trim }} redis-cli ping"
-      register: benchmark_redis_ping
-      until: benchmark_redis_ping.stdout is search("PONG")
-      retries: 15
-      delay: 2
-      changed_when: false
-      when: benchmark_redis_container.stdout | length > 0
+    - name: Wait for Redis port (docker-compose publishes 6379)
+      ansible.builtin.wait_for:
+        host: "{{ benchmark_target_host }}"
+        port: 6379
+        delay: 2
+        timeout: 60
 
     - name: Report Redis ready
       ansible.builtin.debug:
-        msg: "Redis is ready"
+        msg: "Redis is ready at {{ benchmark_target_host }}:6379"
 
 - name: Write setup log
   ansible.builtin.copy:

@@ -19,6 +19,16 @@
   when: benchmark_go_check.rc != 0
   tags: [db_bench]
 
+- name: Point DB benchmark at remote Docker ports (overrides app.env via viper AutomaticEnv)
+  ansible.builtin.set_fact:
+    benchmark_db_bench_environment:
+      REDIS_ADDR: "{{ benchmark_target_host }}:6379"
+      POSTGRES_HOST: "{{ benchmark_target_host }}"
+      POSTGRES_PORT: "5432"
+      MONGO_URI: "mongodb://root:root@{{ benchmark_target_host }}:27017/?directConnection=true"
+  when: benchmark_remote_host | default('') | trim | length > 0
+  tags: [db_bench]
+
 # go benchmark writes ./sqlite under pb_backend; /opt deploys are often root-owned.
 - name: Ensure pb_backend/sqlite is writable by the SSH user
   ansible.builtin.file:
@@ -42,6 +52,7 @@
       -writers={{ benchmark_concurrent_writers }}
       -history={{ benchmark_history_multiplier }}
     chdir: "{{ benchmark_project_root }}/pb_backend"
+  environment: "{{ benchmark_db_bench_environment }}"
   register: benchmark_db_runs
   loop: "{{ benchmark_storage_types }}"
   loop_control:

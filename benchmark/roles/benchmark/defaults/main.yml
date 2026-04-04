@@ -37,8 +37,25 @@ benchmark_k6_results_dir: "{{ benchmark_results_root }}/k6"
 benchmark_report_script: "{{ benchmark_project_root }}/benchmark/reporting/generate-report.py"
 benchmark_plot_script: "{{ benchmark_project_root }}/benchmark/reporting/plot-graphs.py"
 
-# Prometheus endpoint for metric collection
-benchmark_prometheus_url: "http://localhost:9090"
+# When set (e.g. 192.168.122.71), k6, Prometheus collection, and DB benchmarks use this host
+# for published ports (8080, 9090, 6379, 5432, 27017). Run the playbooks on your laptop with
+# connection: local and override with -e benchmark_remote_host=YOUR_VM_IP
+benchmark_remote_host: ""
+
+# Hostname/IP for stack endpoints (localhost or benchmark_remote_host)
+benchmark_target_host: "{{ (benchmark_remote_host | default('') | trim) if (benchmark_remote_host | default('') | trim | length > 0) else 'localhost' }}"
+
+# k6 WebSocket target host:port
+benchmark_k6_address: "{{ benchmark_target_host }}:8080"
+
+# Prometheus (collect_results) — must match where the stack exposes 9090
+benchmark_prometheus_url: "http://{{ benchmark_target_host }}:9090"
+
+# When targeting a remote VM, skip collecting Docker logs from the controller (wrong machine)
+benchmark_collect_docker_logs: "{{ (benchmark_remote_host | default('') | trim | length) == 0 }}"
+
+# Extra env for `go run ./cmd/benchmark` when benchmark_remote_host is set (otherwise use app.env only)
+benchmark_db_bench_environment: {}
 
 # Number of Docker log lines to capture per container
 benchmark_docker_log_tail: 1000

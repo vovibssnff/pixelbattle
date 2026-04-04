@@ -1,76 +1,131 @@
 {
-  "dashboard": {
-    "title": "Database Comparison",
-    "tags": ["comparison", "benchmark"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "10s",
-    "panels": [
-      {
-        "id": 1,
-        "title": "Write Throughput Comparison",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "targets": [
-          {
-            "expr": "rate(database_operation_total{operation=\"write\"}[5m])",
-            "legendFormat": "{{storage_type}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "ops", "label": "Writes/sec"},
-          {"format": "short"}
-        ]
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "ops"
+        },
+        "overrides": []
       },
-      {
-        "id": 2,
-        "title": "Read Latency Comparison (P95)",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.95, rate(database_operation_duration_seconds_bucket{operation=\"read\"}[5m]))",
-            "legendFormat": "P95 - {{storage_type}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "s", "label": "Latency"},
-          {"format": "short"}
-        ]
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
       },
-      {
-        "id": 3,
-        "title": "Write Latency Comparison (P95)",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.95, rate(database_operation_duration_seconds_bucket{operation=\"write\"}[5m]))",
-            "legendFormat": "P95 - {{storage_type}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "s", "label": "Latency"},
-          {"format": "short"}
-        ]
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum by (storage_type) (rate(database_operation_total{operation=\"write\"}[5m]))",
+          "legendFormat": "{{storage_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Write throughput by storage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "s"
+        },
+        "overrides": []
       },
-      {
-        "id": 4,
-        "title": "Error Rate Comparison",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "rate(database_operation_total{status=\"error\"}[5m])",
-            "legendFormat": "{{storage_type}} - {{operation}}"
-          }
-        ],
-        "yaxes": [
-          {"format": "ops", "label": "Errors/sec"},
-          {"format": "short"}
-        ]
-      }
-    ]
-  }
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.95, sum by (le, storage_type) (rate(database_operation_duration_seconds_bucket{operation=\"read\"}[5m])))",
+          "legendFormat": "P95 {{storage_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Read latency P95 by storage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "histogram_quantile(0.95, sum by (le, storage_type) (rate(database_operation_duration_seconds_bucket{operation=\"write\"}[5m])))",
+          "legendFormat": "P95 {{storage_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Write latency P95 by storage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"},
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum by (storage_type, operation) (rate(database_operation_total{status=\"error\"}[5m]))",
+          "legendFormat": "{{storage_type}} {{operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Error rate by storage",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["comparison", "benchmark"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Database Comparison",
+  "uid": "db-comparison",
+  "version": 1,
+  "weekStart": ""
 }

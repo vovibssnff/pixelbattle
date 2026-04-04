@@ -6,6 +6,8 @@ services:
   redis:
     image: redis:7.4.2
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     command: redis-server /etc/redis/redis.conf
     volumes:
       - ./redis/redis_data:/data
@@ -96,7 +98,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       # Anonymous Viewer: no login on /panel (override GRAFANA_ROOT_URL to match public URL, e.g. https://your-host/panel/)
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
-      - "GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://pixelbattle.space/panel/}"
+      # Override when not using the public domain, e.g. GRAFANA_ROOT_URL=http://192.168.1.10:3000/panel/
+      - "GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000/panel/}"
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer

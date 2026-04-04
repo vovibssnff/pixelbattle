@@ -55,6 +55,8 @@
       --summary-export={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_summary_{{ ansible_date_time.epoch }}.json
       test-{{ benchmark_test_type }}.js
     chdir: "{{ benchmark_project_root }}/benchmark/k6"
+  environment:
+    BENCHMARK_HOST: "{{ benchmark_k6_address }}"
   register: benchmark_k6_result
   changed_when: false
   tags: [k6]

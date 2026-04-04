@@ -6,6 +6,8 @@ all:
       hosts:
         localhost:
           ansible_connection: local
+          # Uncomment or pass -e to aim k6 / Prometheus / DB bench at a deployed stack:
+          # benchmark_remote_host: "192.168.122.71"
 
     # Remote VM with deployed stack (same paths as deploy playbook: /opt/pixelbattle).
     vms:
