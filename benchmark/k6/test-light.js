@@ -26,8 +26,10 @@ export const options = {
     { duration: '30s', target: 0 },   // Ramp down
   ],
   thresholds: {
-    'ws_connecting': ['rate<0.01'],      // Less than 1% connection failures
-    'ws_session_duration': ['p(95)<2500'], // 95% of sessions complete in under 2.5s
+    // ws_connecting / ws_session_duration are trends — use p(), not rate().
+    // Do not threshold `checks` here: ws.connect() return shape vs status 101 varies; use summary checks for diagnostics.
+    'ws_connecting': ['p(95)<3000'],
+    'ws_session_duration': ['p(95)<2500'],
   },
 };
 
@@ -101,8 +103,8 @@ export default function () {
     }, sessionDuration);
   });
 
-  check(res, { 
+  check(res, {
     'Connected successfully': (r) => r && r.status === 101,
-    'Session duration OK': (r) => r && r.timings.duration < 30000,
+    'Session duration OK': (r) => r && r.timings && r.timings.duration < 30000,
   });
 }

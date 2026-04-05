@@ -123,7 +123,8 @@ func main() {
 	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router, config.WSAllowAnonymous)
 
 	logrus.Info("Starting server on port 8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	handler := service.InstrumentHandler(router)
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		logrus.Fatal("Failed to start server: ", err)
 	}
 

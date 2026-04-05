@@ -25,8 +25,8 @@ export const options = {
     { duration: '1m', target: 0 },   // Ramp down
   ],
   thresholds: {
-    'ws_connecting': ['rate<0.02'],      // Less than 2% connection failures
-    'ws_session_duration': ['p(95)<5000'], // 95% of sessions complete in under 5s
+    'ws_connecting': ['p(95)<5000'],
+    'ws_session_duration': ['p(95)<5000'],
   },
 };
 
@@ -100,8 +100,8 @@ export default function () {
     }, sessionDuration);
   });
 
-  check(res, { 
+  check(res, {
     'Connected successfully': (r) => r && r.status === 101,
-    'Session duration OK': (r) => r && r.timings.duration < 60000,
+    'Session duration OK': (r) => r && r.timings && r.timings.duration < 60000,
   });
 }
