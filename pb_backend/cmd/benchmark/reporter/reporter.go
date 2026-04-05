@@ -36,6 +36,9 @@ func GenerateReport(results []benchmark.BenchmarkResult, storageType string) str
 		if result.WarmupSkipped > 0 {
 			sb.WriteString(fmt.Sprintf("  Warmup Skipped:  %d ops\n", result.WarmupSkipped))
 		}
+		if result.Operations == 0 && result.WarmupSkipped > 0 {
+			sb.WriteString("  *** All operations fell within warmup window; no measured latency data ***\n")
+		}
 
 		if len(result.TimeBuckets) > 1 {
 			sb.WriteString("  Time Trend:\n")

@@ -22,8 +22,14 @@ type LatencyCollector struct {
 	mu             sync.Mutex
 	warmupDuration time.Duration
 	bucketWidth    time.Duration
+	maxWarmupOps   int64
 	startTime      time.Time
 	lastRecordTime time.Time
+
+	// measuredPhaseStart is the wall-clock time when the measured (post-warmup)
+	// window begins. It may differ from startTime+warmupDuration when warmup
+	// ends early due to maxWarmupOps.
+	measuredPhaseStart time.Time
 
 	warmupLatencies []float64
 	latencies       []float64
@@ -44,18 +50,37 @@ type bucketAccum struct {
 
 func NewLatencyCollector(warmup, bucketWidth time.Duration) *LatencyCollector {
 	return &LatencyCollector{
-		warmupDuration: warmup,
-		bucketWidth:    bucketWidth,
-		latencies:      make([]float64, 0, 4096),
+		warmupDuration:  warmup,
+		bucketWidth:     bucketWidth,
+		latencies:       make([]float64, 0, 4096),
 		warmupLatencies: make([]float64, 0, 256),
-		buckets:        make(map[int]*bucketAccum),
+		buckets:         make(map[int]*bucketAccum),
 	}
+}
+
+// SetMaxWarmupOps caps how many samples count as warmup; when reached, measured
+// ops begin even if warmupDuration has not elapsed. Zero disables the cap.
+// Must be called before Start().
+func (lc *LatencyCollector) SetMaxWarmupOps(n int64) {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	lc.maxWarmupOps = n
 }
 
 func (lc *LatencyCollector) Start() {
 	lc.mu.Lock()
 	lc.startTime = time.Now()
 	lc.mu.Unlock()
+}
+
+// TotalElapsed returns wall-clock time since Start() (including warmup).
+func (lc *LatencyCollector) TotalElapsed() time.Duration {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	if lc.startTime.IsZero() {
+		return 0
+	}
+	return time.Since(lc.startTime)
 }
 
 // SetOnRecord sets the Prometheus observation callback.
@@ -76,12 +101,23 @@ func (lc *LatencyCollector) Record(latencyMs float64, isError bool) {
 	lc.lastRecordTime = now
 	elapsed := now.Sub(lc.startTime)
 
-	if elapsed < lc.warmupDuration {
+	inWarmup := elapsed < lc.warmupDuration &&
+		(lc.maxWarmupOps == 0 || int64(len(lc.warmupLatencies)) < lc.maxWarmupOps)
+
+	if inWarmup {
 		lc.warmupLatencies = append(lc.warmupLatencies, latencyMs)
 		if isError {
 			lc.warmupErrors++
 		}
 		return
+	}
+
+	if lc.measuredPhaseStart.IsZero() {
+		if elapsed >= lc.warmupDuration {
+			lc.measuredPhaseStart = lc.startTime.Add(lc.warmupDuration)
+		} else {
+			lc.measuredPhaseStart = now
+		}
 	}
 
 	lc.latencies = append(lc.latencies, latencyMs)
@@ -90,7 +126,7 @@ func (lc *LatencyCollector) Record(latencyMs float64, isError bool) {
 	}
 
 	if lc.bucketWidth > 0 {
-		measuredElapsed := elapsed - lc.warmupDuration
+		measuredElapsed := now.Sub(lc.measuredPhaseStart)
 		bucketIdx := int(measuredElapsed / lc.bucketWidth)
 		b, ok := lc.buckets[bucketIdx]
 		if !ok {
@@ -109,7 +145,7 @@ type CollectorResult struct {
 	Buckets          []TimeBucket
 	WarmupSkipped    int64
 	ErrorCount       int
-	MeasuredDuration time.Duration // wall-clock from end-of-warmup to last record
+	MeasuredDuration time.Duration // wall-clock from measured phase start to last record
 }
 
 func (lc *LatencyCollector) Finalize() CollectorResult {
@@ -141,10 +177,12 @@ func (lc *LatencyCollector) Finalize() CollectorResult {
 		}
 	}
 
-	measuredStart := lc.startTime.Add(lc.warmupDuration)
-	measuredDuration := lc.lastRecordTime.Sub(measuredStart)
-	if measuredDuration < 0 {
-		measuredDuration = 0
+	var measuredDuration time.Duration
+	if !lc.measuredPhaseStart.IsZero() && !lc.lastRecordTime.IsZero() {
+		measuredDuration = lc.lastRecordTime.Sub(lc.measuredPhaseStart)
+		if measuredDuration < 0 {
+			measuredDuration = 0
+		}
 	}
 
 	return CollectorResult{

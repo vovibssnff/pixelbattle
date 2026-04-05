@@ -22,11 +22,12 @@ type Repository interface {
 }
 
 type BenchmarkResult struct {
-	StorageType   string       `json:"storage_type"`
-	Scenario      string       `json:"scenario"`
-	Duration      float64      `json:"duration_seconds"`
-	Operations    int64        `json:"operations"`
-	Throughput    float64      `json:"throughput_ops_per_sec"`
+	StorageType         string       `json:"storage_type"`
+	Scenario            string       `json:"scenario"`
+	Duration            float64      `json:"duration_seconds"`
+	WallClockDuration   float64      `json:"wall_clock_duration_seconds"`
+	Operations          int64        `json:"operations"`
+	Throughput          float64      `json:"throughput_ops_per_sec"`
 	LatencyP50    float64      `json:"latency_p50_ms"`
 	LatencyP95    float64      `json:"latency_p95_ms"`
 	LatencyP99    float64      `json:"latency_p99_ms"`
@@ -57,6 +58,9 @@ type BenchmarkConfig struct {
 	RUWReaders  int
 }
 
+// warmupMinOps disables time-based warmup when expected op count is below this threshold.
+const warmupMinOps int64 = 100
+
 type Benchmarker struct {
 	repo         Repository
 	storageType  string
@@ -75,8 +79,34 @@ func NewBenchmarker(repo Repository, storageType string, height, width uint, cfg
 	}
 }
 
+// newCollector is for duration-based scenarios with no op-count warmup cap (expectedOps < 0).
 func (b *Benchmarker) newCollector(scenario string) *LatencyCollector {
-	lc := NewLatencyCollector(b.config.WarmupDuration, b.config.BucketWidth)
+	return b.newCollectorWithOps(scenario, -1)
+}
+
+// newCollectorWithOps configures warmup: short scenarios (expectedOps < warmupMinOps) skip
+// time warmup; otherwise warmup is capped by max 20% of ops (up to 25000). Pass expectedOps < 0
+// for open-ended runs (read under write, sustained throughput) — full warmup window, no cap.
+func (b *Benchmarker) newCollectorWithOps(scenario string, expectedOps int64) *LatencyCollector {
+	warmup := b.config.WarmupDuration
+	if expectedOps >= 0 && expectedOps < warmupMinOps {
+		warmup = 0
+	}
+	lc := NewLatencyCollector(warmup, b.config.BucketWidth)
+	var maxWU int64
+	if warmup > 0 && expectedOps > 0 {
+		maxWU = expectedOps / 5
+		if maxWU > 25000 {
+			maxWU = 25000
+		}
+		if maxWU < 1 {
+			maxWU = 1
+		}
+	}
+	if expectedOps < 0 {
+		maxWU = 0
+	}
+	lc.SetMaxWarmupOps(maxWU)
 	lc.SetOnRecord(makePromCallback(b.storageType, scenario))
 	return lc
 }
@@ -133,7 +163,7 @@ func (b *Benchmarker) RunAllBenchmarks() []BenchmarkResult {
 func (b *Benchmarker) SequentialWrite() BenchmarkResult {
 	const scenario = "sequential_write"
 	totalPixels := int(b.canvasHeight * b.canvasWidth)
-	lc := b.newCollector(scenario)
+	lc := b.newCollectorWithOps(scenario, int64(totalPixels))
 	b.markActive(scenario)
 	defer b.markDone(scenario)
 	lc.Start()
@@ -159,7 +189,7 @@ func (b *Benchmarker) ConcurrentWrite(concurrency int) BenchmarkResult {
 	const scenario = "concurrent_write"
 	totalPixels := int(b.canvasHeight * b.canvasWidth)
 	pixelsPerWorker := totalPixels / concurrency
-	lc := b.newCollector(scenario)
+	lc := b.newCollectorWithOps(scenario, int64(totalPixels))
 	b.markActive(scenario)
 	defer b.markDone(scenario)
 	lc.Start()
@@ -196,7 +226,7 @@ func (b *Benchmarker) ConcurrentWrite(concurrency int) BenchmarkResult {
 func (b *Benchmarker) FullCanvasRead() BenchmarkResult {
 	const scenario = "full_canvas_read"
 	const iterations = 20
-	lc := b.newCollector(scenario)
+	lc := b.newCollectorWithOps(scenario, iterations)
 	b.markActive(scenario)
 	defer b.markDone(scenario)
 	lc.Start()
@@ -219,7 +249,7 @@ func (b *Benchmarker) MixedWorkload(concurrency int) BenchmarkResult {
 	totalOps := 10000
 	writeOps := int(float64(totalOps) * 0.8)
 	readOps := totalOps - writeOps
-	lc := b.newCollector(scenario)
+	lc := b.newCollectorWithOps(scenario, int64(totalOps))
 	b.markActive(scenario)
 	defer b.markDone(scenario)
 	lc.Start()
@@ -265,7 +295,7 @@ func (b *Benchmarker) MixedWorkload(concurrency int) BenchmarkResult {
 // HeatMapLoad benchmarks LoadHeatMap after the canvas is populated.
 func (b *Benchmarker) HeatMapLoad(iterations int) BenchmarkResult {
 	const scenario = "heatmap_load"
-	lc := b.newCollector(scenario)
+	lc := b.newCollectorWithOps(scenario, int64(iterations))
 	b.markActive(scenario)
 	defer b.markDone(scenario)
 	lc.Start()
@@ -434,9 +464,13 @@ func (b *Benchmarker) HistoryGrowth(rounds, concurrency int) []BenchmarkResult {
 	for round := 1; round <= rounds; round++ {
 		logrus.Infof("  History round %d/%d (writing %d pixels) ...", round, rounds, totalPixels)
 
+		writeScenario := fmt.Sprintf("history_growth_write_round_%d", round)
+		readScenario := fmt.Sprintf("history_growth_read_round_%d", round)
+		hmScenario := fmt.Sprintf("history_growth_heatmap_round_%d", round)
+
 		// Write phase
-		writeLc := b.newCollector("history_growth_write")
-		b.markActive("history_growth_write")
+		writeLc := b.newCollectorWithOps(writeScenario, int64(totalPixels))
+		b.markActive(writeScenario)
 		writeLc.Start()
 		pixelsPerWorker := totalPixels / concurrency
 		var wg sync.WaitGroup
@@ -461,38 +495,38 @@ func (b *Benchmarker) HistoryGrowth(rounds, concurrency int) []BenchmarkResult {
 			}(i)
 		}
 		wg.Wait()
-		b.markDone("history_growth_write")
+		b.markDone(writeScenario)
 
 		depth := round * totalPixels
-		wr := b.buildResult("history_growth_write", writeLc, int64(totalPixels))
+		wr := b.buildResult(writeScenario, writeLc, int64(totalPixels))
 		wr.HistoryDepth = depth
 		results = append(results, wr)
 
 		// GetCanvas measurement
-		readLc := b.newCollector("history_growth_read")
-		b.markActive("history_growth_read")
+		readLc := b.newCollectorWithOps(readScenario, 5)
+		b.markActive(readScenario)
 		readLc.Start()
 		for i := 0; i < 5; i++ {
 			opStart := time.Now()
 			_, err := b.repo.GetCanvas(ctx)
 			readLc.Record(time.Since(opStart).Seconds()*1000, err != nil)
 		}
-		b.markDone("history_growth_read")
-		rr := b.buildResult("history_growth_read", readLc, 5)
+		b.markDone(readScenario)
+		rr := b.buildResult(readScenario, readLc, 5)
 		rr.HistoryDepth = depth
 		results = append(results, rr)
 
 		// LoadHeatMap measurement
-		hmLc := b.newCollector("history_growth_heatmap")
-		b.markActive("history_growth_heatmap")
+		hmLc := b.newCollectorWithOps(hmScenario, 5)
+		b.markActive(hmScenario)
 		hmLc.Start()
 		for i := 0; i < 5; i++ {
 			opStart := time.Now()
 			_, err := b.repo.LoadHeatMap(ctx)
 			hmLc.Record(time.Since(opStart).Seconds()*1000, err != nil)
 		}
-		b.markDone("history_growth_heatmap")
-		hr := b.buildResult("history_growth_heatmap", hmLc, 5)
+		b.markDone(hmScenario)
+		hr := b.buildResult(hmScenario, hmLc, 5)
 		hr.HistoryDepth = depth
 		results = append(results, hr)
 	}
@@ -521,19 +555,21 @@ func (b *Benchmarker) generatePixelData(x, y uint) []byte {
 
 func (b *Benchmarker) buildResult(scenario string, lc *LatencyCollector, totalOps int64) BenchmarkResult {
 	cr := lc.Finalize()
+	wallClock := lc.TotalElapsed().Seconds()
 
 	result := BenchmarkResult{
-		StorageType:   b.storageType,
-		Scenario:      scenario,
-		Timestamp:     time.Now(),
-		TimeBuckets:   cr.Buckets,
-		WarmupSkipped: cr.WarmupSkipped,
+		StorageType:       b.storageType,
+		Scenario:          scenario,
+		Timestamp:         time.Now(),
+		TimeBuckets:       cr.Buckets,
+		WarmupSkipped:     cr.WarmupSkipped,
+		WallClockDuration: wallClock,
 	}
 
 	latencies := cr.Latencies
 	ops := int64(len(latencies))
 	if ops == 0 {
-		result.Operations = totalOps
+		result.Operations = 0
 		result.ErrorCount = cr.ErrorCount
 		return result
 	}
@@ -547,7 +583,7 @@ func (b *Benchmarker) buildResult(scenario string, lc *LatencyCollector, totalOp
 	mean /= float64(ops)
 
 	duration := cr.MeasuredDuration.Seconds()
-	if duration <= 0 {
+	if duration <= 0 && ops > 0 {
 		duration = mean * float64(ops) / 1000.0
 	}
 
