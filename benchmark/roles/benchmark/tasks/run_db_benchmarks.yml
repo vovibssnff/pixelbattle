@@ -54,6 +54,19 @@
     - benchmark_docker_info.rc | default(1) != 0
   tags: [db_bench]
 
+- name: Pull Go toolchain image for DB benchmark
+  ansible.builtin.command:
+    cmd: docker pull {{ benchmark_go_docker_image }}
+  register: benchmark_go_docker_pull
+  changed_when: >-
+    'Downloaded newer' in benchmark_go_docker_pull.stdout | default('')
+    or 'Pulling' in benchmark_go_docker_pull.stdout | default('')
+  when: benchmark_go_via_docker | default(false) | bool
+  retries: 3
+  delay: 25
+  until: benchmark_go_docker_pull.rc == 0
+  tags: [db_bench]
+
 # Laptop → remote TCP ports on VM
 - name: DB benchmark env — controller reaches stack over the network
   ansible.builtin.set_fact:
@@ -112,7 +125,7 @@
   when: benchmark_opt_sqlite_chown | default(false)
   tags: [db_bench]
 
-- name: Run database-level benchmark for each storage type (native go)
+- name: Run DB benchmark per storage (native go; skipped when benchmark_go_via_docker is true)
   ansible.builtin.command:
     cmd: >-
       go run ./cmd/benchmark/main.go
@@ -139,7 +152,7 @@
   when: not (benchmark_go_via_docker | default(false) | bool)
   tags: [db_bench]
 
-- name: Run database-level benchmark for each storage type (Docker golang, host network)
+- name: Run DB benchmark per storage (Docker golang image; skipped when benchmark_go_via_docker is false)
   ansible.builtin.command:
     cmd: >-
       docker run --rm --network host
@@ -147,7 +160,7 @@
       -v {{ benchmark_project_root }}:/workspace
       -v {{ benchmark_results_root }}:/bench_results
       -w /workspace/pb_backend
-      golang:1.23-bookworm
+      {{ benchmark_go_docker_image }}
       go run ./cmd/benchmark/main.go
       -storage={{ item }}
       -output=/bench_results/benchmarks/{{ item }}_benchmark_{{ ansible_date_time.epoch }}.json

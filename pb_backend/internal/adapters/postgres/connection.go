@@ -19,11 +19,10 @@ func NewPostgresConnection(host, port, user, password, dbname string) (*sql.DB, 
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Set connection pool settings for optimal performance
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-	db.SetConnMaxIdleTime(1 * time.Minute)
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(10 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -40,7 +39,6 @@ func NewPostgresConnection(host, port, user, password, dbname string) (*sql.DB, 
 // InitializeSchema creates the pixel_history table with optimized indexes
 func InitializeSchema(db *sql.DB) error {
 	schema := `
-	-- Append-only table: EVERY pixel change is stored, no data loss
 	CREATE TABLE IF NOT EXISTS pixel_history (
 		id BIGSERIAL PRIMARY KEY,
 		x INTEGER NOT NULL,
@@ -49,18 +47,15 @@ func InitializeSchema(db *sql.DB) error {
 		created_at TIMESTAMP DEFAULT NOW() NOT NULL
 	);
 
-	-- Optimized indexes for specific operations:
-	-- 1. Fast latest pixel lookup per coordinate (GetCanvas, GetPixel)
+	-- GetCanvas: DISTINCT ON (x, y) ORDER BY x, y, created_at DESC
 	CREATE INDEX IF NOT EXISTS idx_pixel_latest_lookup ON pixel_history(x, y, created_at DESC);
 
-	-- 2. Fast coordinate-based queries
-	CREATE INDEX IF NOT EXISTS idx_pixel_coords ON pixel_history(x, y);
-
-	-- 3. Fast history counting per coordinate (LoadHeatMap)
+	-- LoadHeatMap: GROUP BY x, y COUNT(*)
 	CREATE INDEX IF NOT EXISTS idx_pixel_count ON pixel_history(x, y);
 
-	-- 4. Fast timestamp-based queries (if needed for analytics)
-	CREATE INDEX IF NOT EXISTS idx_pixel_created_at ON pixel_history(created_at DESC);
+	-- Drop redundant indexes that were never used (0 scans in pg_stat_user_indexes)
+	DROP INDEX IF EXISTS idx_pixel_coords;
+	DROP INDEX IF EXISTS idx_pixel_created_at;
 	`
 
 	_, err := db.Exec(schema)

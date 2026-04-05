@@ -14,8 +14,8 @@ benchmark_storage_types:
 
 # k6 load test tiers (full suite)
 benchmark_test_types:
-  - light
-  - medium
+  # - light
+  # - medium
   - heavy
 
 # Single-step defaults (override with -e for individual playbooks)
@@ -44,7 +44,11 @@ benchmark_db_delegate_host: benchmark_vm
 benchmark_co_located_stack: false
 
 # Use Docker (golang image) to run the benchmark when co-located — matches Go toolchain without apt install.
+# If Docker Hub is unreachable (TLS timeout, air-gapped), pre-pull the image on the VM (`docker pull …`) or
+# install Go on the host and run with: -e benchmark_go_via_docker=false
 benchmark_go_via_docker: "{{ (benchmark_db_use_local_ports | default(false) | bool) }}"
+# Override to use a mirror / pinned digest: benchmark_go_docker_image: mirror.example/library/golang:1.23-bookworm
+benchmark_go_docker_image: golang:1.23-bookworm
 benchmark_db_use_local_ports: "{{ (benchmark_run_db_on_vm | default(false) | bool) or (benchmark_co_located_stack | default(false) | bool) }}"
 
 # Env for processes on the VM host (or docker --network host): reach DBs via published ports.

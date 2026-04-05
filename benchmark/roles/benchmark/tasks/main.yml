@@ -42,7 +42,6 @@
     benchmark_results_root: "{{ hostvars[benchmark_db_delegate_host]['benchmark_results_root'] }}"
     benchmark_opt_sqlite_chown: "{{ hostvars[benchmark_db_delegate_host]['benchmark_opt_sqlite_chown'] | default(false) }}"
     benchmark_co_located_stack: "{{ hostvars[benchmark_db_delegate_host]['benchmark_co_located_stack'] | default(true) }}"
-    benchmark_run_db_on_vm: false
     benchmark_remote_host: ""
     benchmark_db_use_local_ports: true
     benchmark_go_via_docker: true
