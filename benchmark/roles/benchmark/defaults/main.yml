@@ -26,7 +26,23 @@ benchmark_test_type: light
 benchmark_canvas_height: 250
 benchmark_canvas_width: 500
 benchmark_concurrent_writers: 10
-benchmark_history_multiplier: 1
+benchmark_history_rounds: 3
+benchmark_distribution: zipfian          # "uniform" or "zipfian" (hotspot)
+benchmark_warmup_sec: 5                  # seconds of warmup to discard (0 = off)
+benchmark_target_rates: "100,500,1000,2000"  # sustained throughput levels (ops/s)
+benchmark_sustained_duration_sec: 30     # seconds per rate level
+benchmark_ruw_duration_sec: 60           # read-under-write duration
+benchmark_ruw_readers: 2                 # concurrent readers during read-under-write
+benchmark_metrics_port: 9091             # Prometheus /metrics port (0 to disable)
+
+# Co-located execution (change A)
+# For the most accurate storage-layer measurements the Go benchmark binary
+# should run on the SAME machine as the database containers.  Two options:
+#   1. Run the play against the VM:  -e target_hosts=benchmark_vm
+#      (benchmark_remote_host stays empty; stack is localhost *on the VM*)
+#   2. Run the play on the host but set benchmark_remote_host=<VM-IP>.
+#      This works but adds network RTT to every DB call, which inflates
+#      latency equally for all backends and hides their true differences.
 
 # Results layout (all under benchmark_project_root/results/)
 benchmark_results_root: "{{ benchmark_project_root }}/results"

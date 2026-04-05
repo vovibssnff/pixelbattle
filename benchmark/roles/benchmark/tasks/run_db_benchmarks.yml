@@ -50,7 +50,14 @@
       -height={{ benchmark_canvas_height }}
       -width={{ benchmark_canvas_width }}
       -writers={{ benchmark_concurrent_writers }}
-      -history={{ benchmark_history_multiplier }}
+      -history={{ benchmark_history_rounds }}
+      -distribution={{ benchmark_distribution }}
+      -warmup={{ benchmark_warmup_sec }}
+      -target-rates={{ benchmark_target_rates }}
+      -sustained-duration={{ benchmark_sustained_duration_sec }}
+      -ruw-duration={{ benchmark_ruw_duration_sec }}
+      -ruw-readers={{ benchmark_ruw_readers }}
+      -metrics-port={{ benchmark_metrics_port }}
     chdir: "{{ benchmark_project_root }}/pb_backend"
   environment: "{{ benchmark_db_bench_environment }}"
   register: benchmark_db_runs
@@ -77,7 +84,12 @@
       Storage Types: {{ benchmark_storage_types | join(', ') }}
       Canvas Size: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}
       Concurrent Writers: {{ benchmark_concurrent_writers }}
-      History Multiplier: {{ benchmark_history_multiplier }}
+      History Rounds: {{ benchmark_history_rounds }}
+      Distribution: {{ benchmark_distribution }}
+      Warmup: {{ benchmark_warmup_sec }}s
+      Target Rates: {{ benchmark_target_rates }}
+      Sustained Duration: {{ benchmark_sustained_duration_sec }}s
+      RUW Duration: {{ benchmark_ruw_duration_sec }}s / {{ benchmark_ruw_readers }} readers
 
       Results:
       {% for result in benchmark_db_runs.results %}

@@ -76,6 +76,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_tsdb:/prometheus

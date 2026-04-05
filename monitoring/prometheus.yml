@@ -12,3 +12,13 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # Benchmark binary exposes :9091/metrics while running.
+  # On Linux, host.docker.internal resolves to the Docker host via
+  # extra_hosts in docker-compose.yml; the benchmark binary runs there.
+  - job_name: 'benchmark'
+    static_configs:
+      - targets: ['host.docker.internal:9091']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 3s

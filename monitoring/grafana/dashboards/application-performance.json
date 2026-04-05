@@ -6,7 +6,7 @@
   "id": null,
   "links": [],
   "liveNow": false,
-  "description": "Live traffic from Prometheus. Offline DB benchmark tables (throughput, P50/P95/P99 per scenario) are produced by `benchmark/reporting/generate-report.py` and `plot-graphs.py` from `results/benchmarks/*.json`—different workload than steady-state HTTP, but latency percentiles here mirror that style (P50/P95/P99 from histograms).",
+  "description": "Live traffic from Prometheus. Offline DB benchmark tables (throughput, P50/P95/P99 per scenario) are produced by `benchmark/reporting/generate-report.py` and `plot-graphs.py` from `results/benchmarks/*.json`—different workload than steady-state HTTP, but latency percentiles here mirror that style (P50/P95/P99 from histograms).\n\n**If charts look empty:** the Go client only creates `requests_per_second` and HTTP histogram series after the first request to each path/method, and WS histograms after the first WebSocket activity—idle backends have no those series, so `rate()` graphs show no data until you generate traffic (curl the API, open the app, or run k6). Gauges like `current_users` still appear (often 0).",
   "panels": [
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -32,11 +32,11 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "sum(rate(requests_per_second[5m]))",
+          "expr": "sum(rate(requests_per_second[5m])) or vector(0)",
           "refId": "A"
         }
       ],
-      "description": "Total HTTP request rate: `sum(rate(requests_per_second[5m]))`. The metric is a counter (name is historical); `rate()` gives req/s.",
+      "description": "Total HTTP request rate: `sum(rate(requests_per_second[5m])) or vector(0)` so idle stacks show 0 instead of “no data”. The metric is a counter (name is historical); series appear after the first HTTP hit per path/method.",
       "title": "Total HTTP RPS",
       "type": "stat"
     },
@@ -64,11 +64,11 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "sum(rate(websocket_message_duration_seconds_count[5m]))",
+          "expr": "sum(rate(websocket_message_duration_seconds_count[5m])) or vector(0)",
           "refId": "A"
         }
       ],
-      "description": "WebSocket event throughput from the `websocket_message_duration_seconds` histogram (`_count` series).",
+      "description": "WebSocket event throughput; `or vector(0)` when no WS traffic yet. Histogram `_count` series appear after the first WS event per label.",
       "title": "WebSocket events / sec (all types)",
       "type": "stat"
     },
