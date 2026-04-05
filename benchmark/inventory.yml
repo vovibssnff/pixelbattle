@@ -21,6 +21,7 @@ all:
           ansible_ssh_pass: vovi
           ansible_become_password: vovi
           ansible_python_interpreter: /usr/bin/python3
+          benchmark_co_located_stack: true
           benchmark_project_root: /opt/pixelbattle
           # Stack lives under /opt (root); write results under the SSH user home.
           benchmark_results_root: /home/vovi/pixelbattle-benchmark-results

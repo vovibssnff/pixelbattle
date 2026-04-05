@@ -1,4 +1,11 @@
 ---
+- name: Remember controller results root (for fetching DB bench artifacts from VM)
+  ansible.builtin.set_fact:
+    benchmark_controller_results_root: "{{ benchmark_results_root }}"
+  when:
+    - benchmark_run_db_on_vm | default(false) | bool
+    - inventory_hostname not in [benchmark_db_delegate_host]
+
 - name: Display benchmark suite parameters
   ansible.builtin.debug:
     msg:
@@ -12,6 +19,9 @@
       - "Test types: {{ benchmark_test_types | join(', ') }}"
       - "Canvas: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}"
       - "Concurrent writers: {{ benchmark_concurrent_writers }}"
+      - "Run DB bench on VM (delegate): {{ benchmark_run_db_on_vm | default(false) }}"
+      - "DB use local ports env: {{ benchmark_db_use_local_ports | default(false) }}"
+      - "Go via Docker: {{ benchmark_go_via_docker | default(false) }}"
 
 - name: Setup databases
   ansible.builtin.include_tasks: setup_database.yml
@@ -22,9 +32,54 @@
     label: "setup {{ item }}"
   tags: [setup]
 
-- name: Run database-level benchmarks
-  ansible.builtin.include_tasks: run_db_benchmarks.yml
+- name: Run database-level benchmarks on VM (co-located with Docker stack)
+  ansible.builtin.include_tasks:
+    file: run_db_benchmarks.yml
+    apply:
+      delegate_to: "{{ benchmark_db_delegate_host }}"
+  vars:
+    benchmark_project_root: "{{ hostvars[benchmark_db_delegate_host]['benchmark_project_root'] }}"
+    benchmark_results_root: "{{ hostvars[benchmark_db_delegate_host]['benchmark_results_root'] }}"
+    benchmark_opt_sqlite_chown: "{{ hostvars[benchmark_db_delegate_host]['benchmark_opt_sqlite_chown'] | default(false) }}"
+    benchmark_co_located_stack: "{{ hostvars[benchmark_db_delegate_host]['benchmark_co_located_stack'] | default(true) }}"
+    benchmark_run_db_on_vm: false
+    benchmark_remote_host: ""
+    benchmark_db_use_local_ports: true
+    benchmark_go_via_docker: true
+  when: benchmark_run_db_on_vm | default(false) | bool
   tags: [db_bench]
+
+- name: Run database-level benchmarks on controller
+  ansible.builtin.include_tasks: run_db_benchmarks.yml
+  when: not (benchmark_run_db_on_vm | default(false) | bool)
+  tags: [db_bench]
+
+- name: Fetch DB benchmark JSON files from VM to controller
+  when: benchmark_run_db_on_vm | default(false) | bool
+  tags: [db_bench]
+  block:
+    - name: Find benchmark JSON on VM
+      ansible.builtin.find:
+        paths: "{{ hostvars[benchmark_db_delegate_host].benchmark_results_root }}/benchmarks"
+        patterns: "*.json"
+      register: benchmark_vm_db_json
+      delegate_to: "{{ benchmark_db_delegate_host }}"
+
+    - name: Ensure local benchmarks directory exists
+      ansible.builtin.file:
+        path: "{{ benchmark_controller_results_root }}/benchmarks"
+        state: directory
+        mode: "0755"
+
+    - name: Pull each JSON from VM
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_controller_results_root }}/benchmarks/{{ item.path | basename }}"
+        flat: true
+      loop: "{{ benchmark_vm_db_json.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      delegate_to: "{{ benchmark_db_delegate_host }}"
 
 - name: Build storage/test-type combinations for k6
   ansible.builtin.set_fact:

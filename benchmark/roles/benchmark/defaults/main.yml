@@ -35,14 +35,36 @@ benchmark_ruw_duration_sec: 60           # read-under-write duration
 benchmark_ruw_readers: 2                 # concurrent readers during read-under-write
 benchmark_metrics_port: 9091             # Prometheus /metrics port (0 to disable)
 
-# Co-located execution (change A)
-# For the most accurate storage-layer measurements the Go benchmark binary
-# should run on the SAME machine as the database containers.  Two options:
-#   1. Run the play against the VM:  -e target_hosts=benchmark_vm
-#      (benchmark_remote_host stays empty; stack is localhost *on the VM*)
-#   2. Run the play on the host but set benchmark_remote_host=<VM-IP>.
-#      This works but adds network RTT to every DB call, which inflates
-#      latency equally for all backends and hides their true differences.
+# When benchmark_remote_host is set, the DB benchmark runs on benchmark_vm (SSH) so the
+# binary is co-located with Docker; results are fetched back to the controller.
+benchmark_run_db_on_vm: "{{ (benchmark_remote_host | default('') | trim | length) > 0 }}"
+benchmark_db_delegate_host: benchmark_vm
+
+# True on benchmark_vm inventory: use 127.0.0.1 for Redis/Postgres/Mongo (published ports).
+benchmark_co_located_stack: false
+
+# Use Docker (golang image) to run the benchmark when co-located — matches Go toolchain without apt install.
+benchmark_go_via_docker: "{{ (benchmark_db_use_local_ports | default(false) | bool) }}"
+benchmark_db_use_local_ports: "{{ (benchmark_run_db_on_vm | default(false) | bool) or (benchmark_co_located_stack | default(false) | bool) }}"
+
+# Env for processes on the VM host (or docker --network host): reach DBs via published ports.
+benchmark_db_host_local_env:
+  REDIS_ADDR: "127.0.0.1:6379"
+  REDIS_PSW: "redis"
+  REDIS_HISTORY: "0"
+  REDIS_TIMER: "1"
+  REDIS_USERS: "2"
+  REDIS_BANNED: "3"
+  POSTGRES_HOST: "127.0.0.1"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "pixelbattle"
+  POSTGRES_PASSWORD: "pixelbattle"
+  POSTGRES_DB: "pixelbattle"
+  MONGO_URI: "mongodb://root:root@127.0.0.1:27017/?directConnection=true"
+
+# Co-located execution (see also benchmark_run_db_on_vm)
+#   Laptop + -e benchmark_remote_host=IP → DB bench delegates to benchmark_vm (this file).
+#   Or run the whole play on the VM: -e target_hosts=benchmark_vm (unset benchmark_remote_host).
 
 # Results layout (all under benchmark_project_root/results/)
 benchmark_results_root: "{{ benchmark_project_root }}/results"
