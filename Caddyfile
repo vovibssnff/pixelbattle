@@ -41,6 +41,9 @@
 	# Vue SPA + static assets
 	handle {
 		root * /srv
+		# SPA entrypoints: avoid stale HTML that references old hashed bundles (named volume + deploy)
+		@spa_html path / /index.html /main /login /register /faculty
+		header @spa_html Cache-Control "no-cache, no-store, must-revalidate"
 		try_files {path} /index.html
 		file_server
 	}

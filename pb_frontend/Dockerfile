@@ -8,4 +8,5 @@ RUN npm run build
 
 FROM alpine:3.19
 COPY --from=build /app/dist /static
-CMD ["sh", "-c", "cp -r /static/. /srv/ && sleep infinity"]
+# caddy_html is a named volume: merge-only cp leaves old hashed JS/CSS. Wipe /srv then copy so deploys always match the image.
+CMD ["sh", "-c", "rm -rf /srv/* && cp -a /static/. /srv/ && exec sleep infinity"]
