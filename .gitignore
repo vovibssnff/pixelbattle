@@ -1,13 +1,97 @@
- .env
+# --- Secrets & local env ---
+.env
+.env.*
+!.env.example
+*.local
+pb_backend/app.env
+
+# --- IDE & editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Cursor (local workspace / worktrees) ---
+.cursor/
+
+# --- Go (pb_backend) ---
+pb_backend/bin/
+pb_backend/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.coverprofile
+coverage.html
+coverage.out
+
+# --- Node / Vue (pb_frontend) ---
+pb_frontend/node_modules/
+pb_frontend/npm-debug.log*
+pb_frontend/yarn-debug.log*
+pb_frontend/yarn-error.log*
+pb_frontend/.pnpm-debug.log*
+
+# Build output (enable if you always build before deploy)
+# pb_frontend/dist/
+
+# --- TLS (local dev; do not commit keys) ---
 pb_frontend/nginx/cert/
-node_modules/
-package.json
-pb_backend/.idea/
-pb_frontend/.gitignore
-pb_frontend/nginx/cert
+
+# --- Docker & runtime data ---
 redis/dump.rdb
 redis/redis_data/
+postgres/data/
+mongodb/data/
+mongodb/logs/
+
+# --- Monitoring (Prometheus / Grafana TSDB & local data) ---
+monitoring/prometheus_data/
+monitoring/grafana/data/
+
+# --- Benchmarks & Ansible ---
+results/
+*.retry
+
+# --- Python (benchmark/reporting, tooling) ---
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+.envrc
+
+# --- LaTeX / docs (all doc trees: template_vkr, tech_spec, practice_report, …) ---
+*.aux
+*.bbl
+*.blg
+*.bcf
+*.fdb_latexmk
+*.fls
+*.log
+*.run.xml
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.lol
+*.nav
+*.snm
+*.vrb
+*.bak
+*.pdf
+_minted*/
+build/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Misc local paths ---
 root/
-.gitignore
-.vscode
-package-lock.json
