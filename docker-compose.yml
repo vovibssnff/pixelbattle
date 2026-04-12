@@ -59,7 +59,8 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    user: "nobody"
+    # Bind-mount must be writable by UID 65534 (nobody). Host: scripts/setup/fix-monitoring-volume-perms.sh
+    user: "65534:65534"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus_data:/prometheus
@@ -87,7 +88,8 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_AUTH_DISABLE_LOGIN_FORM=false
       - GF_USERS_ALLOW_SIGN_UP=false
-    user: "472"
+    # Bind-mount must be owned by UID 472. Host: scripts/setup/fix-monitoring-volume-perms.sh
+    user: "472:472"
     volumes:
       - ./monitoring/grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
