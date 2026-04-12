@@ -1,4 +1,7 @@
-version: '3'
+volumes:
+  prometheus_tsdb:
+  grafana_lib:
+  caddy_html:
 
 services:
   redis:
@@ -9,70 +12,96 @@ services:
       - ./redis/redis_data:/data
       - ./redis/redis.conf:/etc/redis/redis.conf
     environment:
-      - REDIS_PASSWORD=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
 
   mongodb:
     image: mongo:latest
     restart: unless-stopped
-    ports:
-      - "27017:27017"
     volumes:
       - ./mongodb/data:/data/db
       - ./mongodb/mongod.conf:/etc/mongod.conf
       - ./mongodb/logs:/var/log/mongodb
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=root
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-changeme}
     command: --bind_ip_all
-
-  migrator:
-    build:
-      context: ./pb_backend
-      dockerfile: Dockerfile
-    command: ["go", "run", "./cmd/migrator/main.go"]
-    env_file:
-      - ./pb_backend/app.env
-    depends_on:
-      - redis
-      - mongodb
-    restart: "no"
 
   backend:
     build: ./pb_backend
     restart: unless-stopped
     env_file:
-      - ./pb_backend/app.env
+      - ./pb_backend/app.env.docker
     depends_on:
       - redis
       - mongodb
-      - migrator
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_tsdb:/prometheus
     command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
       - "--log.level=info"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - backend
 
   grafana:
-    image: grafana/grafana-enterprise
+    image: grafana/grafana-oss:latest
     restart: unless-stopped
     environment:
       - GF_LOG_LEVEL=error
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://localhost/panel/}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - grafana_lib:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
-  nginx:
+  frontend:
     build: ./pb_frontend
+    restart: unless-stopped
+    volumes:
+      - caddy_html:/srv
+    healthcheck:
+      test: ["CMD", "test", "-f", "/srv/index.html"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "443:443"
+      - "80:80"
     volumes:
-      - ./pb_frontend/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./pb_frontend/nginx/cert/megapixelbattle.crt:/etc/nginx/ssl/megapixelbattle.crt
-      - ./pb_frontend/nginx/cert/megapixelbattle.key:/etc/nginx/ssl/megapixelbattle.key
-      - ./pb_frontend/dist:/usr/share/nginx/html
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_html:/srv:ro
     depends_on:
-      - backend
-      - redis
-      - grafana
+      backend:
+        condition: service_started
+      grafana:
+        condition: service_started
+      prometheus:
+        condition: service_started
+      frontend:
+        condition: service_healthy

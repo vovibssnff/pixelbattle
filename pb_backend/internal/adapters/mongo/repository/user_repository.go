@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"pb_backend/internal/core/domain"
 
 	"github.com/sirupsen/logrus"
@@ -24,20 +25,37 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 // RegisterUser registers a new user in MongoDB
 func (r *UserRepository) RegisterUser(ctx context.Context, usr domain.User) error {
 	mongoUser := domain.User{
-		ID:          usr.ID,
-		FirstName:   usr.FirstName,
-		LastName:    usr.LastName,
-		AccessToken: usr.AccessToken,
-		Faculty:     usr.Faculty,
-		Stats:       domain.UserStats{TotalPixelsPlaced: 0, ActivePixels: 0},
+		ID:           usr.ID,
+		FirstName:    usr.FirstName,
+		LastName:     usr.LastName,
+		PasswordHash: usr.PasswordHash,
+		AccessToken:  usr.AccessToken,
+		Faculty:      usr.Faculty,
+		Stats:        domain.UserStats{TotalPixelsPlaced: 0, ActivePixels: 0},
 	}
 
 	_, err := r.users.InsertOne(ctx, mongoUser)
 	return err
 }
 
+// UpdateUser updates an existing user's profile fields.
+func (r *UserRepository) UpdateUser(ctx context.Context, usr domain.User) error {
+	set := bson.M{
+		"first_name":   usr.FirstName,
+		"last_name":    usr.LastName,
+		"access_token": usr.AccessToken,
+		"faculty":      usr.Faculty,
+	}
+	if usr.PasswordHash != "" {
+		set["password_hash"] = usr.PasswordHash
+	}
+	update := bson.M{"$set": set}
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": usr.ID}, update)
+	return err
+}
+
 // UserExists checks if a user exists in MongoDB
-func (r *UserRepository) UserExists(ctx context.Context, usrID int) bool {
+func (r *UserRepository) UserExists(ctx context.Context, usrID string) bool {
 	count, err := r.users.CountDocuments(ctx, bson.M{"_id": usrID})
 	if err != nil {
 		logrus.Error(err)
@@ -46,26 +64,29 @@ func (r *UserRepository) UserExists(ctx context.Context, usrID int) bool {
 	return count > 0
 }
 
-// GetUsr retrieves a user from MongoDB
-func (r *UserRepository) GetUsr(ctx context.Context, usrID int) domain.User {
-	var mongoUser domain.User
-	err := r.users.FindOne(ctx, bson.M{"_id": usrID}).Decode(&mongoUser)
+// GetUsr retrieves a user from MongoDB (password hash cleared).
+func (r *UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
+	u, err := r.GetUserWithHash(ctx, usrID)
 	if err != nil {
 		logrus.Error(err)
 		return domain.User{}
 	}
+	u.PasswordHash = ""
+	return u
+}
 
-	return domain.User{
-		ID:          mongoUser.ID,
-		FirstName:   mongoUser.FirstName,
-		LastName:    mongoUser.LastName,
-		AccessToken: mongoUser.AccessToken,
-		Faculty:     mongoUser.Faculty,
+// GetUserWithHash returns the full user document including password_hash (for login).
+func (r *UserRepository) GetUserWithHash(ctx context.Context, usrID string) (domain.User, error) {
+	var mongoUser domain.User
+	err := r.users.FindOne(ctx, bson.M{"_id": usrID}).Decode(&mongoUser)
+	if err != nil {
+		return domain.User{}, err
 	}
+	return mongoUser, nil
 }
 
 // DelUsr deletes a user from MongoDB
-func (r *UserRepository) DelUsr(ctx context.Context, usrID int) {
+func (r *UserRepository) DelUsr(ctx context.Context, usrID string) {
 	_, err := r.users.DeleteOne(ctx, bson.M{"_id": usrID})
 	if err != nil {
 		logrus.Error(err)
@@ -73,9 +94,34 @@ func (r *UserRepository) DelUsr(ctx context.Context, usrID int) {
 }
 
 // CheckBanned checks if a user is banned
-func (r *UserRepository) CheckBanned(ctx context.Context, userid int) bool {
+func (r *UserRepository) CheckBanned(ctx context.Context, userid string) bool {
 	count, _ := r.banned.CountDocuments(ctx, bson.M{"_id": userid})
 	return count > 0
+}
+
+// BanUser adds a user id to the ban list.
+func (r *UserRepository) BanUser(ctx context.Context, userid string) error {
+	_, err := r.banned.InsertOne(ctx, bson.M{"_id": userid})
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+
+// UnbanUser removes a user id from the ban list.
+func (r *UserRepository) UnbanUser(ctx context.Context, userid string) error {
+	res, err := r.banned.DeleteOne(ctx, bson.M{"_id": userid})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return errors.New("not banned")
+	}
+	return nil
 }
 
 // UpdateUserStats updates the user's pixel statistics
@@ -86,7 +132,7 @@ func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, a
 			"stats.active_pixels":       activeDiff,
 		},
 	}
-	_, err := r.users.UpdateOne(ctx, bson.M{"_id": usr}, update)
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": usr.ID}, update)
 	return err
 }
 
@@ -94,7 +140,6 @@ func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, a
 func (r *UserRepository) GetTopUsers(ctx context.Context, limit int) ([]domain.BroadcastStats, error) {
 	var topUsers []domain.BroadcastStats
 
-	// Aggregate to get the top users based on total pixels placed
 	pipeline := mongo.Pipeline{
 		bson.D{
 			{Key: "$project", Value: bson.M{
@@ -133,7 +178,6 @@ func (r *UserRepository) GetTopUsers(ctx context.Context, limit int) ([]domain.B
 
 	return topUsers, nil
 }
-	
 
 // IsEmpty checks if the users collection is empty
 func (r *UserRepository) IsEmpty(ctx context.Context) (bool, error) {

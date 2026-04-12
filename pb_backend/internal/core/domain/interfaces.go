@@ -1,16 +1,5 @@
 package domain
 
-// type User struct {
-// 	ID           int    `json: "id"`
-// 	FirstName    string `json: "name"`
-// 	LastName     string `json: "surname"`
-// 	AccessToken  string `json: "access_token"`
-// 	RefreshToken string `json: "refresh_token"`
-// 	IDToken      string `json: "id_token"`
-// 	DeviceID     string `json: "device_id"`
-// 	Faculty      string `json: "faculty"`
-// }
-
 import (
 	"context"
 	"net/http"
@@ -20,20 +9,29 @@ import (
 
 type UserRepository interface {
 	RegisterUser(ctx context.Context, usr User) error
-	UserExists(ctx context.Context, usrID int) bool
-	GetUsr(ctx context.Context, usrID int) User
-	DelUsr(ctx context.Context, usrID int)
-	CheckBanned(ctx context.Context, userid int) bool
+	UpdateUser(ctx context.Context, usr User) error
+	UserExists(ctx context.Context, usrID string) bool
+	GetUsr(ctx context.Context, usrID string) User
+	GetUserWithHash(ctx context.Context, usrID string) (User, error)
+	DelUsr(ctx context.Context, usrID string)
+	CheckBanned(ctx context.Context, userid string) bool
+	BanUser(ctx context.Context, userid string) error
+	UnbanUser(ctx context.Context, userid string) error
 }
 
 type UserService interface {
-	CreateUser(id int, firstName, lastName, accessToken string) *User
+	CreateUser(id string, firstName, lastName, accessToken string) *User
 	RegisterUser(ctx context.Context, usr User) error
-	UserExists(ctx context.Context, usrID int) bool
-	GetUser(ctx context.Context, usrID int) User
-	DeleteUser(ctx context.Context, usrID int)
-	IsUserBanned(ctx context.Context, userid int) bool
-	IsAdmin(id int) bool
+	RegisterWithPassword(ctx context.Context, username, password, faculty string) (*User, error)
+	LoginWithPassword(ctx context.Context, username, password string) (*User, error)
+	UpdateUser(ctx context.Context, usr User) error
+	UserExists(ctx context.Context, usrID string) bool
+	GetUser(ctx context.Context, usrID string) User
+	DeleteUser(ctx context.Context, usrID string)
+	IsUserBanned(ctx context.Context, userid string) bool
+	IsAdmin(id string) bool
+	BanUser(ctx context.Context, userid string) error
+	UnbanUser(ctx context.Context, userid string) error
 }
 
 type CanvasRepository interface {
@@ -53,13 +51,13 @@ type CanvasService interface {
 }
 
 type TimerRepository interface {
-	SetTimer(ctx context.Context, userid int, delay int) error
-	CheckTime(ctx context.Context, userid int) (int64, error)
+	SetTimer(ctx context.Context, userid string, delay int) error
+	CheckTime(ctx context.Context, userid string) (int64, error)
 }
 
 type TimerService interface {
-	SetTimer(ctx context.Context, userid int) error
-	CheckTime(ctx context.Context, userid int) (int64, error)
+	SetTimer(ctx context.Context, userid string) error
+	CheckTime(ctx context.Context, userid string) (int64, error)
 }
 
 type SessionService interface {
@@ -67,9 +65,9 @@ type SessionService interface {
 	SaveSession(session *sessions.Session, w http.ResponseWriter, r *http.Request) error
 	SetAuthenticated(session *sessions.Session, value string)
 	SetFaculty(session *sessions.Session, value string)
-	SetUserID(session *sessions.Session, id int)
+	SetUserID(session *sessions.Session, id string)
 	IsAuthenticated(session *sessions.Session) bool
 	IsInProcess(session *sessions.Session) bool
-	GetUserID(session *sessions.Session) int
+	GetUserID(session *sessions.Session) string
 	GetFaculty(session *sessions.Session) string
 }

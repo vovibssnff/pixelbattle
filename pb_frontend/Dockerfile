@@ -1,12 +1,11 @@
-FROM node:alpine as build-stage
+# Build Vue app; runtime copies artifacts into shared volume for Caddy (see docker-compose).
+FROM node:alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:stable-alpine as production-stage
-COPY --from=build-stage /app/dist /app
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
-EXPOSE 443
-CMD ["nginx", "-g", "daemon off;"]
+FROM alpine:3.19
+COPY --from=build /app/dist /static
+CMD ["sh", "-c", "cp -r /static/. /srv/ && sleep infinity"]

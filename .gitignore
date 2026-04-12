@@ -41,7 +41,11 @@ pb_frontend/.pnpm-debug.log*
 # pb_frontend/dist/
 
 # --- TLS (local dev; do not commit keys) ---
+certs/
 pb_frontend/nginx/cert/
+
+# Root env for docker compose (copy from .env.example)
+.env
 
 # --- Docker & runtime data ---
 redis/dump.rdb

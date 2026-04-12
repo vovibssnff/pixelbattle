@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
-	"strconv"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -20,8 +19,12 @@ func NewUserRepository(userDb, bannedDb *redis.Client) *UserRepository {
 	return &UserRepository{userDb: userDb, bannedDb: bannedDb}
 }
 
+func userKey(usrID string) string {
+	return fmt.Sprintf("usr:%s", usrID)
+}
+
 func (r UserRepository) RegisterUser(ctx context.Context, usr domain.User) error {
-	key := fmt.Sprintf("usr:%d", usr.ID)
+	key := userKey(usr.ID)
 	serializedUser, err := utils.SerializeUser(&usr)
 	if err != nil {
 		return err
@@ -29,8 +32,8 @@ func (r UserRepository) RegisterUser(ctx context.Context, usr domain.User) error
 	return r.userDb.Set(ctx, key, serializedUser, 0).Err()
 }
 
-func (r UserRepository) UserExists(ctx context.Context, usrID int) bool {
-	key := fmt.Sprintf("usr:%d", usrID)
+func (r UserRepository) UserExists(ctx context.Context, usrID string) bool {
+	key := userKey(usrID)
 	res, err := r.userDb.Exists(ctx, key).Result()
 	if err != nil {
 		logrus.Error(err)
@@ -38,8 +41,8 @@ func (r UserRepository) UserExists(ctx context.Context, usrID int) bool {
 	return res == 1
 }
 
-func (r UserRepository) GetUsr(ctx context.Context, usrID int) domain.User {
-	key := fmt.Sprintf("usr:%d", usrID)
+func (r UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
+	key := userKey(usrID)
 	jsonUsr, err := r.userDb.Get(ctx, key).Result()
 	if err != nil {
 		logrus.Error(err)
@@ -49,16 +52,16 @@ func (r UserRepository) GetUsr(ctx context.Context, usrID int) domain.User {
 	return usr
 }
 
-func (r UserRepository) DelUsr(ctx context.Context, usrID int) {
-	key := fmt.Sprintf("usr:%d", usrID)
+func (r UserRepository) DelUsr(ctx context.Context, usrID string) {
+	key := userKey(usrID)
 	_, err := r.userDb.Del(ctx, key).Result()
 	if err != nil {
 		logrus.Error(err)
 	}
 }
 
-func (r UserRepository) CheckBanned(ctx context.Context, userid int) bool {
-	res, _ := r.bannedDb.Exists(ctx, strconv.Itoa(userid)).Result()
+func (r UserRepository) CheckBanned(ctx context.Context, userid string) bool {
+	res, _ := r.bannedDb.Exists(ctx, userid).Result()
 	return res != 0
 }
 

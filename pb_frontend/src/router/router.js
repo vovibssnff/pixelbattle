@@ -1,4 +1,5 @@
 import LoginPage from "@/pages/LoginPage.vue";
+import RegisterPage from "@/pages/RegisterPage.vue";
 import MainPage from "@/pages/MainPage.vue";
 import FacultyPage from "@/pages/FacultyPage.vue"
 import { createRouter, createWebHistory } from "vue-router";
@@ -19,6 +20,11 @@ const routes = [
     path: '/login',
     name: 'login',
     component: LoginPage
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: RegisterPage
   },
   {
     path: '/faculty',

@@ -264,7 +264,8 @@ export default {
     },
     coordsUpdate(ev) {
       try {
-        this.pos = this.glWindow.click({ x: ev.clientX, y: ev.clientY });
+        const p = this.glWindow.fromClientXY(ev.clientX, ev.clientY);
+        this.pos = this.glWindow.click(p);
         this.val_x = this.pos.x;
         this.val_y = this.pos.y;
       } catch {
@@ -325,18 +326,36 @@ export default {
       this.ws = new WebSocket(url);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
+    /** Backend JSON uses x, y, color (Go json tags); tolerate legacy X, Y, Color. */
+    applyRemotePixel(pixel) {
+      const x = pixel.x ?? pixel.X;
+      const y = pixel.y ?? pixel.Y;
+      const c = pixel.color ?? pixel.Color;
+      if (x == null || y == null || !Array.isArray(c) || c.length < 3) {
+        return;
+      }
+      this.place.setPixel(
+        x,
+        y,
+        new Uint8Array([Number(c[0]), Number(c[1]), Number(c[2])]),
+      );
+    },
     handleNewPixel(event) {
-      const pixel = JSON.parse(event.data);
-      
+      let pixel;
+      try {
+        pixel = JSON.parse(event.data);
+      } catch {
+        return;
+      }
       if (!this.loaded) {
         this.savedPixels.push(pixel);
       } else {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        this.applyRemotePixel(pixel);
       }
     },
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        this.applyRemotePixel(pixel);
       }
       this.savedPixels = [];
     },
@@ -362,7 +381,8 @@ export default {
       }
     },
     drawPixel(pos, color) {
-      pos = this.glWindow.click(pos);
+      const canvasXY = this.glWindow.fromClientXY(pos.x, pos.y);
+      pos = this.glWindow.click(canvasXY);
       if (pos) {
         const oldColor = this.glWindow.getColor(pos);
         for (let i = 0; i < oldColor.length; i++) {
@@ -375,7 +395,8 @@ export default {
       return false;
     },
     pickColor(pos) {
-      this.color = this.glWindow.getColor(this.glWindow.click(pos));
+      const canvasXY = this.glWindow.fromClientXY(pos.x, pos.y);
+      this.color = this.glWindow.getColor(this.glWindow.click(canvasXY));
       let hex = "#";
       for (let i = 0; i < this.color.length; i++) {
         let d = this.color[i].toString(16);
@@ -445,7 +466,8 @@ export default {
         this.lastScalingDist = dist;
       } else {
         try {
-          this.pos = this.glWindow.click({ x: ev.touches[0].clientX, y: ev.touches[0].clientY });
+          const tp = this.glWindow.fromClientXY(ev.touches[0].clientX, ev.touches[0].clientY);
+          this.pos = this.glWindow.click(tp);
           this.val_x = this.pos.x;
           this.val_y = this.pos.y;
         } catch {}

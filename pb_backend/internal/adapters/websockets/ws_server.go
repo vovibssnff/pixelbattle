@@ -12,14 +12,17 @@ import (
 )
 
 type WsServer struct {
-	clients        map[*Client]bool
-	broadcast      chan *domain.Pixel
-	register       chan *Client
-	unregister     chan *Client
-	sessionService domain.SessionService
-	timerService   domain.TimerService
-	userService    domain.UserService
-	canvasService  domain.CanvasService
+	clients          map[*Client]bool
+	broadcast        chan *domain.Pixel
+	register         chan *Client
+	unregister       chan *Client
+	sessionService   domain.SessionService
+	timerService     domain.TimerService
+	userService      domain.UserService
+	canvasService    domain.CanvasService
+	canvasHeight     uint
+	canvasWidth      uint
+	allowAnonymousWS bool
 }
 
 func NewWebSocketServer(
@@ -27,16 +30,21 @@ func NewWebSocketServer(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	canvasService domain.CanvasService,
+	canvasHeight, canvasWidth uint,
+	allowAnonymousWS bool,
 ) *WsServer {
 	return &WsServer{
-		clients:        make(map[*Client]bool),
-		broadcast:      make(chan *domain.Pixel),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		sessionService: sessionService,
-		timerService:   timerService,
-		userService:    userService,
-		canvasService:  canvasService,
+		clients:          make(map[*Client]bool),
+		broadcast:        make(chan *domain.Pixel),
+		register:         make(chan *Client),
+		unregister:       make(chan *Client),
+		sessionService:   sessionService,
+		timerService:     timerService,
+		userService:      userService,
+		canvasService:    canvasService,
+		canvasHeight:     canvasHeight,
+		canvasWidth:      canvasWidth,
+		allowAnonymousWS: allowAnonymousWS,
 	}
 }
 
@@ -80,7 +88,7 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 		// logrus.Error(err)
 		return
 	}
-	pixel.Userid = 0
+	pixel.Userid = ""
 	pixel.Faculty = ""
 	for client := range server.clients {
 		client.send <- pixel
@@ -93,8 +101,17 @@ func StartWebSocketServer(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	router *mux.Router,
+	canvasHeight, canvasWidth int,
+	allowAnonymousWS bool,
 ) {
-	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService)
+	var ch, cw uint
+	if canvasHeight > 0 {
+		ch = uint(canvasHeight)
+	}
+	if canvasWidth > 0 {
+		cw = uint(canvasWidth)
+	}
+	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, ch, cw, allowAnonymousWS)
 	go ws.Run()
 
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

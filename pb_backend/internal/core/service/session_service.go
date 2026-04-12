@@ -1,8 +1,10 @@
 package service
 
 import (
-	"github.com/gorilla/sessions"
 	"net/http"
+	"pb_backend/internal/core/domain"
+
+	"github.com/gorilla/sessions"
 )
 
 type SessionService struct {
@@ -35,8 +37,8 @@ func (s *SessionService) SetFaculty(session *sessions.Session, value string) {
 	session.Values["Faculty"] = value
 }
 
-// SetUserID sets the session's "ID" value.
-func (s *SessionService) SetUserID(session *sessions.Session, id int) {
+// SetUserID sets the session's user id (VK "vk_*" or local username).
+func (s *SessionService) SetUserID(session *sessions.Session, id string) {
 	session.Values["ID"] = id
 }
 
@@ -50,12 +52,19 @@ func (s *SessionService) IsInProcess(session *sessions.Session) bool {
 	return session.Values["Authenticated"] == "in_process"
 }
 
-// GetUserID retrieves the user ID from the session.
-func (s *SessionService) GetUserID(session *sessions.Session) int {
-	if id, ok := session.Values["ID"].(int); ok {
+// GetUserID retrieves the user id from the session.
+// Accepts string ids, or legacy int session values (older VK-only builds).
+func (s *SessionService) GetUserID(session *sessions.Session) string {
+	if id, ok := session.Values["ID"].(string); ok {
 		return id
 	}
-	return 0
+	if n, ok := session.Values["ID"].(int); ok {
+		return domain.VKUserID(n)
+	}
+	if f, ok := session.Values["ID"].(float64); ok {
+		return domain.VKUserID(int(f))
+	}
+	return ""
 }
 
 // GetFaculty retrieves the faculty from the session.

@@ -150,6 +150,20 @@ export default class GLWindow {
         this.gl.uniform2f(this.u_view, w, h);
     }
 
+    /**
+     * Browser client (viewport) coordinates → canvas backing-store pixels
+     * used by click(). Needed because clientX/Y are not relative to the canvas.
+     */
+    fromClientXY(clientX, clientY) {
+        const r = this.cvs.getBoundingClientRect();
+        const sx = this.cvs.width / (r.width || 1);
+        const sy = this.cvs.height / (r.height || 1);
+        return {
+            x: (clientX - r.left) * sx,
+            y: (clientY - r.top) * sy,
+        };
+    }
+
     click(pos) {
         pos.x /= this.cvs.width;
         pos.y /= this.cvs.height;

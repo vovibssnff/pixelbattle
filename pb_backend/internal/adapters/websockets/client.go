@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,16 +17,21 @@ type Client struct {
 	conn         *websocket.Conn
 	server       *WsServer
 	send         chan *domain.Pixel
-	userid       int
+	userid       string
 	faculty      string
 	isAdm        bool
 	timerService domain.TimerService
 	userService  domain.UserService
+	canvasWidth  uint
+	canvasHeight uint
 }
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 const (
@@ -37,11 +44,12 @@ const (
 func NewClient(
 	conn *websocket.Conn,
 	server *WsServer,
-	userid int,
+	userid string,
 	faculty string,
 	isAdm bool,
 	timerService domain.TimerService,
 	userService domain.UserService,
+	canvasWidth, canvasHeight uint,
 ) *Client {
 	return &Client{
 		conn:         conn,
@@ -52,36 +60,102 @@ func NewClient(
 		isAdm:        isAdm,
 		timerService: timerService,
 		userService:  userService,
+		canvasWidth:  canvasWidth,
+		canvasHeight: canvasHeight,
 	}
 }
 
+func validPixel(p *domain.Pixel, canvasW, canvasH uint) bool {
+	if canvasW == 0 || canvasH == 0 {
+		return false
+	}
+	if p.X >= canvasW || p.Y >= canvasH {
+		return false
+	}
+	if len(p.Color) != 3 {
+		return false
+	}
+	for _, c := range p.Color {
+		if c > 255 {
+			return false
+		}
+	}
+	return true
+}
+
+// benchmarkUIDToCanonical maps k6 "uid" query to a canonical user id (numeric -> vk_*).
+func benchmarkUIDToCanonical(uidStr string) (string, bool) {
+	uidStr = strings.TrimSpace(uidStr)
+	if uidStr == "" {
+		return "", false
+	}
+	if n, err := strconv.Atoi(uidStr); err == nil && n > 0 {
+		return domain.VKUserID(n), true
+	}
+	u := utils.NormalizeUsername(uidStr)
+	if u == "" {
+		return "", false
+	}
+	return u, true
+}
+
 func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
+	var userid string
+	var faculty string
+	var isAdm bool
+
+	if server.allowAnonymousWS {
+		q := r.URL.Query()
+		uidStr := q.Get("uid")
+		var ok bool
+		userid, ok = benchmarkUIDToCanonical(uidStr)
+		if !ok {
+			http.Error(w, "missing or invalid query: uid", http.StatusBadRequest)
+			return
+		}
+		faculty = q.Get("faculty")
+		if faculty == "" {
+			faculty = "KTU"
+		}
+		if !utils.IsValidFaculty(faculty) {
+			http.Error(w, "invalid faculty (use KTU|TINT|FTMF|FTMI|NOZH)", http.StatusBadRequest)
+			return
+		}
+		isAdm = server.userService.IsAdmin(userid)
+		if server.userService.IsUserBanned(r.Context(), userid) {
+			logrus.Info("Anonymous WS rejected: banned ", userid)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		logrus.Debugf("WebSocket anonymous benchmark uid=%s faculty=%s isAdm=%v", userid, faculty, isAdm)
+	} else {
+		session, err := server.sessionService.GetSession(r)
+		if err != nil {
+			logrus.Error("Failed to get session: ", err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if !server.sessionService.IsAuthenticated(session) {
+			logrus.Warn("Unauthorized attempt to reach /ws")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		userid = server.sessionService.GetUserID(session)
+		faculty = server.sessionService.GetFaculty(session)
+		isAdm = server.userService.IsAdmin(userid)
+
+		if server.userService.IsUserBanned(r.Context(), userid) {
+			logrus.Info("Request from banned user: ", userid)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logrus.Error(err)
-		return
-	}
-
-	session, err := server.sessionService.GetSession(r)
-	if err != nil {
-		logrus.Error("Failed to get session: ", err)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	if !server.sessionService.IsAuthenticated(session) {
-		logrus.Warn("Unauthorized attempt to reach /ws")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userid := server.sessionService.GetUserID(session)
-	faculty := server.sessionService.GetFaculty(session)
-
-	isAdm := server.userService.IsAdmin(userid)
-
-	if server.userService.IsUserBanned(r.Context(), userid) {
-		logrus.Info("Request from banned user: ", userid)
 		return
 	}
 
@@ -93,6 +167,8 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		isAdm,
 		server.timerService,
 		server.userService,
+		server.canvasWidth,
+		server.canvasHeight,
 	)
 
 	go client.writePump()
@@ -120,6 +196,10 @@ func (c *Client) readPump(ctx context.Context) {
 		var pixel domain.Pixel
 		if err = utils.DeserializePixel(msg, &pixel); err != nil {
 			logrus.Error(err)
+			continue
+		}
+		if !validPixel(&pixel, c.canvasWidth, c.canvasHeight) {
+			logrus.Warn("invalid pixel rejected")
 			continue
 		}
 		pixel.Userid = c.userid

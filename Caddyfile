@@ -1,0 +1,46 @@
+{
+	# Self-signed TLS only; no ACME
+	auto_https off
+}
+
+:443 {
+	tls /etc/caddy/certs/pixelbattle.crt /etc/caddy/certs/pixelbattle.key
+
+	encode gzip
+
+	# API and WebSocket (must be before file_server)
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+	handle /ws {
+		reverse_proxy backend:8080
+	}
+	handle /init_canvas {
+		reverse_proxy backend:8080
+	}
+
+	# Grafana (preserve /panel prefix; matches GF_SERVER_ROOT_URL)
+	handle /panel/* {
+		reverse_proxy grafana:3000
+	}
+	handle /panel {
+		redir /panel/ permanent
+	}
+
+	# Prometheus UI (optional; scrape stays internal on Docker network)
+	handle_path /prometheus/* {
+		reverse_proxy prometheus:9090
+	}
+
+	# Vue SPA + static assets
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Optional HTTP redirect to HTTPS
+:80 {
+	redir https://{host}{uri} permanent
+}
