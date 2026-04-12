@@ -56,6 +56,7 @@ mongodb/logs/
 
 # --- Monitoring (Prometheus / Grafana TSDB & local data) ---
 monitoring/prometheus_data/
+monitoring/grafana_data/
 monitoring/grafana/data/
 
 # --- Benchmarks & Ansible ---

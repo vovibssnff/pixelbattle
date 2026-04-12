@@ -1,0 +1,372 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "description": "Infrastructure metrics: Redis, MongoDB, Caddy reverse proxy, and Prometheus self-monitoring.",
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 100,
+      "title": "Redis",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 0}]}, "unit": "short", "mappings": [{"options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}, "type": "value"}]}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "redis_up", "refId": "A"}],
+      "title": "Redis Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "redis_connected_clients", "refId": "A"}],
+      "title": "Redis Clients",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 104857600}, {"color": "red", "value": 536870912}]}, "unit": "bytes"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "redis_memory_used_bytes", "refId": "A"}],
+      "title": "Redis Memory Used",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "redis_db_keys{db=\"db0\"}", "refId": "A"}],
+      "title": "Redis Keys (db0)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "percent"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+      "id": 41,
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "redis_keyspace_hit_ratio * 100 or (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100", "refId": "A"}],
+      "title": "Redis Hit Ratio %",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15}, "unit": "ops"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "id": 5,
+      "targets": [
+        {"expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "commands/s", "refId": "A"}
+      ],
+      "title": "Redis Commands/s",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "bytes"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "id": 6,
+      "targets": [
+        {"expr": "redis_memory_used_bytes", "legendFormat": "used", "refId": "A"},
+        {"expr": "redis_memory_max_bytes", "legendFormat": "max", "refId": "B"}
+      ],
+      "title": "Redis Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "Bps"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "id": 42,
+      "targets": [
+        {"expr": "rate(redis_net_input_bytes_total[5m])", "legendFormat": "input", "refId": "A"},
+        {"expr": "rate(redis_net_output_bytes_total[5m])", "legendFormat": "output", "refId": "B"}
+      ],
+      "title": "Redis Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15, "stacking": {"mode": "normal"}}, "unit": "ops"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "id": 43,
+      "targets": [
+        {"expr": "rate(redis_keyspace_hits_total[5m])", "legendFormat": "hits/s", "refId": "A"},
+        {"expr": "rate(redis_keyspace_misses_total[5m])", "legendFormat": "misses/s", "refId": "B"}
+      ],
+      "title": "Redis Keyspace Hits vs Misses",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
+      "id": 200,
+      "title": "MongoDB",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 0}]}, "unit": "short", "mappings": [{"options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}, "type": "value"}]}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 22},
+      "id": 7,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "mongodb_up", "refId": "A"}],
+      "title": "MongoDB Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 22},
+      "id": 8,
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "mongodb_ss_connections{conn_type=\"current\"}", "refId": "A"}],
+      "title": "MongoDB Connections",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 22},
+      "id": 9,
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "mongodb_ss_mem_resident * 1024 * 1024", "refId": "A"}],
+      "title": "MongoDB Resident Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15, "stacking": {"mode": "normal"}}, "unit": "ops"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
+      "id": 10,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean"]}},
+      "targets": [
+        {"expr": "rate(mongodb_ss_opcounters_insert[5m])", "legendFormat": "insert", "refId": "A"},
+        {"expr": "rate(mongodb_ss_opcounters_query[5m])", "legendFormat": "query", "refId": "B"},
+        {"expr": "rate(mongodb_ss_opcounters_update[5m])", "legendFormat": "update", "refId": "C"},
+        {"expr": "rate(mongodb_ss_opcounters_delete[5m])", "legendFormat": "delete", "refId": "D"},
+        {"expr": "rate(mongodb_ss_opcounters_command[5m])", "legendFormat": "command", "refId": "E"}
+      ],
+      "title": "MongoDB Operations/s",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "Bps"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
+      "id": 11,
+      "targets": [
+        {"expr": "rate(mongodb_ss_network_bytesIn[5m])", "legendFormat": "bytes in", "refId": "A"},
+        {"expr": "rate(mongodb_ss_network_bytesOut[5m])", "legendFormat": "bytes out", "refId": "B"}
+      ],
+      "title": "MongoDB Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "short"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34},
+      "id": 44,
+      "targets": [
+        {"expr": "mongodb_ss_connections{conn_type=\"current\"}", "legendFormat": "current", "refId": "A"},
+        {"expr": "mongodb_ss_connections{conn_type=\"available\"}", "legendFormat": "available", "refId": "B"}
+      ],
+      "title": "MongoDB Connection Pool",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "short"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34},
+      "id": 45,
+      "targets": [
+        {"expr": "rate(mongodb_ss_opcounters_getmore[5m])", "legendFormat": "getmore/s", "refId": "A"},
+        {"expr": "mongodb_ss_globalLock_currentQueue_total", "legendFormat": "queue total", "refId": "B"}
+      ],
+      "title": "MongoDB Cursor & Lock Queue",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42},
+      "id": 300,
+      "title": "Caddy Reverse Proxy",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15, "stacking": {"mode": "normal"}}, "unit": "reqps"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
+      "id": 12,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}},
+      "targets": [
+        {"expr": "sum by (code) (rate(caddy_http_requests_total[5m]))", "legendFormat": "{{code}}", "refId": "A"}
+      ],
+      "title": "Caddy Requests/s by Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "s"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
+      "id": 13,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(caddy_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(caddy_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(caddy_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99", "refId": "C"}
+      ],
+      "title": "Caddy Latency Percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "Bps"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 51},
+      "id": 14,
+      "targets": [
+        {"expr": "sum(rate(caddy_http_request_size_total[5m]))", "legendFormat": "request bytes/s", "refId": "A"},
+        {"expr": "sum(rate(caddy_http_response_size_total[5m]))", "legendFormat": "response bytes/s", "refId": "B"}
+      ],
+      "title": "Caddy Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15}, "unit": "short"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 51},
+      "id": 15,
+      "targets": [
+        {"expr": "caddy_http_requests_in_flight", "legendFormat": "in-flight", "refId": "A"}
+      ],
+      "title": "Caddy In-Flight Requests",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 59},
+      "id": 400,
+      "title": "Prometheus Self-Monitor",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "bytes"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 60},
+      "id": 16,
+      "targets": [
+        {"expr": "prometheus_tsdb_storage_blocks_bytes", "legendFormat": "TSDB blocks", "refId": "A"},
+        {"expr": "prometheus_tsdb_wal_storage_size_bytes", "legendFormat": "WAL", "refId": "B"}
+      ],
+      "title": "Prometheus Storage Size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "short"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 60},
+      "id": 17,
+      "targets": [
+        {"expr": "prometheus_tsdb_head_series", "legendFormat": "head series", "refId": "A"},
+        {"expr": "rate(prometheus_tsdb_head_samples_appended_total[5m])", "legendFormat": "samples/s", "refId": "B"}
+      ],
+      "title": "Prometheus Head Series & Ingestion",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 10}, "unit": "s"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 68},
+      "id": 46,
+      "targets": [
+        {"expr": "prometheus_target_interval_length_seconds{quantile=\"0.99\"}", "legendFormat": "p99 scrape interval {{job}}", "refId": "A"}
+      ],
+      "title": "Scrape Interval Drift (p99)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15}, "unit": "short"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 68},
+      "id": 47,
+      "targets": [
+        {"expr": "up", "legendFormat": "{{job}}", "refId": "A"}
+      ],
+      "title": "Scrape Targets Up/Down",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["pixelbattle", "infrastructure"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "PixelBattle — Infrastructure",
+  "uid": "pb-infrastructure",
+  "version": 1
+}

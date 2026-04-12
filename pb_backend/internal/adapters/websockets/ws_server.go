@@ -74,6 +74,7 @@ func (server *WsServer) Run() {
 func (server *WsServer) registerClient(client *Client) {
 	server.clients[client] = true
 	service.IncrementCurrentUsers()
+	service.IncrementWebSocketConnections()
 }
 
 func (server *WsServer) unregisterClient(client *Client) {
@@ -85,9 +86,11 @@ func (server *WsServer) unregisterClient(client *Client) {
 
 func (server *WsServer) setPixel(pixel *domain.Pixel) {
 	if err := server.canvasService.WritePixel(context.Background(), pixel); err != nil {
-		// logrus.Error(err)
 		return
 	}
+	service.IncrementPixelsPlaced(pixel.Faculty)
+	service.RecordHeatmapPixel(pixel.X, pixel.Y)
+	service.SetPixelWriteQueueDepth(len(server.broadcast))
 	pixel.Userid = ""
 	pixel.Faculty = ""
 	for client := range server.clients {

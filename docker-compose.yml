@@ -1,6 +1,4 @@
 volumes:
-  prometheus_tsdb:
-  grafana_lib:
   caddy_html:
 
 services:
@@ -37,14 +35,34 @@ services:
       - redis
       - mongodb
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+    depends_on:
+      - redis
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.44
+    restart: unless-stopped
+    command:
+      - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-changeme}@mongodb:27017/admin?authSource=admin"
+      - "--compatible-mode"
+      - "--collect-all"
+    depends_on:
+      - mongodb
+
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    user: "nobody"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_tsdb:/prometheus
+      - ./monitoring/prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -53,6 +71,8 @@ services:
       - "--web.enable-lifecycle"
     depends_on:
       - backend
+      - redis-exporter
+      - mongodb-exporter
 
   grafana:
     image: grafana/grafana-oss:latest
@@ -63,12 +83,13 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://localhost/panel/}
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      # Require login; no anonymous access to /panel/
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+    user: "472"
     volumes:
-      - grafana_lib:/var/lib/grafana
+      - ./monitoring/grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:

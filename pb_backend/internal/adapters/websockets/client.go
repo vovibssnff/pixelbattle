@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"pb_backend/internal/core/domain"
+	"pb_backend/internal/core/service"
 	"pb_backend/internal/utils"
 	"strconv"
 	"strings"
@@ -124,6 +125,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		isAdm = server.userService.IsAdmin(userid)
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Anonymous WS rejected: banned ", userid)
+			service.IncrementBannedRejected()
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -132,6 +134,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		session, err := server.sessionService.GetSession(r)
 		if err != nil {
 			logrus.Error("Failed to get session: ", err)
+			service.IncrementSessionErrors()
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -148,6 +151,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Request from banned user: ", userid)
+			service.IncrementBannedRejected()
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -192,6 +196,7 @@ func (c *Client) readPump(ctx context.Context) {
 			}
 			break
 		}
+		service.IncrementWebSocketMessagesReceived("pixel")
 
 		var pixel domain.Pixel
 		if err = utils.DeserializePixel(msg, &pixel); err != nil {
@@ -209,6 +214,7 @@ func (c *Client) readPump(ctx context.Context) {
 			c.server.broadcast <- &pixel
 		} else if c.userService.IsUserBanned(ctx, c.userid) {
 			logrus.Info("Request from banned user: ", c.userid)
+			service.IncrementBannedRejected()
 			return
 		} else {
 			exists, err := c.timerService.CheckTime(ctx, c.userid)

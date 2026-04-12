@@ -13,9 +13,23 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 10s
+
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+    scrape_interval: 10s
+
+  - job_name: 'caddy'
+    static_configs:
+      - targets: ['caddy:2019']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
   # Benchmark binary exposes :9091/metrics while running.
-  # On Linux, host.docker.internal resolves to the Docker host via
-  # extra_hosts in docker-compose.yml; the benchmark binary runs there.
   - job_name: 'benchmark'
     static_configs:
       - targets: ['host.docker.internal:9091']

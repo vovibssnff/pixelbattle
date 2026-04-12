@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"pb_backend/internal/core/domain"
+	"pb_backend/internal/metrics"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
@@ -22,8 +24,8 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 	}
 }
 
-// RegisterUser registers a new user in MongoDB
 func (r *UserRepository) RegisterUser(ctx context.Context, usr domain.User) error {
+	start := time.Now()
 	mongoUser := domain.User{
 		ID:           usr.ID,
 		FirstName:    usr.FirstName,
@@ -33,13 +35,13 @@ func (r *UserRepository) RegisterUser(ctx context.Context, usr domain.User) erro
 		Faculty:      usr.Faculty,
 		Stats:        domain.UserStats{TotalPixelsPlaced: 0, ActivePixels: 0},
 	}
-
 	_, err := r.users.InsertOne(ctx, mongoUser)
+	metrics.ObserveDatabaseOperation("register_user", "mongo", time.Since(start), err)
 	return err
 }
 
-// UpdateUser updates an existing user's profile fields.
 func (r *UserRepository) UpdateUser(ctx context.Context, usr domain.User) error {
+	start := time.Now()
 	set := bson.M{
 		"first_name":   usr.FirstName,
 		"last_name":    usr.LastName,
@@ -51,12 +53,14 @@ func (r *UserRepository) UpdateUser(ctx context.Context, usr domain.User) error 
 	}
 	update := bson.M{"$set": set}
 	_, err := r.users.UpdateOne(ctx, bson.M{"_id": usr.ID}, update)
+	metrics.ObserveDatabaseOperation("update_user", "mongo", time.Since(start), err)
 	return err
 }
 
-// UserExists checks if a user exists in MongoDB
 func (r *UserRepository) UserExists(ctx context.Context, usrID string) bool {
+	start := time.Now()
 	count, err := r.users.CountDocuments(ctx, bson.M{"_id": usrID})
+	metrics.ObserveDatabaseOperation("user_exists", "mongo", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 		return false
@@ -64,7 +68,6 @@ func (r *UserRepository) UserExists(ctx context.Context, usrID string) bool {
 	return count > 0
 }
 
-// GetUsr retrieves a user from MongoDB (password hash cleared).
 func (r *UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
 	u, err := r.GetUserWithHash(ctx, usrID)
 	if err != nil {
@@ -75,33 +78,37 @@ func (r *UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
 	return u
 }
 
-// GetUserWithHash returns the full user document including password_hash (for login).
 func (r *UserRepository) GetUserWithHash(ctx context.Context, usrID string) (domain.User, error) {
+	start := time.Now()
 	var mongoUser domain.User
 	err := r.users.FindOne(ctx, bson.M{"_id": usrID}).Decode(&mongoUser)
+	metrics.ObserveDatabaseOperation("get_user", "mongo", time.Since(start), err)
 	if err != nil {
 		return domain.User{}, err
 	}
 	return mongoUser, nil
 }
 
-// DelUsr deletes a user from MongoDB
 func (r *UserRepository) DelUsr(ctx context.Context, usrID string) {
+	start := time.Now()
 	_, err := r.users.DeleteOne(ctx, bson.M{"_id": usrID})
+	metrics.ObserveDatabaseOperation("delete_user", "mongo", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 	}
 }
 
-// CheckBanned checks if a user is banned
 func (r *UserRepository) CheckBanned(ctx context.Context, userid string) bool {
-	count, _ := r.banned.CountDocuments(ctx, bson.M{"_id": userid})
+	start := time.Now()
+	count, err := r.banned.CountDocuments(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("check_banned", "mongo", time.Since(start), err)
 	return count > 0
 }
 
-// BanUser adds a user id to the ban list.
 func (r *UserRepository) BanUser(ctx context.Context, userid string) error {
+	start := time.Now()
 	_, err := r.banned.InsertOne(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("ban_user", "mongo", time.Since(start), err)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
@@ -111,10 +118,10 @@ func (r *UserRepository) BanUser(ctx context.Context, userid string) error {
 	return nil
 }
 
-
-// UnbanUser removes a user id from the ban list.
 func (r *UserRepository) UnbanUser(ctx context.Context, userid string) error {
+	start := time.Now()
 	res, err := r.banned.DeleteOne(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("unban_user", "mongo", time.Since(start), err)
 	if err != nil {
 		return err
 	}
@@ -124,8 +131,8 @@ func (r *UserRepository) UnbanUser(ctx context.Context, userid string) error {
 	return nil
 }
 
-// UpdateUserStats updates the user's pixel statistics
 func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, activeDiff, totalDiff int) error {
+	start := time.Now()
 	update := bson.M{
 		"$set": bson.M{
 			"stats.total_pixels_placed": totalDiff,
@@ -133,11 +140,12 @@ func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, a
 		},
 	}
 	_, err := r.users.UpdateOne(ctx, bson.M{"_id": usr.ID}, update)
+	metrics.ObserveDatabaseOperation("update_user_stats", "mongo", time.Since(start), err)
 	return err
 }
 
-// GetTopUsers retrieves the top users based on total pixels placed.
 func (r *UserRepository) GetTopUsers(ctx context.Context, limit int) ([]domain.BroadcastStats, error) {
+	start := time.Now()
 	var topUsers []domain.BroadcastStats
 
 	pipeline := mongo.Pipeline{
@@ -160,6 +168,7 @@ func (r *UserRepository) GetTopUsers(ctx context.Context, limit int) ([]domain.B
 
 	cursor, err := r.users.Aggregate(ctx, pipeline)
 	if err != nil {
+		metrics.ObserveDatabaseOperation("get_top_users", "mongo", time.Since(start), err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -167,21 +176,25 @@ func (r *UserRepository) GetTopUsers(ctx context.Context, limit int) ([]domain.B
 	for cursor.Next(ctx) {
 		var user domain.BroadcastStats
 		if err := cursor.Decode(&user); err != nil {
+			metrics.ObserveDatabaseOperation("get_top_users", "mongo", time.Since(start), err)
 			return nil, err
 		}
 		topUsers = append(topUsers, user)
 	}
 
 	if err := cursor.Err(); err != nil {
+		metrics.ObserveDatabaseOperation("get_top_users", "mongo", time.Since(start), err)
 		return nil, err
 	}
 
+	metrics.ObserveDatabaseOperation("get_top_users", "mongo", time.Since(start), nil)
 	return topUsers, nil
 }
 
-// IsEmpty checks if the users collection is empty
 func (r *UserRepository) IsEmpty(ctx context.Context) (bool, error) {
+	start := time.Now()
 	count, err := r.users.CountDocuments(ctx, bson.M{})
+	metrics.ObserveDatabaseOperation("is_empty", "mongo", time.Since(start), err)
 	if err != nil {
 		return false, err
 	}

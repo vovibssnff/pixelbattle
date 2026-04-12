@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"pb_backend/internal/metrics"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -17,11 +19,16 @@ func NewCanvasRepository(rdb *redis.Client) *CanvasRepository {
 }
 
 func (r *CanvasRepository) WritePixel(ctx context.Context, x, y uint, pixelData []byte) error {
-	return r.rdb.RPush(ctx, fmt.Sprintf("pixel:%d:%d", y, x), pixelData).Err()
+	start := time.Now()
+	err := r.rdb.RPush(ctx, fmt.Sprintf("pixel:%d:%d", y, x), pixelData).Err()
+	metrics.ObserveDatabaseOperation("write_pixel", "redis", time.Since(start), err)
+	return err
 }
 
 func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
+	start := time.Now()
 	keys, err := r.rdb.Keys(ctx, "pixel:*").Result()
+	metrics.ObserveDatabaseOperation("check_initialized", "redis", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 		return false
@@ -30,8 +37,10 @@ func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
 }
 
 func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, error) {
+	start := time.Now()
 	keys, err := r.rdb.Keys(ctx, "pixel:*").Result()
 	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), err)
 		return nil, err
 	}
 	pipe := r.rdb.Pipeline()
@@ -42,22 +51,27 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 	}
 	_, err = pipe.Exec(ctx)
 	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), err)
 		return nil, err
 	}
 	result := make(map[string][]string)
 	for key, cmd := range keyCmdMap {
 		values, err := cmd.Result()
 		if err != nil {
+			metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), err)
 			return nil, err
 		}
 		result[key] = values
 	}
+	metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), nil)
 	return result, nil
 }
 
 func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]string, error) {
+	start := time.Now()
 	keys, err := r.rdb.Keys(ctx, "pixel:*").Result()
 	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), err)
 		return nil, err
 	}
 	pipe := r.rdb.Pipeline()
@@ -68,22 +82,27 @@ func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]s
 	}
 	_, err = pipe.Exec(ctx)
 	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), err)
 		return nil, err
 	}
 	result := make(map[string][]string)
 	for key, cmd := range keyCmdMap {
 		values, err := cmd.Result()
 		if err != nil {
+			metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), err)
 			return nil, err
 		}
 		result[key] = values
 	}
+	metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), nil)
 	return result, nil
 }
 
 func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, error) {
+	start := time.Now()
 	keys, err := r.rdb.Keys(ctx, "pixel:*").Result()
 	if err != nil {
+		metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), err)
 		return nil, err
 	}
 	pipe := r.rdb.Pipeline()
@@ -93,15 +112,18 @@ func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, e
 	}
 	_, err = pipe.Exec(ctx)
 	if err != nil {
+		metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), err)
 		return nil, err
 	}
 	result := make(map[string]int64)
 	for i, key := range keys {
 		length, err := lenCmds[i].Result()
 		if err != nil {
+			metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), err)
 			return nil, err
 		}
 		result[key] = length
 	}
+	metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), nil)
 	return result, nil
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"pb_backend/internal/core/domain"
+	"pb_backend/internal/metrics"
 	"pb_backend/internal/utils"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -29,12 +31,17 @@ func (r UserRepository) RegisterUser(ctx context.Context, usr domain.User) error
 	if err != nil {
 		return err
 	}
-	return r.userDb.Set(ctx, key, serializedUser, 0).Err()
+	start := time.Now()
+	err = r.userDb.Set(ctx, key, serializedUser, 0).Err()
+	metrics.ObserveDatabaseOperation("register_user", "redis", time.Since(start), err)
+	return err
 }
 
 func (r UserRepository) UserExists(ctx context.Context, usrID string) bool {
 	key := userKey(usrID)
+	start := time.Now()
 	res, err := r.userDb.Exists(ctx, key).Result()
+	metrics.ObserveDatabaseOperation("user_exists", "redis", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 	}
@@ -43,7 +50,9 @@ func (r UserRepository) UserExists(ctx context.Context, usrID string) bool {
 
 func (r UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
 	key := userKey(usrID)
+	start := time.Now()
 	jsonUsr, err := r.userDb.Get(ctx, key).Result()
+	metrics.ObserveDatabaseOperation("get_user", "redis", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 	}
@@ -54,14 +63,18 @@ func (r UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
 
 func (r UserRepository) DelUsr(ctx context.Context, usrID string) {
 	key := userKey(usrID)
+	start := time.Now()
 	_, err := r.userDb.Del(ctx, key).Result()
+	metrics.ObserveDatabaseOperation("delete_user", "redis", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
 	}
 }
 
 func (r UserRepository) CheckBanned(ctx context.Context, userid string) bool {
-	res, _ := r.bannedDb.Exists(ctx, userid).Result()
+	start := time.Now()
+	res, err := r.bannedDb.Exists(ctx, userid).Result()
+	metrics.ObserveDatabaseOperation("check_banned", "redis", time.Since(start), err)
 	return res != 0
 }
 
@@ -70,9 +83,11 @@ func (r UserRepository) GetAllUserKeys(ctx context.Context) ([]string, error) {
 	var cursor uint64
 	var keys []string
 
+	start := time.Now()
 	for {
 		scanKeys, nextCursor, err := r.userDb.Scan(ctx, cursor, pattern, 100).Result()
 		if err != nil {
+			metrics.ObserveDatabaseOperation("get_all_user_keys", "redis", time.Since(start), err)
 			return nil, fmt.Errorf("failed to scan Redis keys: %w", err)
 		}
 		keys = append(keys, scanKeys...)
@@ -83,5 +98,6 @@ func (r UserRepository) GetAllUserKeys(ctx context.Context) ([]string, error) {
 		}
 	}
 
+	metrics.ObserveDatabaseOperation("get_all_user_keys", "redis", time.Since(start), nil)
 	return keys, nil
 }

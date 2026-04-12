@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	vk "pb_backend/internal/adapters/vk_auth"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/core/service"
 	"pb_backend/internal/utils"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,6 +41,7 @@ func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 	logrus.Info("VK login request from ", vkUsr.FirstName, vkUsr.LastName, vkUsr.ID)
 
 	if !h.vkAuthProvider.ValidVkUser(vkUsr, accessToken) {
+		service.RecordLoginAttempt("vk", "fail")
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -75,6 +77,7 @@ func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 		h.sessionService.SaveSession(session, w, r)
 		http.Redirect(w, r, "/main", http.StatusSeeOther)
 	}
+	service.RecordLoginAttempt("vk", "success")
 }
 
 type passwordRegisterBody struct {
@@ -106,15 +109,18 @@ func (h *RestHandlers) HandlePasswordRegister(w http.ResponseWriter, r *http.Req
 	usr, err := h.userService.RegisterWithPassword(r.Context(), username, password, faculty)
 	if err != nil {
 		logrus.Warn("register: ", err)
+		service.RecordLoginAttempt("register", "fail")
 		http.Error(w, "Could not register", http.StatusBadRequest)
 		return
 	}
+	service.RecordLoginAttempt("register", "success")
 	session, _ := h.sessionService.GetSession(r)
 	h.sessionService.SetUserID(session, usr.ID)
 	h.sessionService.SetAuthenticated(session, "true")
 	h.sessionService.SetFaculty(session, usr.Faculty)
 	if err := h.sessionService.SaveSession(session, w, r); err != nil {
 		logrus.Error(err)
+		service.IncrementSessionErrors()
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -136,9 +142,11 @@ func (h *RestHandlers) HandlePasswordLogin(w http.ResponseWriter, r *http.Reques
 	usr, err := h.userService.LoginWithPassword(r.Context(), username, password)
 	if err != nil {
 		logrus.Warn("login: ", err)
+		service.RecordLoginAttempt("password", "fail")
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
+	service.RecordLoginAttempt("password", "success")
 	session, _ := h.sessionService.GetSession(r)
 	h.sessionService.SetUserID(session, usr.ID)
 	if usr.Faculty == "" {
@@ -149,6 +157,7 @@ func (h *RestHandlers) HandlePasswordLogin(w http.ResponseWriter, r *http.Reques
 	}
 	if err := h.sessionService.SaveSession(session, w, r); err != nil {
 		logrus.Error(err)
+		service.IncrementSessionErrors()
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -290,6 +299,7 @@ func (h *RestHandlers) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, height, width uint) {
+	start := time.Now()
 	session, _ := h.sessionService.GetSession(r)
 	if !h.sessionService.IsAuthenticated(session) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -312,4 +322,5 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 		w.Header().Set("Is-God", "true")
 	}
 	w.Write(b)
+	service.ObserveCanvasInitDuration(start)
 }
