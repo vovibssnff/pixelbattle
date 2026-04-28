@@ -2,8 +2,25 @@
 .env
 .env.*
 !.env.example
-*.local
+!**/.env.example
+*.env
+*.env.*
+!*.env.example
+!*.env.docker
 pb_backend/app.env
+pb_backend/app.env.local
+pb_backend/app.env.*.local
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
 
 # --- IDE & editor ---
 .idea/
@@ -45,8 +62,6 @@ certs/
 pb_frontend/nginx/cert/
 
 # Root env for docker compose (copy from .env.example)
-.env
-
 # --- Docker & runtime data ---
 redis/dump.rdb
 redis/redis_data/
