@@ -296,7 +296,7 @@ export default {
         this.timerRunning = true;
         this.send(x, y, color);
         
-        this.seconds = 3;
+        this.seconds = 1;
         this.timerValue.style.opacity = 1;
         
         this.timer = setInterval(() => {
