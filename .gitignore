@@ -6,7 +6,8 @@
 *.env
 *.env.*
 !*.env.example
-!*.env.docker
+*.env.docker
+docs
 pb_backend/app.env
 pb_backend/app.env.local
 pb_backend/app.env.*.local
