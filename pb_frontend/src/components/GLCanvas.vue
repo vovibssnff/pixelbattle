@@ -37,7 +37,7 @@
 CTRL + ПКМ (зажать 1 секунду на телефоне) — познай цвет истинный, да занеси его в палитру свою.<br/><br/>
 <span>В помощь тебе — <a target="_blank" href="https://color-hex.com">цветная книга мудрецов</a></span><br/>
 <br/>
-Время течет, как река, и ставить пиксели дозволено лишь раз в три удара сердца.
+Время течет, как река, и ставить пиксели дозволено лишь раз в один удар сердца.
 <br/>
 Пусть же рука твоя будет тверда, а дух — неколебим. Веди перо свое, дабы создать творение, коему позавидуют сами небеса!
           <label for="checkbox">X</label>
@@ -53,16 +53,22 @@ CTRL + ПКМ (зажать 1 секунду на телефоне) — позн
       </div>
       <div id="timer">{{ this.seconds }}
       </div>
-      <a target="_blank" href="https://t.me/itmominigames" id="running-line">
+      <div id="running-line">
         <div id="ad">
-          <p>Переходи в канал</p>
-          <svg class="svg-icon" style="width: 30px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M417.28 795.733333l11.946667-180.48 327.68-295.253333c14.506667-13.226667-2.986667-19.626667-22.186667-8.106667L330.24 567.466667 155.306667 512c-37.546667-10.666667-37.973333-36.693333 8.533333-55.466667l681.386667-262.826666c31.146667-14.08 61.013333 7.68 49.066666 55.466666l-116.053333 546.56c-8.106667 38.826667-31.573333 48.213333-64 30.293334L537.6 695.466667l-84.906667 82.346666c-9.813333 9.813333-17.92 17.92-35.413333 17.92z" fill="" /></svg>
+          <a target="_blank" href="https://vk.ru/itmomegabattle" class="ad-link">
+            <svg class="svg-icon" style="width:26px;vertical-align:middle;fill:currentColor;overflow:hidden;" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12.77 19.15c-7.8 0-12.25-5.34-12.42-14.22h3.9c.12 6.5 3 9.26 5.27 9.83V4.93h3.68v5.61c2.24-.24 4.6-2.78 5.4-5.61h3.68a10.9 10.9 0 0 1-5.92 7.13 11.34 11.34 0 0 1 6.93 7.09h-4.06a7.16 7.16 0 0 0-6.03-5.06v5.06h-.43z"/></svg>
+            <span>VK</span>
+          </a>
+          <a target="_blank" href="https://t.me/itmomegabattle" class="ad-link">
+            <svg class="svg-icon" style="width:26px;vertical-align:middle;fill:currentColor;overflow:hidden;" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path d="M417.28 795.733333l11.946667-180.48 327.68-295.253333c14.506667-13.226667-2.986667-19.626667-22.186667-8.106667L330.24 567.466667 155.306667 512c-37.546667-10.666667-37.973333-36.693333 8.533333-55.466667l681.386667-262.826666c31.146667-14.08 61.013333 7.68 49.066666 55.466666l-116.053333 546.56c-8.106667 38.826667-31.573333 48.213333-64 30.293334L537.6 695.466667l-84.906667 82.346666c-9.813333 9.813333-17.92 17.92-35.413333 17.92z"/></svg>
+            <span>Telegram</span>
+          </a>
         </div>
         <div id="tales-array">
           <div class="tales" ref="firstTales"></div>
           <div class="tales" ref="secondTales"></div>
         </div>
-      </a>
+      </div>
     </div>
   </div>
 </template>
@@ -264,7 +270,8 @@ export default {
     },
     coordsUpdate(ev) {
       try {
-        this.pos = this.glWindow.click({ x: ev.clientX, y: ev.clientY });
+        const p = this.glWindow.fromClientXY(ev.clientX, ev.clientY);
+        this.pos = this.glWindow.click(p);
         this.val_x = this.pos.x;
         this.val_y = this.pos.y;
       } catch {
@@ -289,7 +296,7 @@ export default {
         this.timerRunning = true;
         this.send(x, y, color);
         
-        this.seconds = 3;
+        this.seconds = 1;
         this.timerValue.style.opacity = 1;
         
         this.timer = setInterval(() => {
@@ -325,18 +332,36 @@ export default {
       this.ws = new WebSocket(url);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
+    /** Backend JSON uses x, y, color (Go json tags); tolerate legacy X, Y, Color. */
+    applyRemotePixel(pixel) {
+      const x = pixel.x ?? pixel.X;
+      const y = pixel.y ?? pixel.Y;
+      const c = pixel.color ?? pixel.Color;
+      if (x == null || y == null || !Array.isArray(c) || c.length < 3) {
+        return;
+      }
+      this.place.setPixel(
+        x,
+        y,
+        new Uint8Array([Number(c[0]), Number(c[1]), Number(c[2])]),
+      );
+    },
     handleNewPixel(event) {
-      const pixel = JSON.parse(event.data);
-      
+      let pixel;
+      try {
+        pixel = JSON.parse(event.data);
+      } catch {
+        return;
+      }
       if (!this.loaded) {
         this.savedPixels.push(pixel);
       } else {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        this.applyRemotePixel(pixel);
       }
     },
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {
-        this.place.setPixel(pixel.X, pixel.Y, new Uint8Array([pixel.Color[0], pixel.Color[1], pixel.Color[2]]));
+        this.applyRemotePixel(pixel);
       }
       this.savedPixels = [];
     },
@@ -362,7 +387,8 @@ export default {
       }
     },
     drawPixel(pos, color) {
-      pos = this.glWindow.click(pos);
+      const canvasXY = this.glWindow.fromClientXY(pos.x, pos.y);
+      pos = this.glWindow.click(canvasXY);
       if (pos) {
         const oldColor = this.glWindow.getColor(pos);
         for (let i = 0; i < oldColor.length; i++) {
@@ -375,7 +401,8 @@ export default {
       return false;
     },
     pickColor(pos) {
-      this.color = this.glWindow.getColor(this.glWindow.click(pos));
+      const canvasXY = this.glWindow.fromClientXY(pos.x, pos.y);
+      this.color = this.glWindow.getColor(this.glWindow.click(canvasXY));
       let hex = "#";
       for (let i = 0; i < this.color.length; i++) {
         let d = this.color[i].toString(16);
@@ -445,7 +472,8 @@ export default {
         this.lastScalingDist = dist;
       } else {
         try {
-          this.pos = this.glWindow.click({ x: ev.touches[0].clientX, y: ev.touches[0].clientY });
+          const tp = this.glWindow.fromClientXY(ev.touches[0].clientX, ev.touches[0].clientY);
+          this.pos = this.glWindow.click(tp);
           this.val_x = this.pos.x;
           this.val_y = this.pos.y;
         } catch {}
@@ -769,8 +797,15 @@ h1, h2, h3 {
   }
 }
 
-a {
+/* Only “цветная книга мудрецов” in the parchment modal — not the top bar links */
+.modal a {
   color: #134293;
+  text-decoration: underline;
+}
+
+#ad a.ad-link {
+  color: #fff !important;
+  text-decoration: none;
 }
 
 #running-line {
@@ -794,10 +829,24 @@ a {
   border-radius: 0 8px 8px 0;
   padding-inline: 8px;
   text-wrap: nowrap;
-  gap: 5px;
+  gap: 12px;
   line-height: 30px;
-  font-size: 18px;
+  font-size: 15px;
   z-index: 2;
+}
+
+.ad-link {
+  color: white;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+}
+
+.ad-link:hover {
+  opacity: 1;
 }
 
 #tales-array {

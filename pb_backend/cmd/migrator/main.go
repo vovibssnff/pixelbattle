@@ -8,6 +8,7 @@ import (
 	mongoRepo "pb_backend/internal/adapters/mongo/repository"
 	"pb_backend/internal/adapters/redis"
 	redisRepo "pb_backend/internal/adapters/redis/repository"
+	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
 	"strconv"
 	"strings"
@@ -39,7 +40,6 @@ func main() {
 	}
 	mongoUserRepo := mongoRepo.NewUserRepository(mongoDb)
 
-	// Check if MongoDB is empty before running migration
 	isEmpty, err := mongoUserRepo.IsEmpty(ctx)
 	if err != nil {
 		log.Fatalf("Failed to check if MongoDB is empty: %v", err)
@@ -65,9 +65,6 @@ func migrateData(
 	startTime := time.Now()
 	log.Println("Starting data migration...")
 
-	logrus.Info(redisUserRepo, canvasRepo, mongoUserRepo)
-	logrus.Info(redisUserRepo.GetUsr(ctx, 374040842))
-
 	canvasHistory, err := canvasRepo.GetCanvasHistory(ctx)
 	if err != nil {
 		return err
@@ -77,10 +74,8 @@ func migrateData(
 	if err != nil {
 		return err
 	}
-	logrus.Info(currentCanvas)
 
 	totalPixels, activePixels := calculateUserStats(canvasHistory, currentCanvas)
-	logrus.Info(totalPixels, activePixels)
 
 	keys, err := redisUserRepo.GetAllUserKeys(ctx)
 	if err != nil {
@@ -96,21 +91,23 @@ func migrateData(
 			continue
 		}
 
-		user := redisUserRepo.GetUsr(ctx, userID)
-		if user.ID == 0 {
-			log.Printf("Warning: Failed to get user data for ID %d", userID)
+		vkKey := domain.VKUserID(userID)
+		user := redisUserRepo.GetUsr(ctx, userIDStr)
+		user.ID = vkKey
+		if user.ID == "" {
+			log.Printf("Warning: Failed to get user data for key %s", key)
 			continue
 		}
 
 		if err := mongoUserRepo.RegisterUser(ctx, user); err != nil {
-			log.Printf("Warning: Failed to insert user %d: %v", user.ID, err)
+			log.Printf("Warning: Failed to insert user %s: %v", user.ID, err)
 			continue
 		}
 
 		totalPlaced := totalPixels[user.ID]
 		active := activePixels[user.ID]
 		if err := mongoUserRepo.UpdateUserStats(ctx, user, totalPlaced, active); err != nil {
-			log.Printf("Warning: Failed to update stats for user %d: %v", user.ID, err)
+			log.Printf("Warning: Failed to update stats for user %s: %v", user.ID, err)
 			continue
 		}
 
@@ -121,21 +118,43 @@ func migrateData(
 	return nil
 }
 
-func calculateUserStats(canvasHistory, currentCanvas map[string][]string) (map[int]int, map[int]int) {
-	totalPixels := make(map[int]int)
-	activePixels := make(map[int]int)
+func pixelUserKeyFromJSON(pixelJSON string) string {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(pixelJSON), &m); err != nil {
+		return ""
+	}
+	raw, ok := m["userid"]
+	if !ok {
+		return ""
+	}
+	switch v := raw.(type) {
+	case float64:
+		return domain.VKUserID(int(v))
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return ""
+		}
+		if n, err := strconv.Atoi(s); err == nil {
+			return domain.VKUserID(n)
+		}
+		return utils.NormalizeUsername(s)
+	default:
+		return ""
+	}
+}
+
+func calculateUserStats(canvasHistory, currentCanvas map[string][]string) (map[string]int, map[string]int) {
+	totalPixels := make(map[string]int)
+	activePixels := make(map[string]int)
 
 	for _, pixels := range canvasHistory {
 		for _, pixelData := range pixels {
-			var pixel struct {
-				UserID int `json:"UserID"`
-			}
-			if err := json.Unmarshal([]byte(pixelData), &pixel); err != nil {
-				log.Printf("Warning: Failed to unmarshal pixel data: %v", err)
+			uid := pixelUserKeyFromJSON(pixelData)
+			if uid == "" {
 				continue
 			}
-
-			totalPixels[pixel.UserID]++
+			totalPixels[uid]++
 		}
 	}
 
@@ -143,18 +162,12 @@ func calculateUserStats(canvasHistory, currentCanvas map[string][]string) (map[i
 		if len(pixels) == 0 {
 			continue
 		}
-
 		lastPixel := pixels[len(pixels)-1]
-
-		var pixel struct {
-			UserID int `json:"UserID"`
-		}
-		if err := json.Unmarshal([]byte(lastPixel), &pixel); err != nil {
-			log.Printf("Warning: Failed to unmarshal pixel data: %v", err)
+		uid := pixelUserKeyFromJSON(lastPixel)
+		if uid == "" {
 			continue
 		}
-
-		activePixels[pixel.UserID]++
+		activePixels[uid]++
 	}
 
 	return totalPixels, activePixels

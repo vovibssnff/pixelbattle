@@ -162,6 +162,10 @@ func (s *VKAuthProvider) isBanned(userID int) bool {
 		logrus.Error(err)
 		return true
 	}
+	if len(usr.Response) == 0 {
+		logrus.Warn("VK API returned empty response for user ", userID)
+		return true
+	}
 	if usr.Response[0].Deactivated == "banned" || usr.Response[0].Deactivated == "deleted" {
 		logrus.Info("Login request from vk banned usr: ", usr.Response[0].ID)
 		return true

@@ -20,7 +20,6 @@
 <script>
 import * as VKID from "@vkid/sdk";
 import AppHeader from "@/components/AppHeader.vue";
-// import { Connect } from "@vkontakte/superappkit";
 import { mapMutations } from "vuex";
 export default {
   components: {AppHeader},
@@ -35,10 +34,10 @@ export default {
     },
   },
   beforeMount() {
-    VKID.Config.set({
+    VKID.Config.init({
       app: 51845999,
-      redirectUrl: 'https://' + window.location.hostname + '/api/login'
-    }); 
+      redirectUrl: 'https://' + window.location.hostname + '/api/vk-login'
+    });
     const button = document.getElementById('VKIDSDKAuthButton');
     if (button) {
       button.onclick = this.handleClick;

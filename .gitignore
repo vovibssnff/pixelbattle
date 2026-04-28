@@ -2,8 +2,26 @@
 .env
 .env.*
 !.env.example
-*.local
+!**/.env.example
+*.env
+*.env.*
+!*.env.example
+*.env.docker
+docs
 pb_backend/app.env
+pb_backend/app.env.local
+pb_backend/app.env.*.local
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
 
 # --- IDE & editor ---
 .idea/
@@ -41,8 +59,10 @@ pb_frontend/.pnpm-debug.log*
 # pb_frontend/dist/
 
 # --- TLS (local dev; do not commit keys) ---
+certs/
 pb_frontend/nginx/cert/
 
+# Root env for docker compose (copy from .env.example)
 # --- Docker & runtime data ---
 redis/dump.rdb
 redis/redis_data/
@@ -52,6 +72,7 @@ mongodb/logs/
 
 # --- Monitoring (Prometheus / Grafana TSDB & local data) ---
 monitoring/prometheus_data/
+monitoring/grafana_data/
 monitoring/grafana/data/
 
 # --- Benchmarks & Ansible ---

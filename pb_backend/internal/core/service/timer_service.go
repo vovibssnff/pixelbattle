@@ -17,10 +17,10 @@ func NewTimerService(timerRepo repository.TimerRepository, delay int) *TimerServ
 	}
 }
 
-func (s *TimerService) SetTimer(ctx context.Context, userid int) error {
+func (s *TimerService) SetTimer(ctx context.Context, userid string) error {
 	return s.timerRepo.SetTimer(ctx, userid, s.delay)
 }
 
-func (s *TimerService) CheckTime(ctx context.Context, userid int) (int64, error) {
+func (s *TimerService) CheckTime(ctx context.Context, userid string) (int64, error) {
 	return s.timerRepo.CheckTime(ctx, userid)
 }

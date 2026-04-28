@@ -45,7 +45,7 @@ func (s *CanvasService) InitializeCanvas(ctx context.Context, height uint, width
 	for i := 0; i < int(height); i++ {
 		for j := 0; j < int(width); j++ {
 			redisPixel := &domain.RedisPixel{
-				UserId:    1,
+				UserId:    "",
 				Faculty:   "",
 				Color:     []uint{255, 255, 255},
 				Timestamp: time.Now().Unix(),
