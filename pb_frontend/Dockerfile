@@ -9,7 +9,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM alpine:3.20 AS runtime
+FROM alpine:3.23 AS runtime
 RUN apk upgrade --no-cache
 COPY --from=builder /app/dist /static
 ENTRYPOINT ["sh","-c","find /srv -mindepth 1 -delete; cp -a /static/. /srv/ && chmod -R a+rX /srv && exec sleep infinity"]
