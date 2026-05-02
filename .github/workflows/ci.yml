@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  backend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # Match pb_backend go.mod toolchain (avoid auto-downloading toolchain during go vet).
+          go-version: "1.23.6"
+          cache: true
+          cache-dependency-path: pb_backend/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: gofmt check
+        run: test -z "$(gofmt -l .)"
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62
+          working-directory: pb_backend
+
+  backend-sast:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.6"
+          cache: true
+          cache-dependency-path: pb_backend/go.sum
+      - name: gosec
+        uses: securego/gosec@master
+        with:
+          args: ./...
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - name: semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/ci
+            p/golang
+            p/owasp-top-ten
+            p/dockerfile
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: pb_frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+
+  frontend-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: pb_frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: NPM audit (high+)
+        run: npm audit --audit-level=high
+      - name: semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/javascript
+            p/owasp-top-ten
+
+  dockerfile-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: pb_backend/Dockerfile
+          config: .hadolint.yaml
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: pb_frontend/Dockerfile
+          config: .hadolint.yaml
+
+  iac-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+  container-security:
+    needs:
+      - secrets-scan
+      - backend-lint
+      - backend-sast
+      - frontend-lint
+      - frontend-security
+      - dockerfile-lint
+      - iac-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t pb-backend:${{ github.sha }} pb_backend/
+      - name: Build frontend image
+        run: docker build -t pb-frontend:${{ github.sha }} pb_frontend/
+      - name: Trivy backend
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: pb-backend:${{ github.sha }}
+          format: table
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      - name: Trivy frontend
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: pb-frontend:${{ github.sha }}
+          format: table
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          exit-code: "1"

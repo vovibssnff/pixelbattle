@@ -1,66 +1,131 @@
+# Requires project root `.env` with all required variables (see `.env.example` — no insecure defaults).
+# Copy `pb_backend/app.env.docker.example` → `pb_backend/app.env.docker` and align credentials.
+#
+# Public exposure: only the `caddy` service publishes ports (80, 443). All other services stay on the
+# private Docker network and are reachable only from other containers (or via Caddy reverse_proxy).
+
 volumes:
   caddy_html:
+
+networks:
+  internal:
+    driver: bridge
 
 services:
   redis:
     image: redis:7.4.2
     restart: unless-stopped
     command: redis-server /etc/redis/redis.conf
+    networks: [internal]
     volumes:
       - ./redis/redis_data:/data
       - ./redis/redis.conf:/etc/redis/redis.conf
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (see .env.example)}
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
 
   mongodb:
-    image: mongo:latest
+    # Must match featureCompatibilityVersion in ./mongodb/data (7.x cannot open 8.x data).
+    image: mongo:8.2.4
     restart: unless-stopped
+    networks: [internal]
     volumes:
       - ./mongodb/data:/data/db
       - ./mongodb/mongod.conf:/etc/mongod.conf
       - ./mongodb/logs:/var/log/mongodb
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-root}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-changeme}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:?Set MONGO_INITDB_ROOT_USERNAME in .env}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:?Set MONGO_INITDB_ROOT_PASSWORD in .env}
     command: --bind_ip_all
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --quiet --eval 'db.runCommand({ping:1})'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1024M }
 
   backend:
-    build: ./pb_backend
+    build:
+      context: ./pb_backend
+      dockerfile: Dockerfile
+      target: final
     restart: unless-stopped
+    networks: [internal]
     env_file:
       - ./pb_backend/app.env.docker
     depends_on:
-      - redis
-      - mongodb
+      redis: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.66.0
     restart: unless-stopped
+    networks: [internal]
     environment:
       - REDIS_ADDR=redis://redis:6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     depends_on:
-      - redis
+      redis: { condition: service_healthy }
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
 
+  # URI is still visible in `docker inspect`; prefer secrets / Docker Swarm secrets in production.
   mongodb-exporter:
     image: percona/mongodb_exporter:0.44
     restart: unless-stopped
+    networks: [internal]
     command:
-      - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-changeme}@mongodb:27017/admin?authSource=admin"
+      - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/admin?authSource=admin"
       - "--compatible-mode"
       - "--collect-all"
     depends_on:
-      - mongodb
+      mongodb: { condition: service_healthy }
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.55.1
     restart: unless-stopped
+    networks: [internal]
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Bind-mount ./monitoring/prometheus_data is usually root:root on the host; running as root
-    # avoids queries.active / TSDB permission panics. Prefer fix-monitoring-volume-perms.sh + nobody if you require non-root.
     user: "0:0"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -75,57 +140,78 @@ services:
       - backend
       - redis-exporter
       - mongodb-exporter
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
 
   grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:11.4.0
     restart: unless-stopped
+    networks: [internal]
+    user: "0:0"
     environment:
       - GF_LOG_LEVEL=error
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
-      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://localhost/panel/}
-      # Require login; no anonymous access to /panel/
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:?Set GRAFANA_ROOT_URL in .env (e.g. https://localhost/panel/)}
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_AUTH_DISABLE_LOGIN_FORM=false
       - GF_USERS_ALLOW_SIGN_UP=false
-    # Same as Prometheus: host bind-mount is rarely UID 472; root avoids Grafana startup permission errors.
-    user: "0:0"
     volumes:
       - ./monitoring/grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
 
   frontend:
-    build: ./pb_frontend
+    build:
+      context: ./pb_frontend
+      dockerfile: Dockerfile
+      target: final
     restart: unless-stopped
+    networks: [internal]
     volumes:
       - caddy_html:/srv
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     healthcheck:
-      test: ["CMD", "test", "-f", "/srv/index.html"]
+      test: ["CMD-SHELL", "test -f /srv/index.html"]
       interval: 5s
       timeout: 5s
-      retries: 30
-      start_period: 60s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.8.4-alpine
     restart: unless-stopped
+    networks: [internal]
     ports:
       - "443:443"
       - "80:80"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?Set CADDY_DOMAIN in .env (public hostname, e.g. dev.example.com)}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env (Lets Encrypt contact; unused if tls.inc uses file PEMs or tls internal)}
+    security_opt: ["no-new-privileges:true"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/tls.inc:/etc/caddy/tls.inc:ro
       - ./certs:/etc/caddy/certs:ro
       - caddy_html:/srv:ro
     depends_on:
-      backend:
-        condition: service_started
-      grafana:
-        condition: service_started
-      prometheus:
-        condition: service_started
-      frontend:
-        condition: service_healthy
+      backend: { condition: service_healthy }
+      grafana: { condition: service_started }
+      prometheus: { condition: service_started }
+      frontend: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }

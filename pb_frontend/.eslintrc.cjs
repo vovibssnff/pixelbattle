@@ -1,0 +1,33 @@
+/* eslint-env node */
+module.exports = {
+  root: true,
+  env: { browser: true, es2022: true, node: true },
+  extends: ["eslint:recommended", "plugin:vue/vue3-recommended"],
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module",
+  },
+  plugins: ["vue", "security"],
+  rules: {
+    "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    "no-console": ["warn", { allow: ["warn", "error"] }],
+    "no-empty": "warn",
+    "no-constant-condition": "warn",
+    "vue/multi-word-component-names": "off",
+    "vue/no-unused-components": "warn",
+    "vue/html-self-closing": "off",
+    "vue/max-attributes-per-line": "off",
+    "vue/singleline-html-element-content-newline": "off",
+    "vue/html-closing-bracket-spacing": "off",
+    "security/detect-eval-with-expression": "error",
+    "security/detect-unsafe-regex": "warn",
+    "security/detect-buffer-noassert": "error",
+    "security/detect-child-process": "warn",
+    "security/detect-disable-mustache-escape": "error",
+    "security/detect-non-literal-fs-filename": "warn",
+    "security/detect-non-literal-require": "warn",
+    "security/detect-possible-timing-attacks": "warn",
+    "security/detect-pseudoRandomBytes": "error",
+  },
+  ignorePatterns: ["dist/", "node_modules/"],
+};

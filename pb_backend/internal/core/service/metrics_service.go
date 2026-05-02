@@ -41,22 +41,24 @@ func (rr *responseRecorder) Flush() {
 	}
 }
 
-func MetricsHandler() http.Handler                                    { return metrics.Handler() }
-func IncrementCurrentUsers()                                          { metrics.IncrementCurrentUsers() }
-func DecrementCurrentUsers()                                          { metrics.DecrementCurrentUsers() }
-func IncrementOverallRegistrations()                                  { metrics.IncrementOverallRegistrations() }
+func MetricsHandler() http.Handler   { return metrics.Handler() }
+func IncrementCurrentUsers()         { metrics.IncrementCurrentUsers() }
+func DecrementCurrentUsers()         { metrics.DecrementCurrentUsers() }
+func IncrementOverallRegistrations() { metrics.IncrementOverallRegistrations() }
 func ObserveWebSocketMessageDuration(messageType string, start time.Time) {
 	metrics.ObserveWebSocketMessageDuration(messageType, start)
 }
-func IncrementPixelsPlaced(faculty string)                            { metrics.IncrementPixelsPlaced(faculty) }
-func RecordLoginAttempt(method, result string)                        { metrics.RecordLoginAttempt(method, result) }
-func IncrementWebSocketConnections()                                  { metrics.IncrementWebSocketConnections() }
-func IncrementWebSocketMessagesReceived(msgType string)               { metrics.IncrementWebSocketMessagesReceived(msgType) }
-func ObserveCanvasInitDuration(start time.Time)                       { metrics.ObserveCanvasInitDuration(start) }
-func IncrementSessionErrors()                                         { metrics.IncrementSessionErrors() }
-func IncrementBannedRejected()                                        { metrics.IncrementBannedRejected() }
-func RecordHeatmapPixel(x, y uint)                                    { metrics.RecordHeatmapPixel(x, y) }
-func SetPixelWriteQueueDepth(depth int)                               { metrics.SetPixelWriteQueueDepth(depth) }
+func IncrementPixelsPlaced(faculty string)     { metrics.IncrementPixelsPlaced(faculty) }
+func RecordLoginAttempt(method, result string) { metrics.RecordLoginAttempt(method, result) }
+func IncrementWebSocketConnections()           { metrics.IncrementWebSocketConnections() }
+func IncrementWebSocketMessagesReceived(msgType string) {
+	metrics.IncrementWebSocketMessagesReceived(msgType)
+}
+func ObserveCanvasInitDuration(start time.Time) { metrics.ObserveCanvasInitDuration(start) }
+func IncrementSessionErrors()                   { metrics.IncrementSessionErrors() }
+func IncrementBannedRejected()                  { metrics.IncrementBannedRejected() }
+func RecordHeatmapPixel(x, y uint)              { metrics.RecordHeatmapPixel(x, y) }
+func SetPixelWriteQueueDepth(depth int)         { metrics.SetPixelWriteQueueDepth(depth) }
 func ObserveDatabaseOperation(op, st string, d time.Duration, e error) {
 	metrics.ObserveDatabaseOperation(op, st, d, e)
 }

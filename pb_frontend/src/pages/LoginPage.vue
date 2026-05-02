@@ -20,7 +20,6 @@
       <router-link to="/register" class="reg-link">Регистрация</router-link>
     </div>
   </div>
-
 </template>
 
 <script>

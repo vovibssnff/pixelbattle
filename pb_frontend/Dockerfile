@@ -1,12 +1,17 @@
-# Build Vue app; runtime copies artifacts into shared volume for Caddy (see docker-compose).
-FROM node:alpine AS build
+FROM node:20-alpine3.20 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
+
+FROM node:20-alpine3.20 AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM alpine:3.19
-COPY --from=build /app/dist /static
-# caddy_html is a named volume: merge-only cp leaves old hashed JS/CSS. Wipe /srv then copy so deploys always match the image.
-CMD ["sh", "-c", "rm -rf /srv/* && cp -a /static/. /srv/ && exec sleep infinity"]
+FROM alpine:3.20 AS runtime
+RUN apk upgrade --no-cache
+COPY --from=builder /app/dist /static
+ENTRYPOINT ["sh","-c","find /srv -mindepth 1 -delete; cp -a /static/. /srv/ && chmod -R a+rX /srv && exec sleep infinity"]
+
+FROM runtime AS final

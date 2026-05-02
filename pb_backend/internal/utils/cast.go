@@ -59,4 +59,3 @@ func GetImageBytes(img *domain.Image) ([]byte, error) {
 	err := png.Encode(&buf, rgba)
 	return buf.Bytes(), err
 }
-

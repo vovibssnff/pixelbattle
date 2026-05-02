@@ -60,13 +60,23 @@ func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.sessionService.SaveSession(session, w, r)
+		if err := h.sessionService.SaveSession(session, w, r); err != nil {
+			logrus.Error(err)
+			service.IncrementSessionErrors()
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 
 	} else if h.userService.GetUser(r.Context(), vkID).Faculty == "" || h.sessionService.IsInProcess(session) {
 		h.sessionService.SetUserID(session, vkID)
 		h.sessionService.SetAuthenticated(session, "in_process")
-		h.sessionService.SaveSession(session, w, r)
+		if err := h.sessionService.SaveSession(session, w, r); err != nil {
+			logrus.Error(err)
+			service.IncrementSessionErrors()
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		http.Redirect(w, r, "/faculty", http.StatusSeeOther)
 
 	} else {
@@ -74,7 +84,12 @@ func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 		h.sessionService.SetAuthenticated(session, "true")
 		usr := h.userService.GetUser(r.Context(), h.sessionService.GetUserID(session))
 		h.sessionService.SetFaculty(session, usr.Faculty)
-		h.sessionService.SaveSession(session, w, r)
+		if err := h.sessionService.SaveSession(session, w, r); err != nil {
+			logrus.Error(err)
+			service.IncrementSessionErrors()
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		http.Redirect(w, r, "/main", http.StatusSeeOther)
 	}
 	service.RecordLoginAttempt("vk", "success")
@@ -293,7 +308,12 @@ func (h *RestHandlers) HandleFaculty(w http.ResponseWriter, r *http.Request) {
 	}
 	h.sessionService.SetAuthenticated(session, "true")
 	h.sessionService.SetFaculty(session, faculty)
-	h.sessionService.SaveSession(session, w, r)
+	if err := h.sessionService.SaveSession(session, w, r); err != nil {
+		logrus.Error(err)
+		service.IncrementSessionErrors()
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	service.IncrementOverallRegistrations()
 	http.Redirect(w, r, "/main", http.StatusSeeOther)
 }
@@ -307,7 +327,11 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 	}
 
 	img := h.canvasService.CreateImage(height, width)
-	h.canvasService.GetCanvas(r.Context(), img)
+	if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
+		logrus.Error(err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	b, err := utils.GetImageBytes(img)
 	if err != nil {
 		logrus.Error(err)
@@ -321,6 +345,9 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 	if h.userService.IsAdmin(h.sessionService.GetUserID(session)) {
 		w.Header().Set("Is-God", "true")
 	}
-	w.Write(b)
+	if _, err := w.Write(b); err != nil {
+		logrus.Error(err)
+		return
+	}
 	service.ObserveCanvasInitDuration(start)
 }

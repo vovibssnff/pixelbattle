@@ -6,7 +6,11 @@
 *.env
 *.env.*
 !*.env.example
+!pb_backend/app.env.docker.example
 *.env.docker
+# Track security / CI config (do not add broad rules that override these)
+!.gitleaks.toml
+!.github/**
 docs
 pb_backend/app.env
 pb_backend/app.env.local
@@ -25,6 +29,7 @@ id_rsa.pub
 
 # --- IDE & editor ---
 .idea/
+*.iml
 .vscode/
 *.swp
 *.swo
@@ -55,12 +60,10 @@ pb_frontend/yarn-debug.log*
 pb_frontend/yarn-error.log*
 pb_frontend/.pnpm-debug.log*
 
-# Build output (enable if you always build before deploy)
-# pb_frontend/dist/
+pb_frontend/dist/
 
 # --- TLS (local dev; do not commit keys) ---
 certs/
-pb_frontend/nginx/cert/
 
 # Root env for docker compose (copy from .env.example)
 # --- Docker & runtime data ---
@@ -116,3 +119,13 @@ Thumbs.db
 
 # --- Misc local paths ---
 root/
+
+# --- IaC & cloud (local state; never commit) ---
+*.tfstate
+*.tfstate.*
+.terraform/
+.aws/
+
+# --- Tooling caches (local) ---
+.cache/
+.npmrc

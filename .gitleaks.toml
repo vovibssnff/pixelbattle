@@ -1,0 +1,16 @@
+title = "pixelbattle gitleaks config"
+
+[extend]
+useDefault = true
+
+# Templates and committed examples use CHANGE_ME placeholders on purpose
+[allowlist]
+description = "env templates and docs"
+paths = [
+  '''\.env\.example$''',
+  '''pb_backend/app\.env\.example$''',
+  '''pb_backend/app\.env\.docker\.example$''',
+]
+regexes = [
+  '''CHANGE_ME''',
+]

@@ -41,7 +41,8 @@
  В качестве reverse proxy используется **Caddy** (TLS, единая точка входа). Сервис докеризован. Авторизация: **VK ID** (OAuth callback `GET /api/vk-login`) и **логин/пароль** (`POST /api/login`, `POST /api/register`). Реализовано отключение таймера для админов и бан пользователей (`POST /api/admin/ban`). Есть защита от ботов. Мониторинг: Prometheus + Grafana (за прокси).
 
 ### Запуск в Docker (кратко)
-1. Скопируйте `.env.example` в `.env` при необходимости (пароли Mongo/Redis/Grafana).
-2. Сгенерируйте самоподписанные сертификаты: `./scripts/setup/generate-certs.sh` (каталог `certs/`, в `.gitignore`).
-3. Укажите `SERVICE_TOKEN` и при необходимости отредактируйте `pb_backend/app.env.docker` или подключите свой `app.env` через override.
-4. `docker compose up --build` — Grafana: `/panel/`, Prometheus (UI): `/prometheus/`. Метрики бэкенда доступны только внутри сети Docker (`backend:8080/metrics`), скрейпит Prometheus.
+1. Скопируйте `.env.example` в `.env` и заполните пароли (Mongo/Redis/Grafana), **`CADDY_DOMAIN`** (публичное имя, на которое смотрит DNS) и **`ACME_EMAIL`** (контакт для Lets Encrypt). **`GRAFANA_ROOT_URL`** должен быть вида `https://<тот же хост>/panel/`.
+2. **TLS по умолчанию** — Caddy сам получает сертификаты (ACME). Порт **80** должен быть доступен с интернета для проверки домена (HTTP-01).
+3. **Обход до выдачи / без публичного DNS:** отредактируйте **`caddy/tls.inc`**: раскомментируйте **`tls internal`** (локально) или **`tls /etc/caddy/certs/...`** и положите PEM в каталог **`certs/`** (том `./certs:/etc/caddy/certs` сохранён; файлы в `.gitignore`). Имена по умолчанию в комментариях: `pixelbattle.crt` / `pixelbattle.key` или пара `fullchain.pem` / `privkey.pem`.
+4. Укажите `SERVICE_TOKEN` и при необходимости отредактируйте `pb_backend/app.env.docker` или подключите свой `app.env` через override.
+5. `docker compose up --build` — фронт и API через Caddy (HTTPS), Grafana: `/panel/`. Веб-UI Prometheus наружу не выставлен (см. `Caddyfile`); метрики бэкенда: `backend:8080/metrics` внутри Docker, их скрейпит Prometheus.

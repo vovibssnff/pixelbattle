@@ -28,13 +28,14 @@ export default class Place {
 		let a = new Uint8Array(len);
 		let pos = 0;
 		let reader = resp.body.getReader();
-		while (true) {
-			let { done, value } = await reader.read();
-			if (value) {
-				a.set(value, pos);
-				pos += value.length;
+		let done = false;
+		while (!done) {
+			const chunk = await reader.read();
+			if (chunk.value) {
+				a.set(chunk.value, pos);
+				pos += chunk.value.length;
 			}
-			if (done) break;
+			done = chunk.done;
 		}
 		return a;
     }

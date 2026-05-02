@@ -1,14 +1,31 @@
 package vk
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
+
+func postForm(ctx context.Context, endpoint string, form url.Values) (*http.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return http.DefaultClient.Do(req)
+}
 
 type VKAuthProvider struct {
 	ServiceToken string
@@ -103,8 +120,8 @@ func (s *VKAuthProvider) toVkResponse(query url.Values) *VKResponse {
 }
 
 // SilentToAccess exchanges a silent token for an access token.
-func (s *VKAuthProvider) silentToAccess(accessReq AccessReq) string {
-	response, err := http.PostForm("https://api.vk.com/method/auth.exchangeSilentAuthToken", url.Values{
+func (s *VKAuthProvider) silentToAccess(ctx context.Context, accessReq AccessReq) string {
+	response, err := postForm(ctx, "https://api.vk.com/method/auth.exchangeSilentAuthToken", url.Values{
 		"v":            {accessReq.V},
 		"token":        {accessReq.SilentToken},
 		"access_token": {accessReq.AccessToken},
@@ -137,7 +154,7 @@ func (s *VKAuthProvider) silentToAccess(accessReq AccessReq) string {
 // IsBanned checks if a user is banned or deleted.
 func (s *VKAuthProvider) isBanned(userID int) bool {
 	checkReq := s.newCheckReq(userID)
-	response, err := http.PostForm("https://api.vk.com/method/users.get", url.Values{
+	response, err := postForm(context.Background(), "https://api.vk.com/method/users.get", url.Values{
 		"user_ids":     {checkReq.UserIds},
 		"access_token": {checkReq.AccessToken},
 		"v":            {checkReq.V},
@@ -205,5 +222,5 @@ func (s *VKAuthProvider) Register(r *http.Request) (*VKUser, string) {
 	vkResp := s.toVkResponse(r.URL.Query())
 	accessReq := s.newAccessReq(vkResp.Token, vkResp.UUID)
 
-	return &vkResp.User, s.silentToAccess(*accessReq)
+	return &vkResp.User, s.silentToAccess(r.Context(), *accessReq)
 }

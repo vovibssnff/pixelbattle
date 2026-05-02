@@ -185,12 +185,12 @@ func Handler() http.Handler {
 	return promhttp.Handler()
 }
 
-func IncrementCurrentUsers()            { currentUsers.Inc() }
-func DecrementCurrentUsers()            { currentUsers.Dec() }
-func IncrementOverallRegistrations()    { overallRegistrations.Inc() }
-func IncrementWebSocketConnections()    { websocketConnectionsTotal.Inc() }
-func IncrementSessionErrors()           { sessionErrorsTotal.Inc() }
-func IncrementBannedRejected()          { bannedActionRejectedTotal.Inc() }
+func IncrementCurrentUsers()         { currentUsers.Inc() }
+func DecrementCurrentUsers()         { currentUsers.Dec() }
+func IncrementOverallRegistrations() { overallRegistrations.Inc() }
+func IncrementWebSocketConnections() { websocketConnectionsTotal.Inc() }
+func IncrementSessionErrors()        { sessionErrorsTotal.Inc() }
+func IncrementBannedRejected()       { bannedActionRejectedTotal.Inc() }
 
 func IncrementPixelsPlaced(faculty string) {
 	pixelsPlacedTotal.WithLabelValues(faculty).Inc()
