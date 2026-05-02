@@ -42,7 +42,7 @@ require (
 require (
 	github.com/gorilla/mux v1.8.1
 	github.com/redis/go-redis/v9 v9.19.0
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/viper v1.21.0
 	go.mongodb.org/mongo-driver v1.17.3
 	golang.org/x/net v0.33.0 // indirect
