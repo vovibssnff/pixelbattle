@@ -1,0 +1,17 @@
+.git
+.gitignore
+*.md
+Dockerfile*
+docker-compose*.yml
+*.env
+*.env.*
+!*.env.example
+!app.env.docker.example
+bin/
+vendor/
+*.test
+*.out
+*.prof
+coverage.*
+prometheus/
+sqlite/

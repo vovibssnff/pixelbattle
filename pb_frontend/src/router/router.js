@@ -3,7 +3,6 @@ import RegisterPage from "@/pages/RegisterPage.vue";
 import MainPage from "@/pages/MainPage.vue";
 import FacultyPage from "@/pages/FacultyPage.vue"
 import { createRouter, createWebHistory } from "vue-router";
-import store from "@/store"
 
 const routes = [
   {

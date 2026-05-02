@@ -1,0 +1,38 @@
+run:
+  timeout: 5m
+  go: "1.23"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - gosec
+    - staticcheck
+    - ineffassign
+    - unconvert
+    - unparam
+    - misspell
+    - bodyclose
+    - noctx
+    - gocritic
+    - prealloc
+    - gofmt
+    - goimports
+
+linters-settings:
+  gosec:
+    excludes:
+      - G104
+      # Server timeouts: tracked for a follow-up in SECURITY.md
+      - G114
+      # Canvas dimensions are bounded by config; conversions are intentional
+      - G115
+  gocritic:
+    disabled-checks:
+      - ifElseChain
+
+issues:
+  exclude-dirs:
+    - vendor
+    - sqlite

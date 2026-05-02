@@ -57,7 +57,9 @@ func (r UserRepository) GetUsr(ctx context.Context, usrID string) domain.User {
 		logrus.Error(err)
 	}
 	var usr domain.User
-	utils.DeserializeUser([]byte(jsonUsr), &usr)
+	if err := utils.DeserializeUser([]byte(jsonUsr), &usr); err != nil {
+		logrus.Errorf("deserialize user %s: %v", usrID, err)
+	}
 	return usr
 }
 

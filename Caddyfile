@@ -1,8 +1,9 @@
 {
-	# Self-signed TLS only; no ACME
-	auto_https off
+	# Let's Encrypt / ZeroSSL contact (required for public ACME issuance)
+	email {$ACME_EMAIL}
 	servers {
 		metrics
+		trusted_proxies static private_ranges
 	}
 }
 
@@ -10,10 +11,25 @@
 	metrics /metrics
 }
 
-:443 {
-	tls /etc/caddy/certs/pixelbattle.crt /etc/caddy/certs/pixelbattle.key
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+	}
+}
+
+{$CADDY_DOMAIN} {
+	import /etc/caddy/tls.inc
 
 	encode gzip
+	import security_headers
 
 	# API and WebSocket (must be before file_server)
 	handle /api/* {
@@ -47,9 +63,4 @@
 		try_files {path} /index.html
 		file_server
 	}
-}
-
-# Optional HTTP redirect to HTTPS
-:80 {
-	redir https://{host}{uri} permanent
 }

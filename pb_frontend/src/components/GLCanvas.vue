@@ -1,57 +1,61 @@
 <template>
-  <div oncontextmenu="return false;">
-    <canvas @touchstart="onTouchStart" @mousedown="onMouseDown"
-    @touchend="onTouchEnd" @mousemove="coordsUpdate"
-    @contextmenu="() => {return false;}" id="viewport-canvas"></canvas>
+  <div @contextmenu.prevent>
+    <canvas
+      id="viewport-canvas" @touchstart="onTouchStart"
+      @mousedown="onMouseDown" @touchend="onTouchEnd"
+      @mousemove="coordsUpdate" @contextmenu.prevent
+    ></canvas>
     <div id="ui-wrapper" hide="true">
       <p id="loading-p"></p>
       <div id="color-wrapper">
         <!-- <div id="color-swatch"></div> -->
-        <div v-for="(color, index) in palette" 
+        <div
+          v-for="(swatchHex, index) in palette" 
           :key="index" 
-          :item="color" 
+          ref="swatches" 
+          :item="swatchHex" 
+          class="color-swatch" 
+          :style="{ backgroundColor: swatchHex }" 
           @click="(ev) => {
             ev.preventDefault();
-            this.selectSwatch(index);
+            selectSwatch(index);
           }" 
-          class="color-swatch" 
-          :style="{ backgroundColor: color }" 
-          ref="swatches" 
         ></div>
 
-        <input @change="onChange" id="color-field" type="text" :placeholder="palette[activeSwatch]" :value="palette[activeSwatch]" />
+        <input id="color-field" type="text" :placeholder="palette[activeSwatch]" :value="palette[activeSwatch]" @change="onChange" />
         <!-- <input @change="onChange" id="color-field" type="text" placeholder="#000000" value="#000000" /> -->
       </div>  
 
-      <label for="checkbox" id="howto">?</label>
-      <input hidden type="checkbox" id="checkbox">
+      <label id="howto" for="checkbox">?</label>
+      <input id="checkbox" hidden type="checkbox">
       <label for="checkbox" class="modal-overlay">
         <div class="modal">
           <!-- <h1>Добро пожаловать на Pixelbattle!</h1> -->
-<h1>О мудром владении цветами и пергаментом на веб-сайте</h1><br/><br/>
+          <h1>О мудром владении цветами и пергаментом на веб-сайте</h1><br/><br/>
 
-Слушай же, о путник, и ведай, как управляться с волшебной палитрой:
-<br/><br/>
-ПКМ (передвижение пальца на телефоне) — держи перо крепко, дабы узоры чертить.<br/>
-ЛКМ (касание экрана на телефоне) — ведай путь свой верно, дабы по холсту странствовать.<br/>
-CTRL + ПКМ (зажать 1 секунду на телефоне) — познай цвет истинный, да занеси его в палитру свою.<br/><br/>
-<span>В помощь тебе — <a target="_blank" href="https://color-hex.com">цветная книга мудрецов</a></span><br/>
-<br/>
-Время течет, как река, и ставить пиксели дозволено лишь раз в один удар сердца.
-<br/>
-Пусть же рука твоя будет тверда, а дух — неколебим. Веди перо свое, дабы создать творение, коему позавидуют сами небеса!
+          Слушай же, о путник, и ведай, как управляться с волшебной палитрой:
+          <br/><br/>
+          ПКМ (передвижение пальца на телефоне) — держи перо крепко, дабы узоры чертить.<br/>
+          ЛКМ (касание экрана на телефоне) — ведай путь свой верно, дабы по холсту странствовать.<br/>
+          CTRL + ПКМ (зажать 1 секунду на телефоне) — познай цвет истинный, да занеси его в палитру свою.<br/><br/>
+          <span>В помощь тебе — <a target="_blank" href="https://color-hex.com">цветная книга мудрецов</a></span><br/>
+          <br/>
+          Время течет, как река, и ставить пиксели дозволено лишь раз в один удар сердца.
+          <br/>
+          Пусть же рука твоя будет тверда, а дух — неколебим. Веди перо свое, дабы создать творение, коему позавидуют сами небеса!
           <label for="checkbox">X</label>
         </div>
       </label>
 
       <div id="zoom-wrapper">
-        <button @click="() => {this.zoomOut(1.2);}" class="zoom-button" id="zoom-out">-</button>
-        <button @click="() => {this.zoomIn(1.2);}" class="zoom-button" id="zoom-in">+</button>
+        <button id="zoom-out" class="zoom-button" @click="() => {zoomOut(1.2);}">-</button>
+        <button id="zoom-in" class="zoom-button" @click="() => {zoomIn(1.2);}">+</button>
       </div>
       <div id="cursor-info">
-        <span id="x-coordinate">{{ Math.floor(this.val_x) }}</span>, <span id="y-coordinate">{{ Math.floor(this.val_y) }}</span>
+        <span id="x-coordinate">{{ Math.floor(val_x) }}</span>, <span id="y-coordinate">{{ Math.floor(val_y) }}</span>
       </div>
-      <div id="timer">{{ this.seconds }}
+      <div id="timer">
+        {{ seconds }}
       </div>
       <div id="running-line">
         <div id="ad">
@@ -65,8 +69,8 @@ CTRL + ПКМ (зажать 1 секунду на телефоне) — позн
           </a>
         </div>
         <div id="tales-array">
-          <div class="tales" ref="firstTales"></div>
-          <div class="tales" ref="secondTales"></div>
+          <div ref="firstTales" class="tales"></div>
+          <div ref="secondTales" class="tales"></div>
         </div>
       </div>
     </div>
@@ -108,9 +112,6 @@ export default {
       isGod: null
     }
   },
-  created() {
-    this.setViewport();
-  },
   watch: {
     loaded(newVal) {
       if (newVal) {
@@ -118,6 +119,9 @@ export default {
         
       }
     },
+  },
+  created() {
+    this.setViewport();
   },
   mounted() {
     document.title='Pixelbattle';
@@ -165,12 +169,10 @@ export default {
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
     if (process.env.NODE_ENV === 'production') {
-      console.log("production")
       this.initConnection("/init_canvas");
       this.connectToWebSocket("/ws");
       this.initEventListeners();
     } else {
-      console.log("dev")
       this.loaded = true;
       this.ws = {}
       this.ws.send = function() { return; };
@@ -199,7 +201,7 @@ export default {
     }
     const platform = navigator.platform.toLowerCase();
     if (/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/.test(platform)) {
-      console.log("oh my ... god mobile user");
+      // Mobile client — reserved for future UX tweaks
     }
     // this.setSwatchesArr(this.$refs.swatches);
     // this.setField(document.querySelector("#color-field"));
@@ -213,7 +215,7 @@ export default {
       try {
         this.swatches[this.activeSwatch].style.borderWidth = '0';
         this.swatches[this.activeSwatch].style.width = '30px';
-      } catch{}
+      } catch { /* swatch DOM may be missing during teardown */ }
       // console.log(this.activeSwatch);
       this.activeSwatch = index;
       this.swatches[this.activeSwatch].style.borderWidth = '2px 3px';
@@ -249,7 +251,7 @@ export default {
         this.$data.place.uiwrapper.setAttribute("hide", true);
         this.$data.isGod = resp.headers.get("Is-God");
 			})
-      .catch((error) => {
+      .catch(() => {
         this.$router.push('/login');
       });
     },
@@ -274,9 +276,7 @@ export default {
         this.pos = this.glWindow.click(p);
         this.val_x = this.pos.x;
         this.val_y = this.pos.y;
-      } catch {
-
-      }
+      } catch { /* outside canvas */ }
     },
     send(x, y, color) {
       const pixel = {
@@ -351,6 +351,7 @@ export default {
       try {
         pixel = JSON.parse(event.data);
       } catch {
+        /* non-JSON websocket message */
         return;
       }
       if (!this.loaded) {
@@ -476,7 +477,7 @@ export default {
           this.pos = this.glWindow.click(tp);
           this.val_x = this.pos.x;
           this.val_y = this.pos.y;
-        } catch {}
+        } catch { /* touch outside drawable area */ }
         let movePos = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
         this.glWindow.move(movePos.x - this.lastMovePos.x, movePos.y - this.lastMovePos.y);
         this.glWindow.draw();
