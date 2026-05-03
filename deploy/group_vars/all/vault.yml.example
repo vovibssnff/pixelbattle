@@ -1,0 +1,37 @@
+---
+# Copy to vault.yml and fill in real values, then encrypt:
+#   cp vault.yml.example vault.yml
+#   ansible-vault encrypt vault.yml
+#
+# vault.yml is gitignored. The plain text shown here is just a template.
+
+# --- SSH / privilege escalation ---
+vault_server_host: "1.2.3.4"
+vault_deploy_user: "deploy"
+vault_ssh_key_path: "~/.ssh/id_ed25519"
+vault_ssh_common_args: ""
+# Only needed if `become` requires a sudo password on the target.
+vault_become_password: ""
+
+# --- Source repository ---
+vault_repo_url: "https://github.com/YOUR_USER/pixelbattle.git"
+
+# --- Container secrets (compose substitutions / app.env.docker) ---
+# Generate strong values, e.g.:  openssl rand -base64 24
+vault_mongo_root_username: "root"
+vault_mongo_root_password: "CHANGE_ME"
+vault_redis_password: "CHANGE_ME"
+
+vault_grafana_admin_user: "admin"
+vault_grafana_admin_password: "CHANGE_ME"
+# Public Grafana URL behind Caddy (must end with /panel/ to match Caddyfile).
+vault_grafana_root_url: "https://pixelbattle.local/panel/"
+
+# 32+ bytes; openssl rand -hex 32
+vault_session_key: "CHANGE_ME_RUN_OPENSSL_RAND_HEX_32"
+
+# VK Mini App service token (leave empty to disable VK auth flow).
+vault_service_token: ""
+
+# Email used by Caddy ACME (Let's Encrypt). Empty when caddy_tls_mode != "acme".
+vault_acme_email: ""

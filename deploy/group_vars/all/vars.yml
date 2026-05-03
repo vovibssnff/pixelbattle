@@ -1,0 +1,59 @@
+---
+# Non-secret deployment defaults. Anything sensitive lives in vault.yml (encrypted).
+#
+# Override at the inventory or CLI level (`-e key=value`) without editing this file.
+
+# --- Source ---
+deploy_git_repo: "{{ vault_repo_url }}"
+deploy_git_branch: "new-master"
+deploy_project_dir: "/opt/pixelbattle"
+
+# --- docker compose retries (Docker Hub TLS hiccups, slow VMs) ---
+deploy_compose_retries: 5
+deploy_compose_retry_delay: 45
+
+# --- Caddy TLS strategy ---
+# internal     : Caddy issues an internal CA cert; works with no DNS (default).
+# acme         : Caddy gets a public cert from Let's Encrypt (needs DNS + ports 80/443 open).
+# selfsigned   : This playbook generates a self-signed PEM pair into ./certs/.
+caddy_tls_mode: "internal"
+
+# Public hostname for Caddy / ACME / self-signed CN.
+# For `internal` mode any hostname works (Caddy issues a cert for it).
+# For `acme` this MUST be a public DNS name pointing to the host.
+caddy_domain: "pixelbattle.local"
+
+# Required if caddy_tls_mode == "acme"; ignored otherwise.
+acme_email: "{{ vault_acme_email | default('') }}"
+
+# --- Self-signed cert (only used when caddy_tls_mode == "selfsigned") ---
+selfsigned_cert_dir: "{{ deploy_project_dir }}/certs"
+selfsigned_cert_name: "pixelbattle"
+selfsigned_cert_country: "RU"
+selfsigned_cert_state: "SPB"
+selfsigned_cert_city: "Saint-Petersburg"
+selfsigned_cert_org: "ITMO"
+selfsigned_cert_days: 365
+selfsigned_cert_force_regenerate: false
+
+# --- Backend tunables (non-secret) ---
+deploy_canvas_height: 100
+deploy_canvas_width: 100
+deploy_pixel_cooldown_sec: 3
+deploy_log_level: "info"
+deploy_session_secure: true
+deploy_ws_allow_anonymous: false
+deploy_api_version: "5.131"
+deploy_admin_ids: ""
+deploy_admin_usernames: ""
+deploy_redis_history_db: 0
+deploy_redis_timer_db: 1
+
+# --- Runtime data dirs created on the host (compose bind-mounts) ---
+deploy_data_dirs:
+  - "{{ deploy_project_dir }}/redis/redis_data"
+  - "{{ deploy_project_dir }}/mongodb/data"
+  - "{{ deploy_project_dir }}/mongodb/logs"
+  - "{{ deploy_project_dir }}/monitoring/prometheus_data"
+  - "{{ deploy_project_dir }}/monitoring/grafana_data"
+  - "{{ deploy_project_dir }}/certs"

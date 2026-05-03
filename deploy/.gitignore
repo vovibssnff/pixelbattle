@@ -1,0 +1,4 @@
+# Ansible Vault: never commit decrypted/host-specific copies.
+group_vars/all/vault.yml
+.vault_pass
+*.retry
