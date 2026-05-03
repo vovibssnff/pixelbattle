@@ -5,7 +5,7 @@
 
 # --- Source ---
 deploy_git_repo: "{{ vault_repo_url }}"
-deploy_git_branch: "new-master"
+deploy_git_branch: "add-ansible-deployment"
 deploy_project_dir: "/opt/pixelbattle"
 
 # --- docker compose retries (Docker Hub TLS hiccups, slow VMs) ---

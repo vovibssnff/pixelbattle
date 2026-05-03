@@ -21,6 +21,7 @@
         name:
           - git
           - openssl
+          - curl
           - python3-cryptography
         state: present
         update_cache: true

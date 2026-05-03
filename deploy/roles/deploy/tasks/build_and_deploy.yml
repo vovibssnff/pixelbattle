@@ -32,13 +32,28 @@
   until: deploy_backend_health.stdout == "healthy"
   changed_when: false
 
-- name: Wait for caddy to serve over HTTPS
-  ansible.builtin.uri:
-    url: "https://{{ caddy_domain }}/"
-    method: GET
-    status_code: [200, 301, 302, 308]
-    validate_certs: false
+# Hitting https://{{ caddy_domain }}/ via normal DNS often fails on the server itself
+# (pixelbattle.local etc. may not resolve). --resolve pins name→127.0.0.1 so TLS SNI
+# and Host still match the Caddy site block; -k skips trust for tls internal.
+- name: Wait for Caddy to serve over HTTPS
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -sS
+      - --connect-timeout
+      - "5"
+      - --max-time
+      - "15"
+      - --resolve
+      - "{{ caddy_domain }}:443:127.0.0.1"
+      - -k
+      - -o
+      - "/dev/null"
+      - -w
+      - "%{http_code}"
+      - "https://{{ caddy_domain }}/"
   register: deploy_caddy_check
   retries: "{{ deploy_health_retries }}"
   delay: "{{ deploy_health_delay }}"
-  until: deploy_caddy_check.status in [200, 301, 302, 308]
+  until: deploy_caddy_check.rc == 0 and (deploy_caddy_check.stdout | trim) in ['200', '301', '302', '308']
+  changed_when: false
