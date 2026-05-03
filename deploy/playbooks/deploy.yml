@@ -1,0 +1,31 @@
+---
+# Entry-point: ansible-playbook playbooks/deploy.yml
+#
+# Common invocations (run from deploy/):
+#   ansible-playbook playbooks/deploy.yml --ask-vault-pass
+#   ansible-playbook playbooks/deploy.yml --tags configure,deploy
+#   ansible-playbook playbooks/deploy.yml -e target_hosts=local           # smoke-test on this machine
+
+- name: Deploy pixelbattle stack
+  hosts: "{{ target_hosts | default('pixelbattle_servers') }}"
+  become: true
+
+  pre_tasks:
+    - name: Verify Docker Compose v2 is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+
+    - name: Install host packages required by the role
+      ansible.builtin.apt:
+        name:
+          - git
+          - openssl
+          - curl
+          - python3-cryptography
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: deploy

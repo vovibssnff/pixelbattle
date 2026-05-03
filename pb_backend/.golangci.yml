@@ -1,9 +1,10 @@
+version: "2"
+
 run:
   timeout: 5m
-  go: "1.23"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
@@ -17,22 +18,24 @@ linters:
     - noctx
     - gocritic
     - prealloc
+  settings:
+    gosec:
+      excludes:
+        - G104
+        # Server timeouts: tracked for a follow-up in SECURITY.md
+        - G114
+        # Canvas dimensions are bounded by config; conversions are intentional
+        - G115
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+  exclusions:
+    rules:
+      # Idiomatic deferred Close() on cursors, response bodies, websocket conns, etc.
+      - linters: [errcheck]
+        text: 'Error return value of .*\.Close.* is not checked'
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-linters-settings:
-  gosec:
-    excludes:
-      - G104
-      # Server timeouts: tracked for a follow-up in SECURITY.md
-      - G114
-      # Canvas dimensions are bounded by config; conversions are intentional
-      - G115
-  gocritic:
-    disabled-checks:
-      - ifElseChain
-
-issues:
-  exclude-dirs:
-    - vendor
-    - sqlite

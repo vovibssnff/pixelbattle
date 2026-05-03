@@ -1,6 +1,35 @@
 package domain
 
-import "fmt"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
+
+// unmarshalUserIDJSON accepts JSON string or number (legacy Redis / clients).
+func unmarshalUserIDJSON(raw json.RawMessage) (string, error) {
+	b := bytes.TrimSpace(raw)
+	if len(b) == 0 || bytes.Equal(b, []byte("null")) {
+		return "", nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return "", err
+		}
+		return s, nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		return n.String(), nil
+	}
+	var f float64
+	if err := json.Unmarshal(b, &f); err != nil {
+		return "", fmt.Errorf("userid: %w", err)
+	}
+	return strconv.FormatInt(int64(f), 10), nil
+}
 
 // VKUserID returns the canonical MongoDB _id for a VK numeric user id (e.g. "vk_12345").
 func VKUserID(vkNumericID int) string {
@@ -17,11 +46,51 @@ type Pixel struct {
 	Faculty string `json:"faculty"`
 }
 
+// UnmarshalJSON accepts userid as string or number (WebSocket clients vary).
+func (p *Pixel) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		X       uint            `json:"x"`
+		Y       uint            `json:"y"`
+		Color   []uint          `json:"color"`
+		Userid  json.RawMessage `json:"userid"`
+		Faculty string          `json:"faculty"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	uid, err := unmarshalUserIDJSON(aux.Userid)
+	if err != nil {
+		return err
+	}
+	p.X, p.Y, p.Color, p.Faculty = aux.X, aux.Y, aux.Color, aux.Faculty
+	p.Userid = uid
+	return nil
+}
+
 type RedisPixel struct {
 	UserId    string `json:"userid"`
 	Faculty   string `json:"faculty"`
 	Color     []uint `json:"color"`
 	Timestamp int64  `json:"timestamp"`
+}
+
+// UnmarshalJSON accepts userid as string or number (legacy keys in Redis).
+func (p *RedisPixel) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		UserId    json.RawMessage `json:"userid"`
+		Faculty   string          `json:"faculty"`
+		Color     []uint          `json:"color"`
+		Timestamp int64           `json:"timestamp"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	uid, err := unmarshalUserIDJSON(aux.UserId)
+	if err != nil {
+		return err
+	}
+	p.UserId, p.Faculty, p.Color, p.Timestamp = uid, aux.Faculty, aux.Color, aux.Timestamp
+	return nil
 }
 
 type HeatMapUnit struct {
