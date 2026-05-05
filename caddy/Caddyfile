@@ -42,9 +42,7 @@
 		reverse_proxy backend:8080
 	}
 
-	# Grafana: strip /panel before proxying — Grafana listens on "/" and owns the
-	# public subpath via GF_SERVER_ROOT_URL / serve_from_sub_path (nginx-style trailing slash strip).
-	handle_path /panel/* {
+	handle /panel/* {
 		reverse_proxy grafana:3000
 	}
 	handle /panel {
