@@ -42,7 +42,7 @@
 		reverse_proxy backend:8080
 	}
 
-	handle /panel/* {
+	handle_path /panel/* {
 		reverse_proxy grafana:3000
 	}
 	handle /panel {
