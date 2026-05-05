@@ -224,6 +224,14 @@ var (
 			Buckets: []float64{1, 2, 4, 8, 16, 25, 50, 100, 250, 500, 1000, 2500},
 		},
 	)
+
+	adminActionTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "admin_action_total",
+			Help: "Admin actions (ban, unban, grant_admin, revoke_admin, set_timer, freeze, resize, list_users) by outcome",
+		},
+		[]string{"action", "result"},
+	)
 )
 
 func init() {
@@ -255,6 +263,7 @@ func init() {
 		clientFrameTimeP95Ms,
 		clientWebVitalMs,
 		clientWSRenderLatencyMs,
+		adminActionTotal,
 	)
 }
 
@@ -349,6 +358,14 @@ func ObserveClientWebVitalMs(metric string, v float64) {
 
 func ObserveClientWSRenderLatencyMs(v float64) {
 	clientWSRenderLatencyMs.Observe(v)
+}
+
+// IncrementAdminAction records a runtime-admin call. action is the canonical action
+// name (e.g. "ban", "grant_admin", "set_timer", "freeze", "list_users"); result is
+// "ok", "forbidden", "not_found", or "error". Used by the Grafana Runtime Admin
+// dashboard's audit table and by the Phase 1 §13.1 acceptance check.
+func IncrementAdminAction(action, result string) {
+	adminActionTotal.WithLabelValues(action, result).Inc()
 }
 
 func RecordHeatmapPixel(x, y uint) {

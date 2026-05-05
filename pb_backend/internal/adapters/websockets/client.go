@@ -122,7 +122,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid faculty (use KTU|TINT|FTMF|FTMI|NOZH)", http.StatusBadRequest)
 			return
 		}
-		isAdm = server.userService.IsAdmin(userid)
+		isAdm = server.userService.IsEffectiveAdmin(r.Context(), userid)
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Anonymous WS rejected: banned ", userid)
 			service.IncrementBannedRejected()
@@ -147,7 +147,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 
 		userid = server.sessionService.GetUserID(session)
 		faculty = server.sessionService.GetFaculty(session)
-		isAdm = server.userService.IsAdmin(userid)
+		isAdm = server.userService.IsEffectiveAdmin(r.Context(), userid)
 
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Request from banned user: ", userid)
@@ -213,6 +213,10 @@ func (c *Client) readPump(ctx context.Context) {
 		if !validPixel(&pixel, c.canvasWidth, c.canvasHeight) {
 			logrus.Warn("invalid pixel rejected")
 			service.IncrementWSError("invalid_pixel")
+			continue
+		}
+		if service.IsCanvasFrozen() {
+			service.IncrementWSError("frozen")
 			continue
 		}
 		pixel.ServerRecvMs = serverRecvMs

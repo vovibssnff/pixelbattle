@@ -23,6 +23,7 @@ var envKeysForViper = []string{
 	"SESSION_KEY", "LOG_LEVEL", "WS_ALLOW_ANONYMOUS",
 	"SESSION_SECURE",
 	"ADMIN_IDS", "ADMIN_USERNAMES",
+	"ADMIN_API_TOKEN",
 	"PIXEL_COOLDOWN_SEC",
 }
 
@@ -66,6 +67,8 @@ type Config struct {
 	WSAllowAnonymous bool `mapstructure:"WS_ALLOW_ANONYMOUS"`
 	// PixelCooldownSec: minimum seconds between pixel placements per user (Redis TTL). Default 3 if unset/0.
 	PixelCooldownSec int `mapstructure:"PIXEL_COOLDOWN_SEC"`
+	// ADMIN_API_TOKEN: static bearer for Grafana / automation (X-Admin-Token header). Empty = token auth disabled.
+	AdminAPIToken string `mapstructure:"ADMIN_API_TOKEN"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables

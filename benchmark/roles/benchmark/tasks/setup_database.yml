@@ -2,8 +2,8 @@
 - name: Validate storage type
   ansible.builtin.assert:
     that:
-      - benchmark_storage_type in ['redis', 'postgres', 'sqlite']
-    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid values: redis, postgres, sqlite"
+      - benchmark_storage_type in ['redis']
+    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid value: redis"
     success_msg: "Storage type validated: {{ benchmark_storage_type }}"
   tags: [setup]
 

@@ -1,0 +1,83 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (action, result) (increase(admin_action_total[24h]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Admin audit (24h)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {"Value": "count"}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 10},
+      "id": 2,
+      "options": {
+        "mode": "markdown",
+        "content": "## Volkov Labs Business Forms\n\nConfigure POST actions targeting `/api/admin/*` with HTTP header `X-Admin-Token` matching **`ADMIN_API_TOKEN`** (see `pb_backend/app.env.example`).\n\nInfinity datasource points at the backend; add the same header under the datasource or per-panel **Custom HTTP Headers**.\n\nDashboard variable `phase2` is reserved for Phase 2 (canvas resize)."
+      },
+      "title": "Operator notes",
+      "type": "text"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["pixelbattle", "admin"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "", "value": ""},
+        "hide": 0,
+        "label": "X-Admin-Token",
+        "name": "admin_token",
+        "options": [{"selected": true, "text": "", "value": ""}],
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "current": {"selected": true, "text": "0", "value": "0"},
+        "hide": 2,
+        "label": "phase2",
+        "name": "phase2",
+        "query": "0",
+        "skipUrlSync": true,
+        "type": "constant"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Runtime Admin",
+  "uid": "pb-runtime-admin",
+  "version": 1
+}

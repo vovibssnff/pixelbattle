@@ -66,7 +66,18 @@ ensure_golangci_lint() {
 }
 
 # CI uses actions/setup-go with pb_backend/go.mod; align with toolchain directive.
-export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.2}"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.23.6}"
+
+run_ansible_lint() {
+  local lintable=$1
+  git config --global --add safe.directory "$ROOT_DIR" 2>/dev/null || true
+  if command -v ansible-lint >/dev/null 2>&1; then
+    ansible-lint "$lintable" -c "$ROOT_DIR/.ansible-lint"
+  else
+    docker run --rm --entrypoint "" -v "$ROOT_DIR:/w" -w /w cytopia/ansible-lint:latest \
+      sh -c "git config --global --add safe.directory /w && ansible-lint $lintable -c .ansible-lint"
+  fi
+}
 
 warn_env() {
   if command -v node >/dev/null 2>&1; then
@@ -91,6 +102,24 @@ else
     --source . --config .gitleaks.toml --redact
 fi
 ok "secrets-scan"
+
+# --- ansible-lint (deploy/) ---
+job "ansible-lint"
+run_ansible_lint deploy/
+ok "ansible-lint"
+
+# --- benchmark-tooling-lint (benchmark/ Ansible) ---
+job "benchmark-tooling-lint"
+run_ansible_lint benchmark/
+ok "benchmark-tooling-lint"
+
+# --- backend-test (unit tests) ---
+job "backend-test"
+(
+  cd pb_backend
+  go test ./...
+)
+ok "backend-test"
 
 # --- backend-lint ---
 job "backend-lint"
@@ -217,4 +246,4 @@ else
 fi
 ok "container-security"
 
-echo -e "\n${GREEN}Local CI completed (parity with .github/workflows/ci.yml).${NC}"
+echo -e "\n${GREEN}Local CI completed (parity with .github/workflows/ci.yml: ansible-lint, benchmark-tooling-lint, backend-test, backend-lint, …).${NC}"

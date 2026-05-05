@@ -1,0 +1,93 @@
+---
+# Phase 1 §7.0 UX harness step. Runs Playwright on the loader (laptop) with the
+# systemd-run scope wrapper when benchmark_use_systemd_scope=true.
+#
+# Targets the SUT at https://{{ benchmark_target_host }} (configurable via
+# PLAYWRIGHT_BASE_URL). place-and-watch + long-session specs combined fit in 2 min.
+
+- name: "playwright: ensure results dir exists"
+  ansible.builtin.file:
+    path: "{{ benchmark_results_root }}/playwright"
+    state: directory
+    mode: "0755"
+  tags: [playwright]
+
+- name: "playwright: check npx is available"
+  ansible.builtin.command: which npx
+  register: benchmark_npx_check
+  changed_when: false
+  failed_when: false
+  tags: [playwright]
+
+- name: "playwright: warn if npx is missing"
+  ansible.builtin.debug:
+    msg: >-
+      `npx` not found on this loader. Skipping Playwright UX harness; the run will
+      still complete but `playwright/` artefacts will be empty.
+  when: benchmark_npx_check.rc != 0
+  tags: [playwright]
+
+- name: "playwright: install dependencies (best-effort)"
+  ansible.builtin.command:
+    cmd: npm install --no-audit --no-fund --silent
+    chdir: "{{ benchmark_project_root }}/benchmark/playwright"
+    creates: "{{ benchmark_project_root }}/benchmark/playwright/node_modules/.package-lock.json"
+  register: benchmark_playwright_npm_install
+  changed_when: benchmark_playwright_npm_install.rc == 0
+  failed_when: false
+  when: benchmark_npx_check.rc == 0
+  tags: [playwright]
+
+- name: "playwright: build raw command"
+  ansible.builtin.set_fact:
+    benchmark_playwright_cmd_raw: >-
+      npx playwright test --reporter=json
+  tags: [playwright]
+
+- name: "playwright: wrap in systemd-run scope when enabled"
+  ansible.builtin.set_fact:
+    benchmark_playwright_cmd: >-
+      {% if benchmark_use_systemd_scope | default(false) | bool %}
+      systemd-run --user --scope --quiet
+      -p MemoryMax={{ benchmark_loader_memory_max | default('16G') }}
+      -p MemorySwapMax=0 --
+      {{ benchmark_playwright_cmd_raw }}
+      {% else %}
+      {{ benchmark_playwright_cmd_raw }}
+      {% endif %}
+  tags: [playwright]
+
+- name: "playwright: run UX harness"
+  ansible.builtin.command:
+    cmd: "{{ benchmark_playwright_cmd }}"
+    chdir: "{{ benchmark_project_root }}/benchmark/playwright"
+  environment:
+    PLAYWRIGHT_BASE_URL: "https://{{ benchmark_target_host }}"
+    PLAYWRIGHT_RESULTS_DIR: "{{ benchmark_results_root }}/playwright"
+    NODE_TLS_REJECT_UNAUTHORIZED: "0"  # self-signed certs on the dev VM
+  register: benchmark_playwright_result
+  changed_when: false
+  failed_when: false
+  when: benchmark_npx_check.rc == 0
+  tags: [playwright]
+
+- name: "playwright: record run log"
+  ansible.builtin.copy:
+    dest: "{{ benchmark_results_root }}/playwright/run_log_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+    content: |
+      Playwright Run Log
+      ==================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Base URL: https://{{ benchmark_target_host }}
+      Use systemd-run scope: {{ benchmark_use_systemd_scope | default(false) }}
+
+      Exit code: {{ benchmark_playwright_result.rc | default('skipped') }}
+
+      stdout:
+      {{ benchmark_playwright_result.stdout_lines | default([]) | join('\n') }}
+
+      stderr:
+      {{ benchmark_playwright_result.stderr_lines | default([]) | join('\n') }}
+  when: benchmark_npx_check.rc == 0
+  tags: [playwright]

@@ -23,13 +23,32 @@
       - "DB use local ports env: {{ benchmark_db_use_local_ports | default(false) }}"
       - "Go via Docker: {{ benchmark_go_via_docker | default(false) }}"
 
-- name: Setup databases
+- name: Setup databases (only when DB bench is enabled)
   ansible.builtin.include_tasks: setup_database.yml
   vars:
     benchmark_storage_type: "{{ item }}"
   loop: "{{ benchmark_storage_types }}"
   loop_control:
     label: "setup {{ item }}"
+  when: benchmark_enable_db_bench | default(false) | bool
+  tags: [setup]
+
+- name: "KPI-suite preflight: backend endpoint reachable from loader"
+  ansible.builtin.wait_for:
+    host: "{{ benchmark_target_host }}"
+    port: 8080
+    delay: 1
+    timeout: 60
+  when: not (benchmark_enable_db_bench | default(false) | bool)
+  tags: [setup]
+
+- name: "KPI-suite preflight: prometheus endpoint reachable from loader"
+  ansible.builtin.wait_for:
+    host: "{{ benchmark_target_host }}"
+    port: 9090
+    delay: 1
+    timeout: 60
+  when: not (benchmark_enable_db_bench | default(false) | bool)
   tags: [setup]
 
 - name: Run database-level benchmarks on VM (co-located with Docker stack)
@@ -48,9 +67,11 @@
   when: benchmark_run_db_on_vm | default(false) | bool
   tags: [db_bench]
 
-- name: Run database-level benchmarks on controller
+- name: "Run database-level benchmarks on controller (VKR: off by default; set benchmark_enable_db_bench=true to run)"
   ansible.builtin.include_tasks: run_db_benchmarks.yml
-  when: not (benchmark_run_db_on_vm | default(false) | bool)
+  when:
+    - not (benchmark_run_db_on_vm | default(false) | bool)
+    - benchmark_enable_db_bench | default(false) | bool
   tags: [db_bench]
 
 - name: Fetch DB benchmark JSON files from VM to controller

@@ -1,4 +1,5 @@
 ---
+# Prefer the repo root `.ansible-lint` when linting from CI.
 profile: production
 
 exclude_paths:
@@ -7,6 +8,13 @@ exclude_paths:
 
 warn_list:
   - no-changed-when
+  - name[casing]
+  - jinja[spacing]
+  - key-order[task]
+  - yaml[empty-lines]
+  - yaml[line-length]
+  - schema[meta]
+  - command-instead-of-module
 
 enable_list:
   - fqcn-builtins

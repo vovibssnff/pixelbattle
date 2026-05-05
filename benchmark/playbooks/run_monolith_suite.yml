@@ -1,0 +1,164 @@
+---
+# Phase 1 monolith baseline suite (plan §7.1, 30-min budget).
+#
+# Topology: laptop drives client load only; VM 192.168.122.71 hosts the SUT,
+# observability, and the Go DB benchmark sidecar (plan §7.0).
+#
+# Wall-clock budget:
+#   1 min  pre-flight (resource caps + endpoint reachability)
+#   5 min  Go DB bench sidecar on the VM (history=1, sustained 4x20s, RUW 30s)
+#   4 min  k6 nominal  (test-medium.js,    50 -> 200 VUs)
+#   7 min  k6 stress   (test-heavy.js,     500 sustained)
+#  10 min  k6 breakpoint (test-breakpoint.js, 100 -> 3000)
+#   2 min  Playwright (place-and-watch + long-session shortened to 3 min)
+#   1 min  collection + fetch into results/baseline/<run-id>/
+#  ----
+#  30 min total
+#
+# Invocation (from benchmark/, with the project venv active):
+#   ansible-playbook -i inventory.yml playbooks/run_monolith_suite.yml
+#
+# Override the run id with -e benchmark_run_id=<id>.
+
+- name: "Phase 1 baseline: derive shared run id"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: "Set baseline run id"
+      ansible.builtin.set_fact:
+        benchmark_run_id: "{{ benchmark_run_id | default(ansible_date_time.epoch) }}"
+        benchmark_phase: baseline
+
+    - name: "Announce run id (shared by every play below via inventory hostvars)"
+      ansible.builtin.debug:
+        msg: "Phase 1 monolith suite run id: {{ benchmark_run_id }} (phase=baseline)"
+
+# ---------------------------------------------------------------------------
+# 1. Pre-flight on both sides + DB bench on the VM (sidecar with cgroup limits).
+# ---------------------------------------------------------------------------
+
+- name: "Phase 1: VM pre-flight + Go DB bench (5 min)"
+  hosts: targets
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_phase: baseline
+    # 30-min budget: history=1 round, 4 sustained rates x 20 s = 80 s, RUW 30 s
+    benchmark_history_rounds: 1
+    benchmark_sustained_duration_sec: 20
+    benchmark_ruw_duration_sec: 30
+    benchmark_enable_db_bench: true
+    benchmark_run_db_on_vm: false   # we are already on the VM; no delegation needed
+  tasks:
+    - name: "preflight: include topology check"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: preflight_topology.yml
+
+    - name: "Setup database (Redis only for VKR)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: setup_database.yml
+      vars:
+        benchmark_storage_type: redis
+
+    - name: "Run Go DB bench sidecar (history=1, sustained=20s, RUW=30s)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_db_benchmarks.yml
+
+# ---------------------------------------------------------------------------
+# 2. Loaders (laptop): pre-flight + three k6 stages + Playwright.
+# ---------------------------------------------------------------------------
+
+- name: "Phase 1: loader pre-flight + k6 nominal/stress/breakpoint + Playwright (23 min)"
+  hosts: loaders
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_phase: baseline
+  tasks:
+    - name: "preflight: include topology check"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: preflight_topology.yml
+
+    - name: "k6 nominal (test-medium.js, 4 min)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_k6_tests.yml
+      vars:
+        benchmark_storage_type: redis
+        benchmark_test_type: medium
+        benchmark_use_systemd_scope: true
+
+    - name: "k6 stress (test-heavy.js, 7 min)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_k6_tests.yml
+      vars:
+        benchmark_storage_type: redis
+        benchmark_test_type: heavy
+        benchmark_use_systemd_scope: true
+
+    - name: "k6 breakpoint (test-breakpoint.js, 10 min, abortOnFail expected)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_k6_tests.yml
+      vars:
+        benchmark_storage_type: redis
+        benchmark_test_type: breakpoint
+        benchmark_use_systemd_scope: true
+
+    - name: "Playwright UX harness (place-and-watch + long-session, 2 min)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_playwright.yml
+
+# ---------------------------------------------------------------------------
+# 3. VM: collection (Prom snapshot, container logs).
+# ---------------------------------------------------------------------------
+
+- name: "Phase 1: VM-side artefact collection"
+  hosts: targets
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_phase: baseline
+  tasks:
+    - name: "collect: assemble local artefact tree"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: collect_results.yml
+      vars:
+        benchmark_collected_dir: "{{ benchmark_results_root }}/collected_{{ benchmark_run_id }}"
+
+# ---------------------------------------------------------------------------
+# 4. Loaders (laptop): pull from VM into results/baseline/<run-id>/, generate report.
+# ---------------------------------------------------------------------------
+
+- name: "Phase 1: fetch artefacts to results/baseline/<run-id>/ and generate report"
+  hosts: loaders
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_phase: baseline
+    benchmark_db_delegate_host: benchmark_vm
+  tasks:
+    - name: "fetch: pull VM artefacts into results/baseline/<run-id>/"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: fetch_to_baseline.yml
+
+    - name: "report: emit Markdown comparison report (baseline-only in Phase 1)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: generate_report.yml
+
+    - name: "Done"
+      ansible.builtin.debug:
+        msg:
+          - "=== Phase 1 monolith suite complete ==="
+          - "Results: {{ playbook_dir | dirname | dirname }}/results/baseline/{{ benchmark_run_id }}/"
+          - "Open the comparison Grafana dashboard with version=baseline to inspect KPIs."

@@ -2,5 +2,11 @@ node_modules
 dist
 pb_frontend/node_modules
 results
-benchmark
+benchmark/results
+benchmark/.cache
+mongodb/data
+redis/data
+monitoring/prometheus_data
+monitoring/grafana_data
+.venv
 docs

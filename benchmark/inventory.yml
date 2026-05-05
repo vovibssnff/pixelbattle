@@ -1,19 +1,39 @@
 ---
+# Phase 1 topology: laptop drives client load only; VM 192.168.122.71 hosts the SUT,
+# observability stack, and Go DB benchmark sidecar (see plan §7.0).
+#
+# Group semantics:
+#   loaders  - hosts that run k6 + Playwright + the Python reporter (laptop).
+#              Wrapped in `systemd-run --scope -p MemoryMax=16G` by the role when
+#              benchmark_use_systemd_scope=true (default for the laptop host below).
+#   targets  - hosts that run docker compose, Prometheus, Grafana, the Go DB bench
+#              sidecar (the VM). Aggregate compose memory cap is 16 GB.
+#
+# Legacy groups `local` and `vms` are kept via the `children:` mechanism so existing
+# invocations (`-e target_hosts=benchmark_vm`, `hosts: benchmark_vm`, etc.) still work.
+#
+# Typical Phase 1 invocation (from benchmark/, with the project venv active):
+#   ansible-playbook -i inventory.yml playbooks/run_monolith_suite.yml
+#
+# Storage deepdive (no 30-min budget, targets-only):
+#   ansible-playbook -i inventory.yml playbooks/run_storage_deepdive.yml
+#
+# Sync results back from VM (ad-hoc):
+#   ansible-playbook -i inventory.yml playbooks/sync_results_from_vm.yml
+
 all:
   children:
-    # Default target: run everything locally against the local Docker stack.
-    local:
+    loaders:
       hosts:
         localhost:
           ansible_connection: local
-          # Play still targets *this machine* (Ansible localhost). benchmark_remote_host tells the
-          # role where the *stack* is: unset = Redis/Postgres/k6 probe localhost:6379/5432/8080.
-          # For a VM-only stack, set one of: uncomment below, -e benchmark_remote_host=IP, or
-          # export BENCHMARK_REMOTE_HOST=IP
-          # benchmark_remote_host: "192.168.122.71"
+          # Loaders point at the VM stack by default. Override with
+          # -e benchmark_remote_host=<ip> or BENCHMARK_REMOTE_HOST=<ip> for ad-hoc runs.
+          benchmark_remote_host: "192.168.122.71"
+          benchmark_use_systemd_scope: true
+          benchmark_loader_memory_max: 16G
 
-    # Remote VM with deployed stack (same paths as deploy playbook: /opt/pixelbattle).
-    vms:
+    targets:
       hosts:
         benchmark_vm:
           ansible_host: 192.168.122.71
@@ -26,5 +46,15 @@ all:
           # Stack lives under /opt (root); write results under the SSH user home.
           benchmark_results_root: /home/vovi/pixelbattle-benchmark-results
           benchmark_opt_sqlite_chown: true
-          # No project venv on server; use system Python with numpy/matplotlib installed.
+          # No project venv on the VM; use system Python with numpy/matplotlib installed.
           benchmark_python_interpreter: /usr/bin/python3
+
+    # Backward-compatibility aliases — declared as parents that include the new groups,
+    # so `-e target_hosts=local`, `hosts: benchmark_vm`, and existing inventory lookups
+    # all keep working.
+    local:
+      children:
+        loaders: {}
+    vms:
+      children:
+        targets: {}

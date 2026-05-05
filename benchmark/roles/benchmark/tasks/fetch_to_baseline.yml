@@ -1,0 +1,114 @@
+---
+# Phase 1 §10 collection step: tar the VM's benchmark_results_root, fetch to the
+# laptop, unpack into results/baseline/<run-id>/. Mirrors sync_results_from_vm.yml
+# but is intended to run as part of run_monolith_suite.yml so the run-id matches
+# the playbook epoch and downstream report generation reads the right tree.
+
+- name: "fetch_to_baseline: ensure run-id is set"
+  ansible.builtin.set_fact:
+    benchmark_run_id: "{{ benchmark_run_id | default(ansible_date_time.epoch) }}"
+    benchmark_phase: "{{ benchmark_phase | default('baseline') }}"
+  tags: [collect]
+
+- name: "fetch_to_baseline: derive paths"
+  ansible.builtin.set_fact:
+    benchmark_local_run_root: "{{ playbook_dir | dirname | dirname }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}"
+  tags: [collect]
+
+- name: "fetch_to_baseline: ensure local destination exists"
+  ansible.builtin.file:
+    path: "{{ benchmark_local_run_root }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: archive results on VM"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    mkdir -p {{ hostvars[benchmark_db_delegate_host].benchmark_results_root }}
+    tar -C {{ hostvars[benchmark_db_delegate_host].benchmark_results_root }} -czf /tmp/pb-bench-{{ benchmark_run_id }}.tgz . || true
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ benchmark_db_delegate_host }}"
+  changed_when: true
+  tags: [collect]
+
+- name: "fetch_to_baseline: pull archive to controller"
+  ansible.builtin.fetch:
+    src: "/tmp/pb-bench-{{ benchmark_run_id }}.tgz"
+    dest: "{{ benchmark_local_run_root }}/pb-bench.tgz"
+    flat: true
+  delegate_to: "{{ benchmark_db_delegate_host }}"
+  tags: [collect]
+
+- name: "fetch_to_baseline: unpack archive on controller"
+  ansible.builtin.unarchive:
+    src: "{{ benchmark_local_run_root }}/pb-bench.tgz"
+    dest: "{{ benchmark_local_run_root }}"
+    remote_src: false
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: scrape Prometheus snapshot to local prom/ directory"
+  ansible.builtin.uri:
+    url: "{{ benchmark_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
+    method: GET
+    return_content: true
+  register: benchmark_prom_snapshot_results
+  loop:
+    - { name: "e2e_pixel_latency_seconds", query: "histogram_quantile(0.95, sum by (le) (rate(e2e_pixel_latency_seconds_bucket[5m])))" }
+    - { name: "pixels_placed_total", query: "rate(pixels_placed_total[1m])" }
+    - { name: "availability_sli", query: "sum(rate(availability_sli_total{result=\"ok\"}[5m])) / sum(rate(availability_sli_total[5m]))" }
+    - { name: "pixel_write_visible_p95", query: "histogram_quantile(0.95, sum by (le) (rate(pixel_write_visible_seconds_bucket[5m])))" }
+    - { name: "requests_per_second", query: "rate(requests_per_second[1m])" }
+    - { name: "error_rate", query: "(sum(rate(http_response_status_total{status=~\"5..\"}[1m])) + sum(rate(ws_errors_total[1m]))) / sum(rate(requests_per_second[1m]))" }
+  loop_control:
+    label: "{{ item.name }}"
+  failed_when: false
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: ensure prom/ dir exists locally"
+  ansible.builtin.file:
+    path: "{{ benchmark_local_run_root }}/prom"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: write Prometheus comparable-KPI snapshot"
+  ansible.builtin.copy:
+    content: |
+      {
+        "run_id": "{{ benchmark_run_id }}",
+        "phase": "{{ benchmark_phase }}",
+        "captured_at": "{{ ansible_date_time.iso8601 }}",
+        "queries": [
+      {% for r in benchmark_prom_snapshot_results.results | default([]) %}
+          {
+            "name": "{{ r.item.name }}",
+            "query": "{{ r.item.query }}",
+            "status": {{ r.status | default(0) }},
+            "data": {{ r.json | default({}) | to_json }}
+          }{{ "," if not loop.last else "" }}
+      {% endfor %}
+        ]
+      }
+    dest: "{{ benchmark_local_run_root }}/prom/comparable_kpis.json"
+    mode: "0644"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: report final layout"
+  ansible.builtin.debug:
+    msg:
+      - "Phase '{{ benchmark_phase }}' run '{{ benchmark_run_id }}' fetched to:"
+      - "{{ benchmark_local_run_root }}"
+      - "Tree: prom/, k6/, benchmarks/, playwright/, rum/ (when produced)"
+  tags: [collect]

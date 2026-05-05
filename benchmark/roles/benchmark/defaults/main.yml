@@ -6,17 +6,19 @@ benchmark_project_root: "{{ role_path | dirname | dirname | dirname }}"
 # Python interpreter: project-wide venv at repo root
 benchmark_python_interpreter: "{{ benchmark_project_root + '/.venv/bin/python' }}"
 
-# Storage backends to benchmark (full suite)
+# Storage backends to benchmark (VKR: Redis-only)
 benchmark_storage_types:
   - redis
-  - postgres
-  - sqlite
 
-# k6 load test tiers (full suite)
+# k6 load test tiers (full suite). Phase 1 §7.0 maps:
+#   medium -> nominal (4 min, 50 -> 200 VUs)
+#   heavy  -> stress  (7 min, 500 sustained)
+#   breakpoint -> linear 100 -> 3000 over 10 min, emits saturation_vus
+# `light` (1-min smoke) is kept for ad-hoc manual runs but excluded from the suite.
 benchmark_test_types:
   - medium
   - heavy
-  - burst
+  - breakpoint
 
 # Single-step defaults (override with -e for individual playbooks)
 benchmark_storage_type: redis
@@ -34,6 +36,9 @@ benchmark_sustained_duration_sec: 30     # seconds per rate level
 benchmark_ruw_duration_sec: 60           # read-under-write duration
 benchmark_ruw_readers: 2                 # concurrent readers during read-under-write
 benchmark_metrics_port: 9091             # Prometheus /metrics port (0 to disable)
+
+# VKR: disable DB benchmarks by default, keep k6/e2e only.
+benchmark_enable_db_bench: false
 
 # When benchmark_remote_host is set, the DB benchmark runs on benchmark_vm (SSH) so the
 # binary is co-located with Docker; results are fetched back to the controller.

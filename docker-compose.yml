@@ -19,6 +19,12 @@ services:
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
     security_opt: ["no-new-privileges:true"]
+    # Phase 1 §7.0 budget: Redis = 4g of the VM 16g aggregate cap.
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    mem_limit: 4g
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -39,6 +45,11 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:?Set MONGO_INITDB_ROOT_PASSWORD in .env}
     command: --bind_ip_all
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    mem_limit: 1g
     healthcheck:
       test:
         [
@@ -66,10 +77,15 @@ services:
     tmpfs: ["/tmp"]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+    mem_limit: 8g
     healthcheck:
       test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
       interval: 10s
-      timeout: 5s
+      timeout: 5s1
       retries: 5
       start_period: 30s
 
@@ -85,6 +101,11 @@ services:
       mongodb: { condition: service_healthy }
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    mem_limit: 128m
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -107,6 +128,11 @@ services:
       - mongodb-exporter
       - blackbox-exporter
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    mem_limit: 1g
 
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.25.0
@@ -120,6 +146,11 @@ services:
     tmpfs: ["/tmp"]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    mem_limit: 128m
 
   mimir:
     image: grafana/mimir:2.13.1
@@ -135,6 +166,12 @@ services:
     tmpfs: ["/tmp"]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    # mimir runs only under the `longterm` profile; not counted against the 16g cap during benchmarks.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    mem_limit: 1g
 
   grafana:
     image: grafana/grafana-oss:11.4.0
@@ -150,6 +187,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_AUTH_DISABLE_LOGIN_FORM=false
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=volkovlabs-form-panel,yesoreyeram-infinity-datasource
     volumes:
       - ./monitoring/grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -157,6 +195,11 @@ services:
     depends_on:
       - prometheus
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    mem_limit: 512m
 
   frontend:
     build:
@@ -169,6 +212,11 @@ services:
       - caddy_html:/srv
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    mem_limit: 128m
     healthcheck:
       test: ["CMD-SHELL", "test -f /srv/index.html"]
       interval: 5s
@@ -187,6 +235,11 @@ services:
       CADDY_DOMAIN: ${CADDY_DOMAIN:?Set CADDY_DOMAIN in .env (public hostname, e.g. dev.example.com)}
       ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env (Lets Encrypt contact; unused if tls.inc uses file PEMs or tls internal)}
     security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    mem_limit: 128m
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/tls.inc:/etc/caddy/tls.inc:ro

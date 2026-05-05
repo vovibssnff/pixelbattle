@@ -20,15 +20,20 @@ type RestHandlers struct {
 	vkAuthProvider vk.VKAuthProvider
 	canvasService  domain.CanvasService
 	userService    domain.UserService
+	timerService   domain.TimerService
+	// adminAPIToken: when non-empty, requests with matching X-Admin-Token may call admin APIs without a session.
+	adminAPIToken string
 }
 
 func NewRestHandlers(sessionService domain.SessionService, vkAuthProvider vk.VKAuthProvider, canvasService domain.CanvasService,
-	userService domain.UserService) *RestHandlers {
+	userService domain.UserService, timerService domain.TimerService, adminAPIToken string) *RestHandlers {
 	return &RestHandlers{
 		sessionService: sessionService,
 		canvasService:  canvasService,
 		userService:    userService,
 		vkAuthProvider: vkAuthProvider,
+		timerService:   timerService,
+		adminAPIToken:  strings.TrimSpace(adminAPIToken),
 	}
 }
 
@@ -104,10 +109,6 @@ type passwordRegisterBody struct {
 type passwordLoginBody struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-}
-
-type adminUserBody struct {
-	UserID string `json:"user_id"`
 }
 
 // HandlePasswordRegister creates a local username/password user (POST).
@@ -207,18 +208,6 @@ func parseLoginPayload(r *http.Request) (username, password string) {
 	return r.FormValue("username"), r.FormValue("password")
 }
 
-func parseAdminUserPayload(r *http.Request) string {
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		var b adminUserBody
-		data, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		_ = json.Unmarshal(data, &b)
-		return resolveBanTarget(strings.TrimSpace(b.UserID))
-	}
-	_ = r.ParseForm()
-	return resolveBanTarget(strings.TrimSpace(r.FormValue("user_id")))
-}
-
 // resolveBanTarget accepts "vk_123", "username", or bare numeric VK id "123".
 func resolveBanTarget(s string) string {
 	if s == "" {
@@ -236,54 +225,6 @@ func resolveBanTarget(s string) string {
 func mustAtoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
-}
-
-// HandleBan bans a user (admin only).
-func (h *RestHandlers) HandleBan(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	session, _ := h.sessionService.GetSession(r)
-	if !h.userService.IsAdmin(h.sessionService.GetUserID(session)) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-	target := parseAdminUserPayload(r)
-	if target == "" {
-		http.Error(w, "Missing user_id", http.StatusBadRequest)
-		return
-	}
-	if err := h.userService.BanUser(r.Context(), target); err != nil {
-		logrus.Error(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// HandleUnban removes a ban (admin only).
-func (h *RestHandlers) HandleUnban(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	session, _ := h.sessionService.GetSession(r)
-	if !h.userService.IsAdmin(h.sessionService.GetUserID(session)) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-	target := parseAdminUserPayload(r)
-	if target == "" {
-		http.Error(w, "Missing user_id", http.StatusBadRequest)
-		return
-	}
-	if err := h.userService.UnbanUser(r.Context(), target); err != nil {
-		logrus.Error(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *RestHandlers) HandleFaculty(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +283,7 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-store")
-	if h.userService.IsAdmin(h.sessionService.GetUserID(session)) {
+	if h.userService.IsEffectiveAdmin(r.Context(), h.sessionService.GetUserID(session)) {
 		w.Header().Set("Is-God", "true")
 	}
 	if _, err := w.Write(b); err != nil {

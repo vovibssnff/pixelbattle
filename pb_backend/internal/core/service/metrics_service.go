@@ -77,3 +77,6 @@ func ObserveClientWebVitalMs(metric string, v float64) {
 	metrics.ObserveClientWebVitalMs(metric, v)
 }
 func ObserveClientWSRenderLatencyMs(v float64) { metrics.ObserveClientWSRenderLatencyMs(v) }
+func IncrementAdminAction(action, result string) {
+	metrics.IncrementAdminAction(action, result)
+}

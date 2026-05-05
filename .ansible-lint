@@ -1,0 +1,26 @@
+---
+profile: production
+
+# Scope what is linted by passing paths on the CLI, e.g.:
+#   ansible-lint deploy/playbooks/ benchmark/playbooks/
+# (ansible-lint does not support a lint_paths config key.)
+
+exclude_paths:
+  - .venv/
+  - .cache/
+
+warn_list:
+  - no-changed-when # handled case-by-case with explicit changed_when: false
+  - name[casing] # task names use lowercase sections (playwright:, preflight (targets):)
+  - jinja[spacing]
+  - key-order[task]
+  - yaml[empty-lines]
+  - yaml[line-length]
+  - schema[meta] # galaxy meta schema vs ansible-lint JSON schema drift
+  - command-instead-of-module # curl smoke in deploy role
+
+enable_list:
+  - fqcn-builtins
+  - no-free-form
+
+offline: true

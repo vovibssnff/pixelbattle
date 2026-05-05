@@ -10,17 +10,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserRepository struct {
-	users  *mongo.Collection
-	banned *mongo.Collection
+	users        *mongo.Collection
+	banned       *mongo.Collection
+	adminGrants  *mongo.Collection
 }
 
 func NewUserRepository(db *mongo.Database) *UserRepository {
 	return &UserRepository{
-		users:  db.Collection("users"),
-		banned: db.Collection("banned_users"),
+		users:       db.Collection("users"),
+		banned:      db.Collection("banned_users"),
+		adminGrants: db.Collection("admin_grants"),
 	}
 }
 
@@ -129,6 +132,70 @@ func (r *UserRepository) UnbanUser(ctx context.Context, userid string) error {
 		return errors.New("not banned")
 	}
 	return nil
+}
+
+func (r *UserRepository) GrantAdminRole(ctx context.Context, userid string) error {
+	start := time.Now()
+	_, err := r.adminGrants.InsertOne(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("grant_admin", "mongo", time.Since(start), err)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepository) RevokeAdminRole(ctx context.Context, userid string) error {
+	start := time.Now()
+	res, err := r.adminGrants.DeleteOne(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("revoke_admin", "mongo", time.Since(start), err)
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return errors.New("not granted")
+	}
+	return nil
+}
+
+func (r *UserRepository) IsDynamicAdmin(ctx context.Context, userid string) bool {
+	start := time.Now()
+	count, err := r.adminGrants.CountDocuments(ctx, bson.M{"_id": userid})
+	metrics.ObserveDatabaseOperation("is_dynamic_admin", "mongo", time.Since(start), err)
+	if err != nil {
+		logrus.Error(err)
+		return false
+	}
+	return count > 0
+}
+
+func (r *UserRepository) ListUserIDs(ctx context.Context, limit int) ([]string, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+	start := time.Now()
+	opts := options.Find().
+		SetLimit(int64(limit)).
+		SetProjection(bson.M{"_id": 1})
+	cur, err := r.users.Find(ctx, bson.M{}, opts)
+	metrics.ObserveDatabaseOperation("list_user_ids", "mongo", time.Since(start), err)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var out []string
+	for cur.Next(ctx) {
+		var doc struct {
+			ID string `bson:"_id"`
+		}
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		out = append(out, doc.ID)
+	}
+	return out, cur.Err()
 }
 
 func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, activeDiff, totalDiff int) error {

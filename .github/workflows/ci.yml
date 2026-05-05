@@ -135,6 +135,49 @@ jobs:
           dockerfile: pb_frontend/Dockerfile
           config: .hadolint.yaml
 
+  ansible-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Git safe.directory for ansible-lint
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install "ansible-lint>=24,<26"
+      - name: Lint deploy playbooks
+        run: ansible-lint deploy/ -c .ansible-lint
+
+  benchmark-tooling-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Git safe.directory for ansible-lint
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install "ansible-lint>=24,<26"
+      - name: Lint benchmark playbooks
+        run: ansible-lint benchmark/ -c .ansible-lint
+
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: pb_backend/go.mod
+          cache: true
+          cache-dependency-path: pb_backend/go.sum
+      - name: Unit tests
+        run: go test ./...
+
   iac-scan:
     runs-on: ubuntu-latest
     steps:
@@ -151,6 +194,9 @@ jobs:
   container-security:
     needs:
       - secrets-scan
+      - ansible-lint
+      - benchmark-tooling-lint
+      - backend-test
       - backend-lint
       - backend-sast
       - frontend-lint

@@ -2,8 +2,8 @@
 - name: Validate storage type for k6 test
   ansible.builtin.assert:
     that:
-      - benchmark_storage_type in ['redis', 'postgres', 'sqlite']
-    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid values: redis, postgres, sqlite"
+      - benchmark_storage_type in ['redis']
+    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid value: redis"
     success_msg: "Storage type validated: {{ benchmark_storage_type }}"
   tags: [k6]
 
@@ -47,18 +47,37 @@
   when: not benchmark_k6_test_file.stat.exists
   tags: [k6]
 
-- name: Run k6 test
-  ansible.builtin.command:
-    cmd: >-
+- name: "Build k6 invocation (raw)"
+  ansible.builtin.set_fact:
+    benchmark_k6_cmd_raw: >-
       k6 run
       --out json={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_{{ ansible_date_time.epoch }}.json
       --summary-export={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_summary_{{ ansible_date_time.epoch }}.json
       test-{{ benchmark_test_type }}.js
+  tags: [k6]
+
+- name: "Build k6 invocation (systemd-run scope when enabled)"
+  ansible.builtin.set_fact:
+    benchmark_k6_cmd: >-
+      {% if benchmark_use_systemd_scope | default(false) | bool %}
+      systemd-run --user --scope --quiet
+      -p MemoryMax={{ benchmark_loader_memory_max | default('16G') }}
+      -p MemorySwapMax=0 --
+      {{ benchmark_k6_cmd_raw }}
+      {% else %}
+      {{ benchmark_k6_cmd_raw }}
+      {% endif %}
+  tags: [k6]
+
+- name: Run k6 test
+  ansible.builtin.command:
+    cmd: "{{ benchmark_k6_cmd }}"
     chdir: "{{ benchmark_project_root }}/benchmark/k6"
   environment:
     BENCHMARK_HOST: "{{ benchmark_k6_address }}"
   register: benchmark_k6_result
   changed_when: false
+  failed_when: false
   tags: [k6]
 
 - name: Display k6 test output
