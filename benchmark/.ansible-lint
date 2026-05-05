@@ -1,0 +1,24 @@
+---
+profile: production
+
+# Scope what is linted by passing paths on the CLI, e.g.:
+#   ansible-lint playbooks/ roles/
+# (ansible-lint does not support a lint_paths config key.)
+
+# Exclude generated/runtime artefacts
+exclude_paths:
+  - .venv/
+  - .cache/
+
+# Warn instead of failing for rules that are noisy in local benchmarking contexts
+warn_list:
+  - no-changed-when          # handled case-by-case with explicit changed_when: false
+
+# Rules enabled on top of the chosen profile
+enable_list:
+  - fqcn-builtins            # require ansible.builtin.* prefix
+  - no-free-form             # ban free-form module arguments
+
+# Allow Galaxy-style role directory under benchmark/roles/
+# (not installed via requirements, it's local)
+offline: true

@@ -15,6 +15,8 @@ import (
 // a missing on-disk app.env leaves MONGO_URI etc. empty even when set in the environment.
 var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
+	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
+	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
 	"MONGO_URI",
 	"API_VERSION", "SERVICE_TOKEN",
@@ -34,19 +36,25 @@ func mergeProcessEnvIntoViper() {
 
 // Config holds the application configuration values
 type Config struct {
-	RedisAddr      string `mapstructure:"REDIS_ADDR"`
-	RedisPsw       string `mapstructure:"REDIS_PSW"`
-	RedisHistory   int    `mapstructure:"REDIS_HISTORY"`
-	RedisTimer     int    `mapstructure:"REDIS_TIMER"`
-	RedisUsers     int    `mapstructure:"REDIS_USERS"`
-	RedisBanned    int    `mapstructure:"REDIS_BANNED"`
-	CanvasHeight   int    `mapstructure:"CANVAS_HEIGHT"`
-	CanvasWidth    int    `mapstructure:"CANVAS_WIDTH"`
-	MongoURI       string `mapstructure:"MONGO_URI"`
-	AdminIDs       []int  // No `mapstructure` tag to prevent automatic decoding
-	AdminUsernames []string
-	APIVersion     string `mapstructure:"API_VERSION"`
-	ServiceToken   string `mapstructure:"SERVICE_TOKEN"`
+	RedisAddr        string `mapstructure:"REDIS_ADDR"`
+	RedisPsw         string `mapstructure:"REDIS_PSW"`
+	RedisHistory     int    `mapstructure:"REDIS_HISTORY"`
+	RedisTimer       int    `mapstructure:"REDIS_TIMER"`
+	RedisUsers       int    `mapstructure:"REDIS_USERS"`
+	RedisBanned      int    `mapstructure:"REDIS_BANNED"`
+	PostgresHost     string `mapstructure:"POSTGRES_HOST"`
+	PostgresPort     string `mapstructure:"POSTGRES_PORT"`
+	PostgresUser     string `mapstructure:"POSTGRES_USER"`
+	PostgresPassword string `mapstructure:"POSTGRES_PASSWORD"`
+	PostgresDB       string `mapstructure:"POSTGRES_DB"`
+	SQLitePath       string `mapstructure:"SQLITE_PATH"`
+	CanvasHeight     int    `mapstructure:"CANVAS_HEIGHT"`
+	CanvasWidth      int    `mapstructure:"CANVAS_WIDTH"`
+	MongoURI         string `mapstructure:"MONGO_URI"`
+	AdminIDs         []int  // No `mapstructure` tag to prevent automatic decoding
+	AdminUsernames   []string
+	APIVersion       string `mapstructure:"API_VERSION"`
+	ServiceToken     string `mapstructure:"SERVICE_TOKEN"`
 
 	// SESSION_KEY: secret used to sign session cookies (32+ bytes recommended). If empty, a random key is generated per process start.
 	SessionKey string `mapstructure:"SESSION_KEY"`

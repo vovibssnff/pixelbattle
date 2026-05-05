@@ -1,0 +1,234 @@
+---
+# benchmark_db_results_dir: honours per-host benchmark_results_root (needed when delegating to VM)
+- name: Resolve DB benchmark output directory
+  ansible.builtin.set_fact:
+    benchmark_db_results_dir: "{{ benchmark_results_root }}/benchmarks"
+  tags: [db_bench]
+
+- name: Assert delegate host exists in inventory (remote stack from laptop)
+  ansible.builtin.assert:
+    that:
+      - benchmark_db_delegate_host in hostvars
+    fail_msg: >-
+      benchmark_remote_host is set but '{{ benchmark_db_delegate_host }}' is missing from inventory.
+      Run with: ansible-playbook -i inventory.yml ... (vms.benchmark_vm must be defined).
+  when: benchmark_run_db_on_vm | default(false) | bool
+  tags: [db_bench]
+
+- name: Ensure benchmark results directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_db_results_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [db_bench]
+
+- name: Check Go is installed (native go run)
+  ansible.builtin.command: which go
+  register: benchmark_go_check
+  changed_when: false
+  failed_when: false
+  when: not (benchmark_go_via_docker | default(false) | bool)
+  tags: [db_bench]
+
+- name: Fail if Go is not installed
+  ansible.builtin.fail:
+    msg: "Go is not installed. Please install Go 1.22+ to run database benchmarks."
+  when:
+    - not (benchmark_go_via_docker | default(false) | bool)
+    - benchmark_go_check.rc != 0
+  tags: [db_bench]
+
+- name: Check Docker is available (VM / co-located go run)
+  ansible.builtin.command: docker info
+  register: benchmark_docker_info
+  changed_when: false
+  failed_when: false
+  when: benchmark_go_via_docker | default(false) | bool
+  tags: [db_bench]
+
+- name: Fail if Docker is not available for co-located benchmark
+  ansible.builtin.fail:
+    msg: "Docker is required on {{ inventory_hostname }} to run the DB benchmark (golang container, --network host)."
+  when:
+    - benchmark_go_via_docker | default(false) | bool
+    - benchmark_docker_info.rc | default(1) != 0
+  tags: [db_bench]
+
+- name: Pull Go toolchain image for DB benchmark
+  ansible.builtin.command:
+    cmd: docker pull {{ benchmark_go_docker_image }}
+  register: benchmark_go_docker_pull
+  changed_when: >-
+    'Downloaded newer' in benchmark_go_docker_pull.stdout | default('')
+    or 'Pulling' in benchmark_go_docker_pull.stdout | default('')
+  when: benchmark_go_via_docker | default(false) | bool
+  retries: 3
+  delay: 25
+  until: benchmark_go_docker_pull.rc == 0
+  tags: [db_bench]
+
+# Laptop → remote TCP ports on VM
+- name: DB benchmark env — controller reaches stack over the network
+  ansible.builtin.set_fact:
+    benchmark_effective_db_env:
+      REDIS_ADDR: "{{ benchmark_target_host }}:6379"
+      POSTGRES_HOST: "{{ benchmark_target_host }}"
+      POSTGRES_PORT: "5432"
+      MONGO_URI: "mongodb://root:root@{{ benchmark_target_host }}:27017/?directConnection=true"
+  when:
+    - not (benchmark_db_use_local_ports | default(false) | bool)
+    - benchmark_remote_host | default('') | trim | length > 0
+  tags: [db_bench]
+
+# VM host or docker --network host — published ports on loopback
+- name: DB benchmark env — loopback to published Docker ports
+  ansible.builtin.set_fact:
+    benchmark_effective_db_env: "{{ benchmark_db_host_local_env }}"
+  when: benchmark_db_use_local_ports | default(false) | bool
+  tags: [db_bench]
+
+- name: DB benchmark env — default (app.env only)
+  ansible.builtin.set_fact:
+    benchmark_effective_db_env: {}
+  when:
+    - not (benchmark_db_use_local_ports | default(false) | bool)
+    - benchmark_remote_host | default('') | trim | length == 0
+  tags: [db_bench]
+
+- name: Remove stale Docker env file for benchmark
+  ansible.builtin.file:
+    path: /tmp/pb_db_benchmark.env
+    state: absent
+  when: benchmark_go_via_docker | default(false) | bool
+  tags: [db_bench]
+
+- name: Write Docker env file for benchmark
+  ansible.builtin.copy:
+    dest: /tmp/pb_db_benchmark.env
+    mode: "0600"
+    content: |
+      {% for k, v in benchmark_effective_db_env | dictsort %}
+      {{ k }}={{ v }}
+      {% endfor %}
+  when: benchmark_go_via_docker | default(false) | bool
+  tags: [db_bench]
+
+# go benchmark writes ./sqlite under pb_backend; /opt deploys are often root-owned.
+- name: Ensure pb_backend/sqlite is writable by the SSH user
+  ansible.builtin.file:
+    path: "{{ benchmark_project_root }}/pb_backend/sqlite"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  become: true
+  when: benchmark_opt_sqlite_chown | default(false)
+  tags: [db_bench]
+
+- name: Run DB benchmark per storage (native go; skipped when benchmark_go_via_docker is true)
+  ansible.builtin.command:
+    cmd: >-
+      go run ./cmd/benchmark/main.go
+      -storage={{ item }}
+      -output={{ benchmark_db_results_dir }}/{{ item }}_benchmark_{{ ansible_date_time.epoch }}.json
+      -height={{ benchmark_canvas_height }}
+      -width={{ benchmark_canvas_width }}
+      -writers={{ benchmark_concurrent_writers }}
+      -history={{ benchmark_history_rounds }}
+      -distribution={{ benchmark_distribution }}
+      -warmup={{ benchmark_warmup_sec }}
+      -target-rates={{ benchmark_target_rates }}
+      -sustained-duration={{ benchmark_sustained_duration_sec }}
+      -ruw-duration={{ benchmark_ruw_duration_sec }}
+      -ruw-readers={{ benchmark_ruw_readers }}
+      -metrics-port={{ benchmark_metrics_port }}
+    chdir: "{{ benchmark_project_root }}/pb_backend"
+  environment: "{{ benchmark_effective_db_env }}"
+  register: benchmark_db_runs
+  loop: "{{ benchmark_storage_types }}"
+  loop_control:
+    label: "benchmark {{ item }}"
+  changed_when: false
+  when: not (benchmark_go_via_docker | default(false) | bool)
+  tags: [db_bench]
+
+- name: Run DB benchmark per storage (Docker golang image; skipped when benchmark_go_via_docker is false)
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm --network host
+      --env-file /tmp/pb_db_benchmark.env
+      -v {{ benchmark_project_root }}:/workspace
+      -v {{ benchmark_results_root }}:/bench_results
+      -w /workspace/pb_backend
+      {{ benchmark_go_docker_image }}
+      go run ./cmd/benchmark/main.go
+      -storage={{ item }}
+      -output=/bench_results/benchmarks/{{ item }}_benchmark_{{ ansible_date_time.epoch }}.json
+      -height={{ benchmark_canvas_height }}
+      -width={{ benchmark_canvas_width }}
+      -writers={{ benchmark_concurrent_writers }}
+      -history={{ benchmark_history_rounds }}
+      -distribution={{ benchmark_distribution }}
+      -warmup={{ benchmark_warmup_sec }}
+      -target-rates={{ benchmark_target_rates }}
+      -sustained-duration={{ benchmark_sustained_duration_sec }}
+      -ruw-duration={{ benchmark_ruw_duration_sec }}
+      -ruw-readers={{ benchmark_ruw_readers }}
+      -metrics-port={{ benchmark_metrics_port }}
+  register: benchmark_db_runs
+  loop: "{{ benchmark_storage_types }}"
+  loop_control:
+    label: "benchmark {{ item }}"
+  changed_when: false
+  when: benchmark_go_via_docker | default(false) | bool
+  tags: [db_bench]
+
+- name: Display benchmark output per storage type
+  ansible.builtin.debug:
+    msg: "{{ item.item }}: {{ item.stdout_lines | default([]) | join('\n') }}"
+  loop: "{{ benchmark_db_runs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: benchmark_db_runs is defined and benchmark_db_runs.results is defined
+  tags: [db_bench]
+
+- name: Write benchmark execution log
+  ansible.builtin.copy:
+    content: |
+      Benchmark Execution Log
+      =======================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Storage Types: {{ benchmark_storage_types | join(', ') }}
+      Canvas Size: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}
+      Concurrent Writers: {{ benchmark_concurrent_writers }}
+      History Rounds: {{ benchmark_history_rounds }}
+      Distribution: {{ benchmark_distribution }}
+      Warmup: {{ benchmark_warmup_sec }}s
+      Target Rates: {{ benchmark_target_rates }}
+      Sustained Duration: {{ benchmark_sustained_duration_sec }}s
+      RUW Duration: {{ benchmark_ruw_duration_sec }}s / {{ benchmark_ruw_readers }} readers
+      Go via Docker: {{ benchmark_go_via_docker | default(false) }}
+      DB use local ports: {{ benchmark_db_use_local_ports | default(false) }}
+
+      Results:
+      {% for result in benchmark_db_runs.results | default([]) %}
+      - {{ result.item }}: {{ 'SUCCESS' if result.rc == 0 else 'FAILED' }}
+        stdout: {{ result.stdout_lines | default([]) | join('\n        ') }}
+        stderr: {{ result.stderr_lines | default([]) | join('\n        ') }}
+      {% endfor %}
+    dest: "{{ benchmark_db_results_dir }}/benchmark_log_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+  when: benchmark_db_runs is defined and benchmark_db_runs.results is defined
+  tags: [db_bench]
+
+- name: List generated benchmark result files
+  ansible.builtin.find:
+    paths: "{{ benchmark_db_results_dir }}"
+    patterns: "*.json"
+  register: benchmark_result_files
+  tags: [db_bench]
+
+- name: Report generated file count
+  ansible.builtin.debug:
+    msg: "Generated {{ benchmark_result_files.files | length }} result file(s) in {{ benchmark_db_results_dir }}"
+  tags: [db_bench]

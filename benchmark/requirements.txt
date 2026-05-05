@@ -1,0 +1,3 @@
+# Dependencies moved to project-wide requirements.txt at repo root.
+# Install from project root: pip install -r requirements.txt
+-r ../requirements.txt

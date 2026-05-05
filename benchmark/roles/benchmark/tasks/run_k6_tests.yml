@@ -1,0 +1,88 @@
+---
+- name: Validate storage type for k6 test
+  ansible.builtin.assert:
+    that:
+      - benchmark_storage_type in ['redis', 'postgres', 'sqlite']
+    fail_msg: "Invalid benchmark_storage_type '{{ benchmark_storage_type }}'. Valid values: redis, postgres, sqlite"
+    success_msg: "Storage type validated: {{ benchmark_storage_type }}"
+  tags: [k6]
+
+- name: Validate test type for k6 test
+  ansible.builtin.assert:
+    that:
+      - benchmark_test_type in benchmark_test_types
+    fail_msg: "Invalid benchmark_test_type '{{ benchmark_test_type }}'. Valid values: {{ benchmark_test_types | join(', ') }}"
+    success_msg: "Test type validated: {{ benchmark_test_type }}"
+  tags: [k6]
+
+- name: Ensure k6 results directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_k6_results_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [k6]
+
+- name: Check k6 is installed
+  ansible.builtin.command: which k6
+  register: benchmark_k6_check
+  changed_when: false
+  failed_when: false
+  tags: [k6]
+
+- name: Fail if k6 is not installed
+  ansible.builtin.fail:
+    msg: "k6 is not installed. See https://k6.io/docs/get-started/installation/ for installation instructions."
+  when: benchmark_k6_check.rc != 0
+  tags: [k6]
+
+- name: Check k6 test file exists
+  ansible.builtin.stat:
+    path: "{{ benchmark_project_root }}/benchmark/k6/test-{{ benchmark_test_type }}.js"
+  register: benchmark_k6_test_file
+  tags: [k6]
+
+- name: Fail if k6 test file is missing
+  ansible.builtin.fail:
+    msg: "k6 test file not found: {{ benchmark_project_root }}/benchmark/k6/test-{{ benchmark_test_type }}.js"
+  when: not benchmark_k6_test_file.stat.exists
+  tags: [k6]
+
+- name: Run k6 test
+  ansible.builtin.command:
+    cmd: >-
+      k6 run
+      --out json={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_{{ ansible_date_time.epoch }}.json
+      --summary-export={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_summary_{{ ansible_date_time.epoch }}.json
+      test-{{ benchmark_test_type }}.js
+    chdir: "{{ benchmark_project_root }}/benchmark/k6"
+  environment:
+    BENCHMARK_HOST: "{{ benchmark_k6_address }}"
+  register: benchmark_k6_result
+  changed_when: false
+  tags: [k6]
+
+- name: Display k6 test output
+  ansible.builtin.debug:
+    msg: "k6 {{ benchmark_storage_type }}/{{ benchmark_test_type }}: {{ benchmark_k6_result.stdout_lines | default([]) | join('\n') }}"
+  tags: [k6]
+
+- name: Write k6 execution log
+  ansible.builtin.copy:
+    content: |
+      k6 Stress Test Log
+      ==================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Storage Type: {{ benchmark_storage_type }}
+      Test Type: {{ benchmark_test_type }}
+      Test File: {{ benchmark_project_root }}/benchmark/k6/test-{{ benchmark_test_type }}.js
+
+      Exit Code: {{ benchmark_k6_result.rc }}
+
+      Output:
+      {{ benchmark_k6_result.stdout_lines | default([]) | join('\n') }}
+
+      Errors:
+      {{ benchmark_k6_result.stderr_lines | default([]) | join('\n') }}
+    dest: "{{ benchmark_k6_results_dir }}/k6_log_{{ benchmark_storage_type }}_{{ benchmark_test_type }}_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+  tags: [k6]

@@ -39,11 +39,13 @@ func VKUserID(vkNumericID int) string {
 type Color [3]uint
 
 type Pixel struct {
-	X       uint   `json:"x"`
-	Y       uint   `json:"y"`
-	Color   []uint `json:"color"`
-	Userid  string `json:"userid"`
-	Faculty string `json:"faculty"`
+	X            uint   `json:"x"`
+	Y            uint   `json:"y"`
+	Color        []uint `json:"color"`
+	Userid       string `json:"userid"`
+	Faculty      string `json:"faculty"`
+	ClientSentMs int64  `json:"client_sent_ms,omitempty"`
+	ServerRecvMs int64  `json:"server_recv_ms,omitempty"`
 }
 
 // UnmarshalJSON accepts userid as string or number (WebSocket clients vary).

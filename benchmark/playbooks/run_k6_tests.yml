@@ -1,0 +1,11 @@
+---
+# Run locally:  ansible-playbook playbooks/run_k6_tests.yml -e "benchmark_storage_type=redis benchmark_test_type=light"
+# Run on a VM:  ansible-playbook playbooks/run_k6_tests.yml -e "target_hosts=benchmark_vm benchmark_storage_type=redis benchmark_test_type=light"
+- name: Run k6 Load Tests
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Run k6 test
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_k6_tests.yml

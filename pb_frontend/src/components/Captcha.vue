@@ -2,12 +2,17 @@
   <div
     id="captcha-container"
     class="smart-captcha"
-    data-sitekey="ysc1_iVmyqum34bmdy36kcLn2V4oJYqkdCogifEuoWBxP7fb9e386"
+    :data-sitekey="siteKey"
   ></div>
 </template>
 
 <script>
 export default {
+  data() {
+    return {
+      siteKey: process.env.VUE_APP_YANDEX_CAPTCHA_SITEKEY || 'replace_me',
+    };
+  },
   mounted() {
     let captcha = document.createElement('script');
     captcha.setAttribute('src', 'https://smartcaptcha.yandexcloud.net/captcha.js');

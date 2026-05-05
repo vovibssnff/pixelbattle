@@ -85,7 +85,12 @@ func (server *WsServer) unregisterClient(client *Client) {
 }
 
 func (server *WsServer) setPixel(pixel *domain.Pixel) {
+	visibleStart := time.Now()
+	if pixel.ServerRecvMs > 0 {
+		visibleStart = time.UnixMilli(pixel.ServerRecvMs)
+	}
 	if err := server.canvasService.WritePixel(context.Background(), pixel); err != nil {
+		service.IncrementWSError("write_pixel")
 		return
 	}
 	service.IncrementPixelsPlaced(pixel.Faculty)
@@ -96,6 +101,7 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 	for client := range server.clients {
 		client.send <- pixel
 	}
+	service.ObservePixelWriteVisible(time.Since(visibleStart))
 }
 
 func StartWebSocketServer(

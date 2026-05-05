@@ -150,6 +150,80 @@ var (
 			Help: "Number of pending pixel writes in queue",
 		},
 	)
+
+	e2ePixelLatencySeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "e2e_pixel_latency_seconds",
+			Help:    "End-to-end pixel latency from client stamp to server observation",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		},
+		[]string{"source"},
+	)
+
+	wsErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ws_errors_total",
+			Help: "Total websocket errors by kind",
+		},
+		[]string{"kind"},
+	)
+
+	availabilitySLITotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "availability_sli_total",
+			Help: "Availability SLI total requests by result",
+		},
+		[]string{"result"},
+	)
+
+	pixelWriteVisibleSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "pixel_write_visible_seconds",
+			Help:    "Time from WS pixel ingest to write completion for visibility",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5},
+		},
+	)
+
+	rumBeaconTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rum_beacon_total",
+			Help: "Total RUM beacons received by result",
+		},
+		[]string{"result"},
+	)
+
+	clientFPS = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "client_fps",
+			Help:    "Client-reported FPS average",
+			Buckets: []float64{5, 10, 15, 20, 24, 30, 45, 60, 90, 120},
+		},
+	)
+
+	clientFrameTimeP95Ms = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "client_frame_time_p95_ms",
+			Help:    "Client-reported p95 frame time in milliseconds",
+			Buckets: []float64{4, 8, 12, 16, 20, 24, 33, 50, 66, 100, 200},
+		},
+	)
+
+	clientWebVitalMs = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "client_web_vital_ms",
+			Help:    "Client web-vitals in milliseconds",
+			Buckets: []float64{10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000},
+		},
+		[]string{"metric"},
+	)
+
+	clientWSRenderLatencyMs = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "client_ws_render_latency_ms",
+			Help:    "Client-reported websocket-to-render latency p95 in milliseconds",
+			Buckets: []float64{1, 2, 4, 8, 16, 25, 50, 100, 250, 500, 1000, 2500},
+		},
+	)
 )
 
 func init() {
@@ -172,6 +246,15 @@ func init() {
 		databaseOperationTotal,
 		databaseConnectionPoolSize,
 		pixelWriteQueueDepth,
+		e2ePixelLatencySeconds,
+		wsErrorsTotal,
+		availabilitySLITotal,
+		pixelWriteVisibleSeconds,
+		rumBeaconTotal,
+		clientFPS,
+		clientFrameTimeP95Ms,
+		clientWebVitalMs,
+		clientWSRenderLatencyMs,
 	)
 }
 
@@ -179,6 +262,11 @@ func RecordRequest(path, method string, duration time.Duration, statusCode int) 
 	requestDuration.WithLabelValues(path, method).Observe(duration.Seconds())
 	requestsPerSecond.WithLabelValues(path, method).Inc()
 	httpResponseStatus.WithLabelValues(path, strconv.Itoa(statusCode)).Inc()
+	if statusCode < http.StatusInternalServerError {
+		availabilitySLITotal.WithLabelValues("ok").Inc()
+		return
+	}
+	availabilitySLITotal.WithLabelValues("error").Inc()
 }
 
 func Handler() http.Handler {
@@ -229,6 +317,38 @@ func SetDatabaseConnectionPoolSize(storageType string, open, idle, inUse int) {
 
 func SetPixelWriteQueueDepth(depth int) {
 	pixelWriteQueueDepth.Set(float64(depth))
+}
+
+func ObserveE2EPixelLatency(source string, d time.Duration) {
+	e2ePixelLatencySeconds.WithLabelValues(source).Observe(d.Seconds())
+}
+
+func IncrementWSError(kind string) {
+	wsErrorsTotal.WithLabelValues(kind).Inc()
+}
+
+func ObservePixelWriteVisible(d time.Duration) {
+	pixelWriteVisibleSeconds.Observe(d.Seconds())
+}
+
+func IncrementRUMBeacon(result string) {
+	rumBeaconTotal.WithLabelValues(result).Inc()
+}
+
+func ObserveClientFPS(v float64) {
+	clientFPS.Observe(v)
+}
+
+func ObserveClientFrameTimeP95Ms(v float64) {
+	clientFrameTimeP95Ms.Observe(v)
+}
+
+func ObserveClientWebVitalMs(metric string, v float64) {
+	clientWebVitalMs.WithLabelValues(metric).Observe(v)
+}
+
+func ObserveClientWSRenderLatencyMs(v float64) {
+	clientWSRenderLatencyMs.Observe(v)
 }
 
 func RecordHeatmapPixel(x, y uint) {

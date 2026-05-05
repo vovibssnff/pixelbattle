@@ -1,0 +1,84 @@
+---
+- name: Resolve Python interpreter (venv preferred)
+  ansible.builtin.set_fact:
+    benchmark_python_bin: >-
+      {{
+        benchmark_python_interpreter
+        if (benchmark_python_interpreter | default('')) != ''
+        else 'python3'
+      }}
+  tags: [report]
+
+- name: Check Python interpreter is executable
+  ansible.builtin.command: "{{ benchmark_python_bin }} --version"
+  register: benchmark_python_check
+  changed_when: false
+  failed_when: false
+  tags: [report]
+
+- name: Fail if Python interpreter is not available
+  ansible.builtin.fail:
+    msg: >-
+      Python interpreter not found at '{{ benchmark_python_bin }}'.
+      Activate the project-wide venv first: source .venv/bin/activate
+  when: benchmark_python_check.rc != 0
+  tags: [report]
+
+- name: Check report script exists
+  ansible.builtin.stat:
+    path: "{{ benchmark_report_script }}"
+  register: benchmark_report_script_stat
+  tags: [report]
+
+- name: Generate Markdown comparison report
+  ansible.builtin.command: "{{ benchmark_python_bin }} {{ benchmark_report_script }} {{ benchmark_results_root }}"
+  register: benchmark_report_result
+  changed_when: false
+  when: benchmark_report_script_stat.stat.exists
+  tags: [report]
+
+- name: Display report generation output
+  ansible.builtin.debug:
+    msg: "{{ benchmark_report_result.stdout_lines | default([]) | join('\n') }}"
+  when: benchmark_report_script_stat.stat.exists
+  tags: [report]
+
+- name: Check plot script exists
+  ansible.builtin.stat:
+    path: "{{ benchmark_plot_script }}"
+  register: benchmark_plot_script_stat
+  tags: [report]
+
+- name: Generate comparison graphs
+  ansible.builtin.command: "{{ benchmark_python_bin }} {{ benchmark_plot_script }} {{ benchmark_results_root }}"
+  register: benchmark_plot_result
+  changed_when: false
+  when: benchmark_plot_script_stat.stat.exists
+  tags: [report]
+
+- name: Display plot generation output
+  ansible.builtin.debug:
+    msg: "{{ benchmark_plot_result.stdout_lines | default([]) | join('\n') }}"
+  when: benchmark_plot_script_stat.stat.exists
+  tags: [report]
+
+- name: Write report generation log
+  ansible.builtin.copy:
+    content: |
+      Report Generation Log
+      =====================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Python Interpreter: {{ benchmark_python_bin }}
+      Results Directory: {{ benchmark_results_root }}
+
+      Report Script: {{ 'found' if benchmark_report_script_stat.stat.exists else 'NOT FOUND' }}
+      Plot Script: {{ 'found' if benchmark_plot_script_stat.stat.exists else 'NOT FOUND' }}
+
+      Report Generation Output:
+      {{ benchmark_report_result.stdout_lines | default([]) | join('\n') }}
+
+      Plot Generation Output:
+      {{ benchmark_plot_result.stdout_lines | default([]) | join('\n') }}
+    dest: "{{ benchmark_results_root }}/report_generation_log_{{ ansible_date_time.epoch }}.txt"
+    mode: "0644"
+  tags: [report]

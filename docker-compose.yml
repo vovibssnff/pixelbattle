@@ -99,12 +99,41 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.time=180d"
       - "--log.level=info"
       - "--web.enable-lifecycle"
     depends_on:
       - backend
       - mongodb-exporter
+      - blackbox-exporter
+    security_opt: ["no-new-privileges:true"]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    networks: [internal]
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+  mimir:
+    image: grafana/mimir:2.13.1
+    restart: unless-stopped
+    profiles: ["longterm"]
+    networks: [internal]
+    command:
+      - "-config.file=/etc/mimir/mimir.yaml"
+    volumes:
+      - ./monitoring/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - ./monitoring/mimir_data:/data
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
 
   grafana:

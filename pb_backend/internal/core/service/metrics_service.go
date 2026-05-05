@@ -65,3 +65,15 @@ func ObserveDatabaseOperation(op, st string, d time.Duration, e error) {
 func SetDatabaseConnectionPoolSize(st string, o, i, u int) {
 	metrics.SetDatabaseConnectionPoolSize(st, o, i, u)
 }
+func ObserveE2EPixelLatency(source string, d time.Duration) {
+	metrics.ObserveE2EPixelLatency(source, d)
+}
+func IncrementWSError(kind string)             { metrics.IncrementWSError(kind) }
+func ObservePixelWriteVisible(d time.Duration) { metrics.ObservePixelWriteVisible(d) }
+func IncrementRUMBeacon(result string)         { metrics.IncrementRUMBeacon(result) }
+func ObserveClientFPS(v float64)               { metrics.ObserveClientFPS(v) }
+func ObserveClientFrameTimeP95Ms(v float64)    { metrics.ObserveClientFrameTimeP95Ms(v) }
+func ObserveClientWebVitalMs(metric string, v float64) {
+	metrics.ObserveClientWebVitalMs(metric, v)
+}
+func ObserveClientWSRenderLatencyMs(v float64) { metrics.ObserveClientWSRenderLatencyMs(v) }

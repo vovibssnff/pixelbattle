@@ -1,0 +1,30 @@
+---
+all:
+  children:
+    # Default target: run everything locally against the local Docker stack.
+    local:
+      hosts:
+        localhost:
+          ansible_connection: local
+          # Play still targets *this machine* (Ansible localhost). benchmark_remote_host tells the
+          # role where the *stack* is: unset = Redis/Postgres/k6 probe localhost:6379/5432/8080.
+          # For a VM-only stack, set one of: uncomment below, -e benchmark_remote_host=IP, or
+          # export BENCHMARK_REMOTE_HOST=IP
+          # benchmark_remote_host: "192.168.122.71"
+
+    # Remote VM with deployed stack (same paths as deploy playbook: /opt/pixelbattle).
+    vms:
+      hosts:
+        benchmark_vm:
+          ansible_host: 192.168.122.71
+          ansible_user: vovi
+          ansible_ssh_pass: vovi
+          ansible_become_password: vovi
+          ansible_python_interpreter: /usr/bin/python3
+          benchmark_co_located_stack: true
+          benchmark_project_root: /opt/pixelbattle
+          # Stack lives under /opt (root); write results under the SSH user home.
+          benchmark_results_root: /home/vovi/pixelbattle-benchmark-results
+          benchmark_opt_sqlite_chown: true
+          # No project venv on server; use system Python with numpy/matplotlib installed.
+          benchmark_python_interpreter: /usr/bin/python3

@@ -1,0 +1,22 @@
+---
+- name: Run distributed benchmark suite (gateways + clustered storage)
+  hosts: localhost
+  gather_facts: true
+  vars:
+    benchmark_storage_types:
+      - redis
+      - postgres
+      - sqlite
+    benchmark_test_types:
+      - medium
+      - heavy
+      - burst
+    benchmark_distribution: zipfian
+    benchmark_shards: 3
+    benchmark_redis_cluster: true
+  tasks:
+    - name: Run benchmark role full pipeline
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: main.yml
+

@@ -20,6 +20,8 @@ func StartRestServer(sessionService domain.SessionService, vkAuthProvider vk.VKA
 	router.HandleFunc("/api/vk-login", handlers.HandleVKLogin).Methods("GET")
 	router.HandleFunc("/api/register", handlers.HandlePasswordRegister).Methods("POST")
 	router.HandleFunc("/api/login", handlers.HandlePasswordLogin).Methods("POST")
+	router.HandleFunc("/api/rum", handlers.HandleRUMBeacon).Methods("POST")
+	router.HandleFunc("/api/config", handlers.HandleClientConfig).Methods("GET")
 	router.HandleFunc("/api/admin/ban", handlers.HandleBan).Methods("POST")
 	router.HandleFunc("/api/admin/unban", handlers.HandleUnban).Methods("POST")
 

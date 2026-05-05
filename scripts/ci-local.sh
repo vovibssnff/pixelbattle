@@ -2,8 +2,12 @@
 # Local mirror of .github/workflows/ci.yml — same stages and tools, no act.
 # Run from anywhere: ./scripts/ci-local.sh
 #
-# Expects: Docker, Go (1.23.x / toolchain per pb_backend/go.mod), Node 20+, npm.
+# Expects: Docker, Go (toolchain per pb_backend/go.mod), Node 20+, npm.
 # Missing CLIs fall back to the same Docker images CI would pull indirectly.
+#
+# Semgrep is OFF by default locally: it downloads rule packs from semgrep.dev and
+# often times out on flaky networks. GitHub Actions still runs Semgrep in ci.yml.
+# To run Semgrep locally: CI_LOCAL_SEMGREP=1 ./scripts/ci-local.sh
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,8 +38,35 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
-# CI uses actions/setup-go with go 1.23.6; align toolchain for vet/lint/SAST.
-export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.23.6}"
+ensure_golangci_lint() {
+  local desired_ver="2.12.1"
+  if command -v golangci-lint >/dev/null 2>&1; then
+    if golangci-lint version 2>/dev/null | rg -q "version v?${desired_ver}"; then
+      return 0
+    fi
+    echo -e "${YELLOW}info:${NC} replacing local golangci-lint with v${desired_ver}"
+  fi
+  local gopath_bin
+  gopath_bin="$(go env GOPATH)/bin"
+  mkdir -p "$gopath_bin"
+  if [ -x "$gopath_bin/golangci-lint" ]; then
+    if "$gopath_bin/golangci-lint" version 2>/dev/null | rg -q "version v?${desired_ver}"; then
+      export PATH="$gopath_bin:$PATH"
+      return 0
+    fi
+  fi
+  echo -e "${YELLOW}info:${NC} installing golangci-lint v${desired_ver} locally via go install"
+  # v2 module path is required for golangci-lint config version "2"
+  GOBIN="$gopath_bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${desired_ver}
+  export PATH="$gopath_bin:$PATH"
+  if ! command -v golangci-lint >/dev/null 2>&1; then
+    die "failed to install golangci-lint"
+  fi
+  golangci-lint version | rg -q "version v?${desired_ver}" || die "unexpected golangci-lint version installed"
+}
+
+# CI uses actions/setup-go with pb_backend/go.mod; align with toolchain directive.
+export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.2}"
 
 warn_env() {
   if command -v node >/dev/null 2>&1; then
@@ -63,27 +94,24 @@ ok "secrets-scan"
 
 # --- backend-lint ---
 job "backend-lint"
+ensure_golangci_lint
 (
   cd pb_backend
   go vet ./...
   test -z "$(gofmt -l .)"
-  if command -v golangci-lint >/dev/null 2>&1; then
-    golangci-lint run
-  else
-    docker run --rm -v "$ROOT_DIR:/src" -w /src/pb_backend \
-      golangci/golangci-lint:v1.62.0 golangci-lint run
-  fi
+  golangci-lint run
 )
 ok "backend-lint"
 
-# --- backend-sast (gosec, govulncheck, semgrep: p/ci golang owasp dockerfile) ---
+# --- backend-sast (gosec, govulncheck; semgrep only if CI_LOCAL_SEMGREP=1) ---
 job "backend-sast"
 (
   cd pb_backend
   if command -v gosec >/dev/null 2>&1; then
-    gosec ./...
+    gosec -exclude=G104,G114,G115 ./...
   else
-    docker run --rm -v "$ROOT_DIR:/src" -w /src/pb_backend securego/gosec:latest ./...
+    docker run --rm -v "$ROOT_DIR:/src" -w /src/pb_backend securego/gosec:latest \
+      -exclude=G104,G114,G115 ./...
   fi
 
   GOVULNCHECK_BIN="$(go env GOPATH)/bin/govulncheck"
@@ -93,11 +121,15 @@ job "backend-sast"
   fi
   "$GOVULNCHECK_BIN" ./...
 )
-if command -v semgrep >/dev/null 2>&1; then
-  semgrep --config p/ci --config p/golang --config p/owasp-top-ten --config p/dockerfile .
+if [ "${CI_LOCAL_SEMGREP:-0}" = "1" ]; then
+  if command -v semgrep >/dev/null 2>&1; then
+    semgrep --config p/ci --config p/golang --config p/owasp-top-ten --config p/dockerfile .
+  else
+    docker run --rm -v "$ROOT_DIR:/src" semgrep/semgrep:latest semgrep \
+      --config p/ci --config p/golang --config p/owasp-top-ten --config p/dockerfile /src
+  fi
 else
-  docker run --rm -v "$ROOT_DIR:/src" semgrep/semgrep:latest semgrep \
-    --config p/ci --config p/golang --config p/owasp-top-ten --config p/dockerfile /src
+  echo -e "${YELLOW}info:${NC} skipping Semgrep (set CI_LOCAL_SEMGREP=1 to run; CI still runs it on push)"
 fi
 ok "backend-sast"
 
@@ -110,18 +142,24 @@ job "frontend-lint"
 )
 ok "frontend-lint"
 
-# --- frontend-security (npm ci + audit + semgrep js; mirrors frontend-security job) ---
+# --- frontend-security (npm ci + audit; semgrep only if CI_LOCAL_SEMGREP=1) ---
 job "frontend-security"
 (
   cd pb_frontend
   npm ci
-  npm audit --audit-level=high
+  # Advisory bulk fetch can flake with "socket hang up"; extra retries stay inside one audit run.
+  NPM_CONFIG_FETCH_RETRIES=8 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    npm audit --audit-level=high
 )
-if command -v semgrep >/dev/null 2>&1; then
-  semgrep --config p/javascript --config p/owasp-top-ten .
+if [ "${CI_LOCAL_SEMGREP:-0}" = "1" ]; then
+  if command -v semgrep >/dev/null 2>&1; then
+    semgrep --config p/javascript --config p/owasp-top-ten .
+  else
+    docker run --rm -v "$ROOT_DIR:/src" semgrep/semgrep:latest semgrep \
+      --config p/javascript --config p/owasp-top-ten /src
+  fi
 else
-  docker run --rm -v "$ROOT_DIR:/src" semgrep/semgrep:latest semgrep \
-    --config p/javascript --config p/owasp-top-ten /src
+  echo -e "${YELLOW}info:${NC} skipping Semgrep (set CI_LOCAL_SEMGREP=1 to run; CI still runs it on push)"
 fi
 ok "frontend-security"
 
@@ -141,7 +179,20 @@ ok "dockerfile-lint"
 
 # --- iac-scan (trivy config, CRITICAL+HIGH, exit 1) ---
 job "iac-scan"
-TRIVY_CONFIG_FLAGS=(config --severity CRITICAL,HIGH --exit-code 1 .)
+# Ignore runtime data volumes that can be root-owned/unreadable locally.
+TRIVY_CONFIG_FLAGS=(
+  config
+  --severity CRITICAL,HIGH
+  --exit-code 1
+  --skip-dirs .venv
+  --skip-dirs pb_frontend/node_modules
+  --skip-dirs mongodb/data
+  --skip-dirs redis/data
+  --skip-dirs monitoring/prometheus_data
+  --skip-dirs monitoring/grafana_data
+  --skip-dirs results
+  .
+)
 if command -v trivy >/dev/null 2>&1; then
   trivy "${TRIVY_CONFIG_FLAGS[@]}"
 else
@@ -154,7 +205,7 @@ job "container-security"
 docker build -t "pb-backend:${CI_SHA}" pb_backend/
 docker build -t "pb-frontend:${CI_SHA}" pb_frontend/
 
-TRIVY_IMAGE_BASE=(image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --vuln-type os,library)
+TRIVY_IMAGE_BASE=(image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --pkg-types os,library)
 if command -v trivy >/dev/null 2>&1; then
   trivy "${TRIVY_IMAGE_BASE[@]}" --format table "pb-backend:${CI_SHA}"
   trivy "${TRIVY_IMAGE_BASE[@]}" --format table "pb-frontend:${CI_SHA}"

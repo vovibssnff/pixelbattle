@@ -1,0 +1,114 @@
+---
+- name: Remember controller results root (for fetching DB bench artifacts from VM)
+  ansible.builtin.set_fact:
+    benchmark_controller_results_root: "{{ benchmark_results_root }}"
+  when:
+    - benchmark_run_db_on_vm | default(false) | bool
+    - inventory_hostname not in [benchmark_db_delegate_host]
+
+- name: Display benchmark suite parameters
+  ansible.builtin.debug:
+    msg:
+      - "Starting full benchmark suite"
+      - "Project root: {{ benchmark_project_root }}"
+      - "Remote stack host (empty = local Docker): {{ benchmark_remote_host | default('') }}"
+      - "Target host for services: {{ benchmark_target_host }}"
+      - "k6 BENCHMARK_HOST: {{ benchmark_k6_address }}"
+      - "Prometheus URL: {{ benchmark_prometheus_url }}"
+      - "Storage types: {{ benchmark_storage_types | join(', ') }}"
+      - "Test types: {{ benchmark_test_types | join(', ') }}"
+      - "Canvas: {{ benchmark_canvas_width }}x{{ benchmark_canvas_height }}"
+      - "Concurrent writers: {{ benchmark_concurrent_writers }}"
+      - "Run DB bench on VM (delegate): {{ benchmark_run_db_on_vm | default(false) }}"
+      - "DB use local ports env: {{ benchmark_db_use_local_ports | default(false) }}"
+      - "Go via Docker: {{ benchmark_go_via_docker | default(false) }}"
+
+- name: Setup databases
+  ansible.builtin.include_tasks: setup_database.yml
+  vars:
+    benchmark_storage_type: "{{ item }}"
+  loop: "{{ benchmark_storage_types }}"
+  loop_control:
+    label: "setup {{ item }}"
+  tags: [setup]
+
+- name: Run database-level benchmarks on VM (co-located with Docker stack)
+  ansible.builtin.include_tasks:
+    file: run_db_benchmarks.yml
+    apply:
+      delegate_to: "{{ benchmark_db_delegate_host }}"
+  vars:
+    benchmark_project_root: "{{ hostvars[benchmark_db_delegate_host]['benchmark_project_root'] }}"
+    benchmark_results_root: "{{ hostvars[benchmark_db_delegate_host]['benchmark_results_root'] }}"
+    benchmark_opt_sqlite_chown: "{{ hostvars[benchmark_db_delegate_host]['benchmark_opt_sqlite_chown'] | default(false) }}"
+    benchmark_co_located_stack: "{{ hostvars[benchmark_db_delegate_host]['benchmark_co_located_stack'] | default(true) }}"
+    benchmark_remote_host: ""
+    benchmark_db_use_local_ports: true
+    benchmark_go_via_docker: true
+  when: benchmark_run_db_on_vm | default(false) | bool
+  tags: [db_bench]
+
+- name: Run database-level benchmarks on controller
+  ansible.builtin.include_tasks: run_db_benchmarks.yml
+  when: not (benchmark_run_db_on_vm | default(false) | bool)
+  tags: [db_bench]
+
+- name: Fetch DB benchmark JSON files from VM to controller
+  when: benchmark_run_db_on_vm | default(false) | bool
+  tags: [db_bench]
+  block:
+    - name: Find benchmark JSON on VM
+      ansible.builtin.find:
+        paths: "{{ hostvars[benchmark_db_delegate_host].benchmark_results_root }}/benchmarks"
+        patterns: "*.json"
+      register: benchmark_vm_db_json
+      delegate_to: "{{ benchmark_db_delegate_host }}"
+
+    - name: Ensure local benchmarks directory exists
+      ansible.builtin.file:
+        path: "{{ benchmark_controller_results_root }}/benchmarks"
+        state: directory
+        mode: "0755"
+
+    - name: Pull each JSON from VM
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_controller_results_root }}/benchmarks/{{ item.path | basename }}"
+        flat: true
+      loop: "{{ benchmark_vm_db_json.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      delegate_to: "{{ benchmark_db_delegate_host }}"
+
+- name: Build storage/test-type combinations for k6
+  ansible.builtin.set_fact:
+    benchmark_k6_test_combinations: "{{ benchmark_storage_types | product(benchmark_test_types) | list }}"
+  tags: [k6]
+
+- name: Run k6 load tests
+  ansible.builtin.include_tasks: run_k6_tests.yml
+  vars:
+    benchmark_storage_type: "{{ item[0] }}"
+    benchmark_test_type: "{{ item[1] }}"
+  loop: "{{ benchmark_k6_test_combinations }}"
+  loop_control:
+    label: "k6 {{ item[0] }}/{{ item[1] }}"
+  tags: [k6]
+
+- name: Collect results and container logs
+  ansible.builtin.include_tasks: collect_results.yml
+  vars:
+    benchmark_collected_dir: "{{ benchmark_results_root }}/collected_{{ ansible_date_time.epoch }}"
+  tags: [collect]
+
+- name: Generate comparison report and graphs
+  ansible.builtin.include_tasks: generate_report.yml
+  tags: [report]
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "Full benchmark suite completed!"
+      - "Results directory: {{ benchmark_results_root }}"
+      - "=========================================="

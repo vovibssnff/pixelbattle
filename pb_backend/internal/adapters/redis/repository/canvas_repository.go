@@ -11,10 +11,10 @@ import (
 )
 
 type CanvasRepository struct {
-	rdb *redis.Client
+	rdb redis.Cmdable
 }
 
-func NewCanvasRepository(rdb *redis.Client) *CanvasRepository {
+func NewCanvasRepository(rdb redis.Cmdable) *CanvasRepository {
 	return &CanvasRepository{rdb: rdb}
 }
 

@@ -26,12 +26,12 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "sum by (storage_type) (rate(database_operation_total{operation=\"write\"}[5m]))",
-          "legendFormat": "{{storage_type}}",
+          "expr": "sum by (version) (rate(pixels_placed_total{version=~\"$version\"}[5m]))",
+          "legendFormat": "{{version}}",
           "refId": "A"
         }
       ],
-      "title": "Write throughput by storage",
+      "title": "Throughput by version",
       "type": "timeseries"
     },
     {
@@ -53,12 +53,12 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "histogram_quantile(0.95, sum by (le, storage_type) (rate(database_operation_duration_seconds_bucket{operation=\"read\"}[5m])))",
-          "legendFormat": "P95 {{storage_type}}",
+          "expr": "histogram_quantile(0.95, sum by (le, version) (rate(e2e_pixel_latency_seconds_bucket{version=~\"$version\"}[5m])))",
+          "legendFormat": "P95 {{version}}",
           "refId": "A"
         }
       ],
-      "title": "Read latency P95 by storage",
+      "title": "E2E latency P95 by version",
       "type": "timeseries"
     },
     {
@@ -80,12 +80,12 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "histogram_quantile(0.95, sum by (le, storage_type) (rate(database_operation_duration_seconds_bucket{operation=\"write\"}[5m])))",
-          "legendFormat": "P95 {{storage_type}}",
+          "expr": "histogram_quantile(0.95, sum by (le, version) (rate(client_ws_render_latency_ms_bucket{version=~\"$version\"}[5m])))",
+          "legendFormat": "P95 {{version}}",
           "refId": "A"
         }
       ],
-      "title": "Write latency P95 by storage",
+      "title": "WS-to-render latency P95 by version",
       "type": "timeseries"
     },
     {
@@ -107,12 +107,12 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "expr": "sum by (storage_type, operation) (rate(database_operation_total{status=\"error\"}[5m]))",
-          "legendFormat": "{{storage_type}} {{operation}}",
+          "expr": "sum by (version) (rate(ws_errors_total{version=~\"$version\"}[5m])) + sum by (version) (rate(http_response_status_total{status=~\"5..\",version=~\"$version\"}[5m]))",
+          "legendFormat": "{{version}}",
           "refId": "A"
         }
       ],
-      "title": "Error rate by storage",
+      "title": "Error rate by version",
       "type": "timeseries"
     }
   ],
@@ -120,12 +120,27 @@
   "schemaVersion": 39,
   "style": "dark",
   "tags": ["comparison", "benchmark"],
-  "templating": {"list": []},
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": true, "text": "baseline|candidate", "value": "baseline|candidate"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Version regex",
+        "multi": false,
+        "name": "version",
+        "options": [],
+        "query": "baseline|candidate",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
   "time": {"from": "now-1h", "to": "now"},
   "timepicker": {},
   "timezone": "browser",
-  "title": "Database Comparison",
+  "title": "Version Comparison",
   "uid": "db-comparison",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
