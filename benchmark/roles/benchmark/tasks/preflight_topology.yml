@@ -144,12 +144,14 @@
 
     - name: "preflight (targets): parse compose caps total"
       ansible.builtin.set_fact:
+        # Use `search` not `match`: Ansible's `match` test can require a full-string match,
+        # so lines like __TOTAL__\tBYTES\tBYTES would not match ^__TOTAL__ alone.
         benchmark_target_compose_total_bytes: >-
           {{
             (benchmark_target_compose_caps.stdout_lines
-             | select('match', '^__TOTAL__')
+             | select('search', '^__TOTAL__\\t')
              | list | first | default('__TOTAL__\t0\t0')
-            ).split('\t')[-1] | int
+            ).split('\t')[1] | default(0) | int
           }}
         benchmark_target_compose_unset: >-
           {{
@@ -179,7 +181,7 @@
       ansible.builtin.debug:
         msg:
           - "Compose memory caps (per service):"
-          - "{{ benchmark_target_compose_caps.stdout_lines | reject('match', '^__TOTAL__') | list }}"
+          - "{{ benchmark_target_compose_caps.stdout_lines | reject('search', '^__TOTAL__') | list }}"
           - >-
             Aggregate: {{ (benchmark_target_compose_total_bytes | int / (1024 ** 3)) | round(2) }} GiB
             (cap 16 GiB).

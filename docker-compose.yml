@@ -11,6 +11,9 @@ services:
     volumes:
       - ./redis/redis_data:/data
       - ./redis/redis.conf:/etc/redis/redis.conf
+    # Loopback-only: Go DB benchmarker on the host/VM connects to localhost:6379 (plan §7.0).
+    ports:
+      - "127.0.0.1:6379:6379"
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (see .env.example)}
       - REDIS_PORT=6379
