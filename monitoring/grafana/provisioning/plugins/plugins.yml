@@ -1,0 +1,7 @@
+apiVersion: 1
+
+apps:
+  - type: volkovlabs-form-panel
+    disabled: false
+  - type: yesoreyeram-infinity-datasource
+    disabled: false
