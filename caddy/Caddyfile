@@ -45,8 +45,10 @@
 	handle_path /panel/* {
 		reverse_proxy grafana:3000
 	}
-	handle /panel {
-		redir /panel/ permanent
+	handle /panel/* {
+		header X-Frame-Options ""
+		header Content-Security-Policy "default-src 'self' https://pixelbattle.local; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; frame-ancestors 'self'"
+		reverse_proxy grafana:3000
 	}
 
 	# Prometheus UI is NOT exposed here: it has no built-in auth and would leak
