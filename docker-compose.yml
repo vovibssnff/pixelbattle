@@ -1,6 +1,3 @@
-volumes:
-  caddy_html:
-
 networks:
   internal:
     driver: bridge
@@ -201,52 +198,31 @@ services:
           memory: 512m
     mem_limit: 512m
 
-  frontend:
+  caddy:
     build:
       context: ./pb_frontend
       dockerfile: Dockerfile
       target: final
     restart: unless-stopped
     networks: [internal]
-    volumes:
-      - caddy_html:/srv
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-    mem_limit: 128m
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /srv/index.html"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  caddy:
-    image: caddy:2.8.4-alpine
-    restart: unless-stopped
-    networks: [internal]
     ports:
       - "443:443"
       - "80:80"
     environment:
-      CADDY_DOMAIN: ${CADDY_DOMAIN:?Set CADDY_DOMAIN in .env (public hostname, e.g. dev.example.com)}
-      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env (Lets Encrypt contact; unused if tls.inc uses file PEMs or tls internal)}
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?...}
+      ACME_EMAIL: ${ACME_EMAIL:?...}
     security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/tls.inc:/etc/caddy/tls.inc:ro
+      - ./certs:/etc/caddy/certs:ro
+      # caddy_html volume mount REMOVED — /srv is now baked in
+    depends_on:
+      backend: { condition: service_healthy }
+      grafana: { condition: service_started }
+      prometheus: { condition: service_started }
     deploy:
       resources:
         limits:
           memory: 128m
     mem_limit: 128m
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/tls.inc:/etc/caddy/tls.inc:ro
-      - ./certs:/etc/caddy/certs:ro
-      - caddy_html:/srv:ro
-    depends_on:
-      backend: { condition: service_healthy }
-      grafana: { condition: service_started }
-      prometheus: { condition: service_started }
-      frontend: { condition: service_healthy }

@@ -9,30 +9,6 @@
   register: deploy_pull_result
   until: deploy_pull_result.rc == 0
 
-# The frontend image runs as UID 10001 and seeds /srv from /static on each start. If the
-# named volume caddy_html was ever populated or touched as root, the seed step fails with
-# permission denied, the healthcheck never sees /srv/index.html, and compose exits non-zero.
-- name: Ensure caddy_html volume is writable by frontend (UID 10001)
-  ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - run
-      - --rm
-      - --no-deps
-      - "-u"
-      - "0:0"
-      - --entrypoint
-      - ""
-      - frontend
-      - sh
-      - -c
-      - "chown -R 10001:10001 /srv"
-    chdir: "{{ deploy_project_dir }}"
-  register: deploy_caddy_html_chown
-  changed_when: deploy_caddy_html_chown.rc == 0
-  failed_when: false
-
 - name: Build and (re)deploy stack
   ansible.builtin.command:
     cmd: docker compose up -d --build --remove-orphans
