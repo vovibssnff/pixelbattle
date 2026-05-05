@@ -51,9 +51,9 @@ deploy_redis_timer_db: 1
 
 # --- Runtime data dirs created on the host (compose bind-mounts) ---
 deploy_data_dirs:
-  - "{{ deploy_project_dir }}/redis/redis_data"
-  - "{{ deploy_project_dir }}/mongodb/data"
-  - "{{ deploy_project_dir }}/mongodb/logs"
-  - "{{ deploy_project_dir }}/monitoring/prometheus_data"
-  - "{{ deploy_project_dir }}/monitoring/grafana_data"
-  - "{{ deploy_project_dir }}/certs"
+  - { path: "{{ deploy_project_dir }}/redis/redis_data",        owner: "root", group: "root" }
+  - { path: "{{ deploy_project_dir }}/mongodb/data",            owner: "999",  group: "999"  }  # mongo UID
+  - { path: "{{ deploy_project_dir }}/mongodb/logs",            owner: "999",  group: "999"  }
+  - { path: "{{ deploy_project_dir }}/monitoring/prometheus_data", owner: "nobody", group: "nobody" }  # prom UID 65534
+  - { path: "{{ deploy_project_dir }}/monitoring/grafana_data", owner: "472",  group: "472"  }  # grafana UID
+  - { path: "{{ deploy_project_dir }}/certs",                   owner: "root", group: "root" }

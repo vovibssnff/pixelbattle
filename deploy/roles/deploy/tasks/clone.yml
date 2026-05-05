@@ -18,9 +18,11 @@
 
 - name: Create runtime data directories
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ item.path }}"
     state: directory
     mode: "0755"
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
   loop: "{{ deploy_data_dirs }}"
   loop_control:
-    label: "{{ item | basename }}"
+    label: "{{ item.path | basename }}"
