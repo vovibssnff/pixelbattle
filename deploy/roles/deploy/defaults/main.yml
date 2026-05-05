@@ -14,3 +14,6 @@ deploy_compose_retry_delay: 45
 # Override if COMPOSE_PROJECT_NAME in the target .env differs.
 deploy_compose_project_name: ""
 
+# Wait at most retries*delay seconds for the public Caddy endpoint to come up.
+deploy_health_retries: 30
+deploy_health_delay: 5
