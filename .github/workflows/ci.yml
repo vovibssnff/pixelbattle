@@ -135,7 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: config
           scan-ref: .
@@ -159,7 +159,7 @@ jobs:
       - name: Build frontend image
         run: docker build -t pb-frontend:${{ github.sha }} pb_frontend/
       - name: Trivy backend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: pb-backend:${{ github.sha }}
           format: table
@@ -168,7 +168,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
       - name: Trivy frontend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: pb-frontend:${{ github.sha }}
           format: table
