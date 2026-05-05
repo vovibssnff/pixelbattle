@@ -85,7 +85,7 @@ services:
     healthcheck:
       test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
       interval: 10s
-      timeout: 5s1
+      timeout: 5s
       retries: 5
       start_period: 30s
 
