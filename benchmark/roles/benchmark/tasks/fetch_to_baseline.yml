@@ -29,8 +29,10 @@
     set -euo pipefail
     mkdir -p {{ hostvars[benchmark_db_delegate_host].benchmark_results_root }}
     tar -C {{ hostvars[benchmark_db_delegate_host].benchmark_results_root }} -czf /tmp/pb-bench-{{ benchmark_run_id }}.tgz . || true
+    chmod 644 /tmp/pb-bench-{{ benchmark_run_id }}.tgz
   args:
     executable: /bin/bash
+  become: true
   delegate_to: "{{ benchmark_db_delegate_host }}"
   changed_when: true
   tags: [collect]

@@ -9,7 +9,8 @@
 // without server-side correlation).
 import { randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 import ws from 'k6/ws';
-import { check, Trend } from 'k6';
+import { check } from 'k6';
+import { Trend } from 'k6/metrics';
 import { vu } from 'k6/execution';
 
 const e2ePixelLatencySeconds = new Trend('e2e_pixel_latency_seconds', true);

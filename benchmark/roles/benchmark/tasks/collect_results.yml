@@ -44,6 +44,9 @@
         dest: "{{ benchmark_collected_dir }}/benchmarks/{{ item.path | basename }}"
         remote_src: true
         mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
       loop: "{{ benchmark_bench_json_files.files | default([]) }}"
       loop_control:
         label: "{{ item.path | basename }}"
@@ -61,6 +64,9 @@
         dest: "{{ benchmark_collected_dir }}/benchmarks/logs/{{ item.path | basename }}"
         remote_src: true
         mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
       loop: "{{ benchmark_bench_log_files.files | default([]) }}"
       loop_control:
         label: "{{ item.path | basename }}"
@@ -103,6 +109,9 @@
         dest: "{{ benchmark_collected_dir }}/k6/{{ item.path | basename }}"
         remote_src: true
         mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
       loop: "{{ benchmark_k6_json_files.files | default([]) }}"
       loop_control:
         label: "{{ item.path | basename }}"
@@ -120,6 +129,9 @@
         dest: "{{ benchmark_collected_dir }}/k6/logs/{{ item.path | basename }}"
         remote_src: true
         mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
       loop: "{{ benchmark_k6_log_files.files | default([]) }}"
       loop_control:
         label: "{{ item.path | basename }}"

@@ -26,6 +26,10 @@
         set -euo pipefail
         rm -f /tmp/pb-bench.tgz
         tar -czf /tmp/pb-bench.tgz -C "{{ benchmark_results_root }}" .
+        chmod 644 /tmp/pb-bench.tgz
+      args:
+        executable: /bin/bash
+      become: true
       changed_when: true
 
     - name: Fetch archive to controller
@@ -33,6 +37,14 @@
         src: /tmp/pb-bench.tgz
         dest: "{{ local_pull_dir }}/pb-bench.tgz"
         flat: true
+
+    - name: Ensure local extracted directory exists
+      ansible.builtin.file:
+        path: "{{ local_pull_dir }}/extracted"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      connection: local
 
     - name: Extract archive on controller
       ansible.builtin.unarchive:

@@ -54,6 +54,6 @@ deploy_data_dirs:
   - { path: "{{ deploy_project_dir }}/redis/redis_data",        owner: "root", group: "root" }
   - { path: "{{ deploy_project_dir }}/mongodb/data",            owner: "999",  group: "999"  }  # mongo UID
   - { path: "{{ deploy_project_dir }}/mongodb/logs",            owner: "999",  group: "999"  }
-  - { path: "{{ deploy_project_dir }}/monitoring/prometheus_data", owner: "nobody", group: "nobody" }  # prom UID 65534
+  - { path: "{{ deploy_project_dir }}/monitoring/prometheus_data", owner: "65534", group: "65534" }  # prom UID/GID (nobody:nogroup on Debian/Ubuntu)
   - { path: "{{ deploy_project_dir }}/monitoring/grafana_data", owner: "472",  group: "472"  }  # grafana UID
   - { path: "{{ deploy_project_dir }}/certs",                   owner: "root", group: "root" }
