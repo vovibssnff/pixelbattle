@@ -54,11 +54,54 @@
   connection: local
   tags: [collect]
 
+- name: "fetch_to_baseline: collect local k6 results into run tree"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ benchmark_project_root }}/results/k6"
+    dest="{{ benchmark_local_run_root }}/k6"
+    if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
+      mkdir -p "$dest"
+      cp -a "$src"/. "$dest"/
+    fi
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  connection: local
+  changed_when: true
+  tags: [collect]
+
+- name: "fetch_to_baseline: collect local Playwright results into run tree"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ benchmark_project_root }}/results/playwright"
+    dest="{{ benchmark_local_run_root }}/playwright"
+    if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
+      mkdir -p "$dest"
+      cp -a "$src"/. "$dest"/
+    fi
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  connection: local
+  changed_when: true
+  tags: [collect]
+
+- name: "fetch_to_baseline: resolve Prometheus URL from VM host"
+  ansible.builtin.set_fact:
+    _fetch_prometheus_url: >-
+      {{ "http://" ~ (hostvars[benchmark_db_delegate_host]['ansible_host']
+         | default(hostvars[benchmark_db_delegate_host]['inventory_hostname']
+         | default(benchmark_target_host))) ~ ":9090" }}
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
 - name: "fetch_to_baseline: scrape Prometheus snapshot to local prom/ directory"
   ansible.builtin.uri:
-    url: "{{ benchmark_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
+    url: "{{ _fetch_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
     method: GET
     return_content: true
+    timeout: 15
   register: benchmark_prom_snapshot_results
   loop:
     - { name: "e2e_pixel_latency_seconds", query: "histogram_quantile(0.95, sum by (le) (rate(e2e_pixel_latency_seconds_bucket[5m])))" }

@@ -49,9 +49,9 @@
 
 - name: "Build k6 invocation (raw)"
   ansible.builtin.set_fact:
+    # Do not use k6 --out json here: per-event JSON grows to tens of GB and fills the disk.
     benchmark_k6_cmd_raw: >-
       k6 run
-      --out json={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_{{ ansible_date_time.epoch }}.json
       --summary-export={{ benchmark_k6_results_dir }}/{{ benchmark_storage_type }}_{{ benchmark_test_type }}_summary_{{ ansible_date_time.epoch }}.json
       test-{{ benchmark_test_type }}.js
   tags: [k6]
@@ -75,6 +75,8 @@
     chdir: "{{ benchmark_project_root }}/benchmark/k6"
   environment:
     BENCHMARK_HOST: "{{ benchmark_k6_address }}"
+    BENCHMARK_TLS: "{{ 'true' if benchmark_k6_tls | default(false) | bool else 'false' }}"
+    K6_INSECURE_SKIP_TLS_VERIFY: "{{ 'true' if (benchmark_k6_tls | default(false) | bool and benchmark_k6_skip_tls_verify | default(true) | bool) else omit }}"
   register: benchmark_k6_result
   changed_when: false
   failed_when: false

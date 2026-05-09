@@ -1,6 +1,6 @@
 ---
-# Run locally:  ansible-playbook playbooks/run_k6_tests.yml -e "benchmark_storage_type=redis benchmark_test_type=light"
-# Run on a VM:  ansible-playbook playbooks/run_k6_tests.yml -e "target_hosts=benchmark_vm benchmark_storage_type=redis benchmark_test_type=light"
+# Run locally:  ansible-playbook playbooks/run_k6_tests.yml -e "benchmark_storage_type=redis benchmark_test_type=medium"
+# Run on a VM:  ansible-playbook playbooks/run_k6_tests.yml -e "target_hosts=benchmark_vm benchmark_storage_type=redis benchmark_test_type=medium"
 - name: Run k6 Load Tests
   hosts: "{{ target_hosts | default('local') }}"
   gather_facts: true

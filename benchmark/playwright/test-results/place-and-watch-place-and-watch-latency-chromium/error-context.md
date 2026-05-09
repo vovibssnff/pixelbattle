@@ -12,13 +12,47 @@
 # Error details
 
 ```
-Error: browserType.launch: Executable doesn't exist at /home/vovi/.cache/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-linux64/chrome-headless-shell
-╔════════════════════════════════════════════════════════════╗
-║ Looks like Playwright was just installed or updated.       ║
-║ Please run the following command to download new browsers: ║
-║                                                            ║
-║     npx playwright install                                 ║
-║                                                            ║
-║ <3 Playwright Team                                         ║
-╚════════════════════════════════════════════════════════════╝
+Error: page.goto: net::ERR_CONNECTION_REFUSED at https://192.168.122.71/main
+Call log:
+  - navigating to "https://192.168.122.71/main", waiting until "domcontentloaded"
+
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | import fs from 'fs';
+  3  | import path from 'path';
+  4  | 
+  5  | test('place and watch latency', async ({ page }, testInfo) => {
+> 6  |   await page.goto('/main', { waitUntil: 'domcontentloaded' });
+     |              ^ Error: page.goto: net::ERR_CONNECTION_REFUSED at https://192.168.122.71/main
+  7  |   await page.waitForSelector('#viewport-canvas', { timeout: 30_000 });
+  8  | 
+  9  |   await page.evaluate(() => {
+  10 |     (window as any).__pbMetrics = { wsToRender: [] as number[], clickToRender: [] as number[] };
+  11 |   });
+  12 | 
+  13 |   const canvas = page.locator('#viewport-canvas');
+  14 |   for (let i = 0; i < 10; i++) {
+  15 |     const t0 = Date.now();
+  16 |     await canvas.click({ position: { x: 50 + i * 3, y: 50 + i * 2 } });
+  17 |     await page.waitForTimeout(250);
+  18 |     await page.evaluate((startedAt) => {
+  19 |       const now = Date.now();
+  20 |       (window as any).__pbMetrics.clickToRender.push(now - startedAt);
+  21 |     }, t0);
+  22 |   }
+  23 | 
+  24 |   const metrics = await page.evaluate(() => (window as any).__pbMetrics);
+  25 |   expect(Array.isArray(metrics.clickToRender)).toBeTruthy();
+  26 | 
+  27 |   const outDir = process.env.PLAYWRIGHT_RESULTS_DIR || path.resolve(process.cwd(), '../../results/playwright');
+  28 |   fs.mkdirSync(outDir, { recursive: true });
+  29 |   const outPath = path.join(outDir, `place-and-watch-${testInfo.project.name}.json`);
+  30 |   fs.writeFileSync(outPath, JSON.stringify(metrics, null, 2));
+  31 | });
+  32 | 
+  33 | 
 ```

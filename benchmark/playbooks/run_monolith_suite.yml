@@ -151,10 +151,13 @@
         name: benchmark
         tasks_from: fetch_to_baseline.yml
 
+    # generate-report.py loads results/baseline/<dir>/benchmarks/*.json — not results/baseline/benchmarks/.
     - name: "report: emit Markdown comparison report (baseline-only in Phase 1)"
       ansible.builtin.include_role:
         name: benchmark
         tasks_from: generate_report.yml
+      vars:
+        benchmark_results_root: "{{ benchmark_project_root }}/results/baseline/{{ benchmark_run_id }}"
 
     - name: "Done"
       ansible.builtin.debug:

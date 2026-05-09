@@ -18,6 +18,11 @@ const FACULTIES = ['KTU', 'TINT', 'FTMF', 'FTMI', 'NOZH'];
 
 const SLO_BREACH_LATENCY_SEC = 5.0;
 
+function benchmarkUseTls() {
+  const t = __ENV.BENCHMARK_TLS;
+  return t === '1' || String(t).toLowerCase() === 'true';
+}
+
 function benchmarkHostPort() {
   const h = __ENV.BENCHMARK_HOST;
   return h && String(h).length > 0 ? String(h) : 'localhost:8080';
@@ -25,9 +30,10 @@ function benchmarkHostPort() {
 
 function benchmarkWsURL(hostPort) {
   const hp = hostPort || benchmarkHostPort();
+  const scheme = benchmarkUseTls() ? 'wss' : 'ws';
   const uid = vu.idInTest * 100000000 + vu.iterationInTest;
   const faculty = FACULTIES[randomIntBetween(0, FACULTIES.length - 1)];
-  return `ws://${hp}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
+  return `${scheme}://${hp}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
 }
 
 function activeVus() {

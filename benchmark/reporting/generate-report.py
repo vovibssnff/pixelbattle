@@ -56,11 +56,18 @@ def _load_optional_metric(results_dir: Path, filename: str, key: str) -> Optiona
 
 
 def generate_report(root_dir: Path, output_file: Path) -> None:
-    baseline_dir = root_dir / "baseline"
-    candidate_dir = root_dir / "candidate"
-
-    baseline = _load_latest_by_storage(baseline_dir)
-    candidate = _load_latest_by_storage(candidate_dir)
+    # Phase 1 fetch layout: results/baseline/<run-id>/benchmarks/*.json (single tree).
+    # Legacy layout: results/{baseline,candidate}/benchmarks/*.json under root_dir.
+    if (root_dir / "benchmarks").is_dir():
+        baseline_dir = root_dir
+        candidate_dir = root_dir / "candidate"
+        baseline = _load_latest_by_storage(baseline_dir)
+        candidate = {}
+    else:
+        baseline_dir = root_dir / "baseline"
+        candidate_dir = root_dir / "candidate"
+        baseline = _load_latest_by_storage(baseline_dir)
+        candidate = _load_latest_by_storage(candidate_dir)
 
     if not baseline and not candidate:
         raise RuntimeError("No baseline/candidate benchmark data found")

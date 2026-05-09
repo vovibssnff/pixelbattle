@@ -37,6 +37,10 @@ func main() {
 	canvasDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
 	timerDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisTimer)
 
+	probe := service.NewAvailabilityProbe(canvasDatabase, uint(config.CanvasHeight), uint(config.CanvasWidth), 0)
+	probe.Start()
+	defer probe.Stop()
+
 	mongoUserDatabase, err := mongo.NewMongoConnection(config.MongoURI, "pixelbattle")
 	if err != nil {
 		logrus.Fatalf("Failed to connect to MongoDB: %v", err)

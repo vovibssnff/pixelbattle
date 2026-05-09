@@ -16,6 +16,11 @@ import { vu } from 'k6/execution';
 const e2ePixelLatencySeconds = new Trend('e2e_pixel_latency_seconds', true);
 const FACULTIES = ['KTU', 'TINT', 'FTMF', 'FTMI', 'NOZH'];
 
+function benchmarkUseTls() {
+  const t = __ENV.BENCHMARK_TLS;
+  return t === '1' || String(t).toLowerCase() === 'true';
+}
+
 function benchmarkHostPort() {
   const h = __ENV.BENCHMARK_HOST;
   return h && String(h).length > 0 ? String(h) : 'localhost:8080';
@@ -23,9 +28,10 @@ function benchmarkHostPort() {
 
 function benchmarkWsURL(hostPort) {
   const hp = hostPort || benchmarkHostPort();
+  const scheme = benchmarkUseTls() ? 'wss' : 'ws';
   const uid = vu.idInTest * 100000000 + vu.iterationInTest;
   const faculty = FACULTIES[randomIntBetween(0, FACULTIES.length - 1)];
-  return `ws://${hp}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
+  return `${scheme}://${hp}/ws?uid=${uid}&faculty=${encodeURIComponent(faculty)}`;
 }
 
 export const options = {
@@ -112,6 +118,10 @@ export default function () {
 
   check(res, {
     'Connected successfully': (r) => r && r.status === 101,
-    'Session duration OK': (r) => r && r.timings && r.timings.duration < 90000,
+    // `timings.duration` is handshake time (ms) when present; omitting timings is valid in some k6 paths.
+    'Session duration OK': (r) =>
+      r &&
+      r.status === 101 &&
+      (r.timings == null || typeof r.timings.duration !== 'number' || r.timings.duration < 90000),
   }, { stage: 'nominal' });
 }

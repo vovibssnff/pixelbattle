@@ -33,13 +33,26 @@
   when: benchmark_enable_db_bench | default(false) | bool
   tags: [setup]
 
-- name: "KPI-suite preflight: backend endpoint reachable from loader"
+- name: "KPI-suite preflight: Caddy HTTPS (443) reachable from loader"
+  ansible.builtin.wait_for:
+    host: "{{ benchmark_target_host }}"
+    port: 443
+    delay: 1
+    timeout: 60
+  when:
+    - not (benchmark_enable_db_bench | default(false) | bool)
+    - benchmark_k6_tls | default(false) | bool
+  tags: [setup]
+
+- name: "KPI-suite preflight: backend port reachable from loader (direct ws://)"
   ansible.builtin.wait_for:
     host: "{{ benchmark_target_host }}"
     port: 8080
     delay: 1
     timeout: 60
-  when: not (benchmark_enable_db_bench | default(false) | bool)
+  when:
+    - not (benchmark_enable_db_bench | default(false) | bool)
+    - not (benchmark_k6_tls | default(false) | bool)
   tags: [setup]
 
 - name: "KPI-suite preflight: prometheus endpoint reachable from loader"

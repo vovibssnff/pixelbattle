@@ -14,7 +14,6 @@ benchmark_storage_types:
 #   medium -> nominal (4 min, 50 -> 200 VUs)
 #   heavy  -> stress  (7 min, 500 sustained)
 #   breakpoint -> linear 100 -> 3000 over 10 min, emits saturation_vus
-# `light` (1-min smoke) is kept for ad-hoc manual runs but excluded from the suite.
 benchmark_test_types:
   - medium
   - heavy
@@ -22,7 +21,7 @@ benchmark_test_types:
 
 # Single-step defaults (override with -e for individual playbooks)
 benchmark_storage_type: redis
-benchmark_test_type: light
+benchmark_test_type: medium
 
 # Database benchmark parameters
 benchmark_canvas_height: 250
@@ -94,8 +93,13 @@ benchmark_remote_host: "{{ (lookup('ansible.builtin.env', 'BENCHMARK_REMOTE_HOST
 # Hostname/IP for stack endpoints — NOT the Ansible SSH target; this is where Redis/Postgres/etc. listen.
 benchmark_target_host: "{{ (benchmark_remote_host | default('') | trim) if (benchmark_remote_host | default('') | trim | length > 0) else 'localhost' }}"
 
-# k6 WebSocket target host:port
-benchmark_k6_address: "{{ benchmark_target_host }}:8080"
+# k6 WebSocket target: plain backend (ws://host:8080) or Caddy front door (wss://host, default 443).
+# Remote loaders use TLS + pixelbattle.local so k6 matches the cert; add hosts: <VM_IP> pixelbattle.local.
+benchmark_k6_tls: "{{ (benchmark_remote_host | default('') | trim | length) > 0 }}"
+benchmark_k6_wss_host: "pixelbattle.local"
+benchmark_k6_skip_tls_verify: true
+benchmark_k6_address: >-
+  {{ benchmark_k6_wss_host if benchmark_k6_tls | bool else (benchmark_target_host ~ ':8080') }}
 
 # Prometheus (collect_results) — must match where the stack exposes 9090
 benchmark_prometheus_url: "http://{{ benchmark_target_host }}:9090"
