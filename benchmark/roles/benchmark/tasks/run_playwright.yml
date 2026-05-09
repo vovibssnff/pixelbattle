@@ -62,7 +62,7 @@
     cmd: "{{ benchmark_playwright_cmd }}"
     chdir: "{{ benchmark_project_root }}/benchmark/playwright"
   environment:
-    PLAYWRIGHT_BASE_URL: "https://{{ benchmark_target_host }}"
+    PLAYWRIGHT_BASE_URL: "https://{{ benchmark_k6_wss_host if benchmark_k6_tls | bool else benchmark_target_host }}"
     PLAYWRIGHT_RESULTS_DIR: "{{ benchmark_results_root }}/playwright"
     NODE_TLS_REJECT_UNAUTHORIZED: "0"  # self-signed certs on the dev VM
   register: benchmark_playwright_result
@@ -79,7 +79,7 @@
       Playwright Run Log
       ==================
       Timestamp: {{ ansible_date_time.iso8601 }}
-      Base URL: https://{{ benchmark_target_host }}
+      Base URL: https://{{ benchmark_k6_wss_host if benchmark_k6_tls | bool else benchmark_target_host }}
       Use systemd-run scope: {{ benchmark_use_systemd_scope | default(false) }}
 
       Exit code: {{ benchmark_playwright_result.rc | default('skipped') }}
