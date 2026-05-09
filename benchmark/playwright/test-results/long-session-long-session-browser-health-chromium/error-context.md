@@ -12,7 +12,7 @@
 # Error details
 
 ```
-Error: page.goto: net::ERR_CONNECTION_REFUSED at https://192.168.122.71/main
+Error: page.goto: net::ERR_SSL_PROTOCOL_ERROR at https://192.168.122.71/main
 Call log:
   - navigating to "https://192.168.122.71/main", waiting until "domcontentloaded"
 
@@ -27,7 +27,7 @@ Call log:
   4  | 
   5  | test('long session browser health', async ({ page }, testInfo) => {
 > 6  |   await page.goto('/main', { waitUntil: 'domcontentloaded' });
-     |              ^ Error: page.goto: net::ERR_CONNECTION_REFUSED at https://192.168.122.71/main
+     |              ^ Error: page.goto: net::ERR_SSL_PROTOCOL_ERROR at https://192.168.122.71/main
   7  |   await page.waitForSelector('#viewport-canvas', { timeout: 30_000 });
   8  | 
   9  |   const samples: Array<{ ts: number; heapMb: number; fpsApprox: number }> = [];

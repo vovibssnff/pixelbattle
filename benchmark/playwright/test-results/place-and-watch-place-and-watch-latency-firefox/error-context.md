@@ -12,7 +12,7 @@
 # Error details
 
 ```
-Error: page.goto: NS_ERROR_CONNECTION_REFUSED
+Error: page.goto: SSL_ERROR_UNKNOWN
 Call log:
   - navigating to "https://192.168.122.71/main", waiting until "domcontentloaded"
 
@@ -23,14 +23,16 @@ Call log:
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - heading "Unable to connect" [level=1] [ref=e5]
-    - paragraph [ref=e6]: Firefox can’t establish a connection to the server at 192.168.122.71.
-    - paragraph
-    - list [ref=e8]:
-      - listitem [ref=e9]: The site could be temporarily unavailable or too busy. Try again in a few moments.
-      - listitem [ref=e10]: If you are unable to load any pages, check your computer’s network connection.
-      - listitem [ref=e11]: If your computer or network is protected by a firewall or proxy, make sure that Nightly is permitted to access the web.
-  - button "Try Again" [active] [ref=e13]
+    - heading "Secure Connection Failed" [level=1] [ref=e5]
+    - paragraph [ref=e6]: An error occurred during a connection to 192.168.122.71. Peer reports it experienced an internal error.
+    - paragraph [ref=e7]: "Error code: SSL_ERROR_INTERNAL_ERROR_ALERT"
+    - list [ref=e9]:
+      - listitem [ref=e10]: The page you are trying to view cannot be shown because the authenticity of the received data could not be verified.
+      - listitem [ref=e11]: Please contact the website owners to inform them of this problem.
+    - paragraph [ref=e12]:
+      - link "Learn more…" [ref=e13] [cursor=pointer]:
+        - /url: https://support.mozilla.org/1/firefox/148.0.2/Linux/en-US/connection-not-secure
+  - button "Try Again" [active] [ref=e15]
 ```
 
 # Test source
@@ -42,7 +44,7 @@ Call log:
   4  | 
   5  | test('place and watch latency', async ({ page }, testInfo) => {
 > 6  |   await page.goto('/main', { waitUntil: 'domcontentloaded' });
-     |              ^ Error: page.goto: NS_ERROR_CONNECTION_REFUSED
+     |              ^ Error: page.goto: SSL_ERROR_UNKNOWN
   7  |   await page.waitForSelector('#viewport-canvas', { timeout: 30_000 });
   8  | 
   9  |   await page.evaluate(() => {

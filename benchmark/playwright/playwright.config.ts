@@ -10,6 +10,7 @@ export default defineConfig({
   reporter: [['json', { outputFile: `${outDir}/playwright-report.json` }], ['list']],
   use: {
     baseURL,
+    ignoreHTTPSErrors: true,
     trace: 'off',
     screenshot: 'off',
     video: 'off',

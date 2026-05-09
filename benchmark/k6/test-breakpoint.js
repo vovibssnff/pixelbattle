@@ -105,9 +105,6 @@ export default function () {
       }, pixelInterval);
     });
 
-    socket.on('ping', function () {
-      socket.pong();
-    });
 
     socket.on('message', function (message) {
       try {

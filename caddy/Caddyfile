@@ -23,7 +23,7 @@
 	}
 }
 
-{$CADDY_DOMAIN} {
+{$CADDY_DOMAIN}, localhost, 192.168.122.71 {
 	import /etc/caddy/tls.inc
 
 	encode gzip
