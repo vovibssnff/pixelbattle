@@ -16,7 +16,7 @@ const e2ePixelLatencySeconds = new Trend('e2e_pixel_latency_seconds', true);
 const saturationVus = new Trend('saturation_vus', false);
 const FACULTIES = ['KTU', 'TINT', 'FTMF', 'FTMI', 'NOZH'];
 
-const SLO_BREACH_LATENCY_SEC = 5.0;
+const SLO_BREACH_LATENCY_MS = 5000;
 
 function benchmarkUseTls() {
   const t = __ENV.BENCHMARK_TLS;
@@ -62,7 +62,7 @@ export const options = {
   thresholds: {
     ws_connecting: ['p(95)<5000'],
     e2e_pixel_latency_seconds: [
-      { threshold: 'p(99)<5', abortOnFail: true, delayAbortEval: '30s' },
+      { threshold: 'p(99)<5000', abortOnFail: true, delayAbortEval: '30s' },
     ],
     'checks{stage:breakpoint}': ['rate>0.5'],
   },
@@ -111,10 +111,10 @@ export default function () {
         const payload = JSON.parse(message);
         const clientSentMs = payload.client_sent_ms ?? payload.clientSentMs;
         if (clientSentMs) {
-          const delta = (Date.now() - Number(clientSentMs)) / 1000;
+          const delta = Date.now() - Number(clientSentMs);
           if (delta >= 0) {
             e2ePixelLatencySeconds.add(delta);
-            if (delta > SLO_BREACH_LATENCY_SEC) {
+            if (delta > SLO_BREACH_LATENCY_MS) {
               // Record the active-VU count at the moment of each breach. The reporter
               // consumes min(saturation_vus) as "VU count at first SLO break".
               saturationVus.add(activeVus());

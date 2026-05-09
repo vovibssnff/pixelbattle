@@ -41,8 +41,8 @@ export const options = {
   thresholds: {
     ws_connecting: ['p(95)<5000'],
     e2e_pixel_latency_seconds: [
-      'p(95)<0.8',
-      { threshold: 'p(99)<5', abortOnFail: true, delayAbortEval: '30s' },
+      'p(95)<800',
+      { threshold: 'p(99)<5000', abortOnFail: true, delayAbortEval: '30s' },
     ],
     'checks{stage:stress}': ['rate>0.99'],
   },
@@ -91,7 +91,7 @@ export default function () {
         const payload = JSON.parse(message);
         const clientSentMs = payload.client_sent_ms ?? payload.clientSentMs;
         if (clientSentMs) {
-          const delta = (Date.now() - Number(clientSentMs)) / 1000;
+          const delta = Date.now() - Number(clientSentMs);
           if (delta >= 0) e2ePixelLatencySeconds.add(delta);
         }
       } catch (_) {

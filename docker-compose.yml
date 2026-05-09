@@ -115,6 +115,8 @@ services:
     image: prom/prometheus:v2.55.1
     restart: unless-stopped
     networks: [internal]
+    ports:
+      - "9090:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: "0:0"

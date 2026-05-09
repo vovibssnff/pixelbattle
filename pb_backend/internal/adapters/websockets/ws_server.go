@@ -99,7 +99,11 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 	pixel.Userid = ""
 	pixel.Faculty = ""
 	for client := range server.clients {
-		client.send <- pixel
+		select {
+		case client.send <- pixel:
+		default:
+			service.IncrementWSError("send_buffer_full")
+		}
 	}
 	service.ObservePixelWriteVisible(time.Since(visibleStart))
 }

@@ -55,7 +55,7 @@ func NewClient(
 	return &Client{
 		conn:         conn,
 		server:       server,
-		send:         make(chan *domain.Pixel),
+		send:         make(chan *domain.Pixel, 256),
 		userid:       userid,
 		faculty:      faculty,
 		isAdm:        isAdm,
