@@ -37,12 +37,14 @@ selfsigned_cert_days: 365
 selfsigned_cert_force_regenerate: false
 
 # --- Backend tunables (non-secret) ---
-deploy_canvas_height: 100
-deploy_canvas_width: 100
+# Match Phase 1 benchmark harness (k6 + Go bench) canvas size.
+deploy_canvas_height: 250
+deploy_canvas_width: 500
 deploy_pixel_cooldown_sec: 3
 deploy_log_level: "info"
 deploy_session_secure: true
-deploy_ws_allow_anonymous: false
+# Required for k6 anonymous WebSocket load tests (uid+faculty query params).
+deploy_ws_allow_anonymous: true
 deploy_api_version: "5.131"
 deploy_admin_ids: ""
 deploy_admin_usernames: ""
