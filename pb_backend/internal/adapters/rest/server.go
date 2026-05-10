@@ -15,11 +15,12 @@ func StartRestServer(sessionService domain.SessionService, vkAuthProvider vk.VKA
 	timerService domain.TimerService,
 	adminAPIToken string,
 	snapshotter *service.CanvasSnapshotter,
+	wsHub WSResizeNotifier,
 	height, width int, router *mux.Router) {
 
 	logrus.Info("Initializing REST endpoints")
 
-	handlers := NewRestHandlers(sessionService, vkAuthProvider, canvasService, userService, timerService, adminAPIToken, snapshotter)
+	handlers := NewRestHandlers(sessionService, vkAuthProvider, canvasService, userService, timerService, adminAPIToken, snapshotter, wsHub)
 
 	router.HandleFunc("/api/vk-login", handlers.HandleVKLogin).Methods("GET")
 	router.HandleFunc("/api/register", handlers.HandlePasswordRegister).Methods("POST")

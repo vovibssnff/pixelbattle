@@ -495,6 +495,16 @@ export default {
         this.rum?.errors?.push('ws_non_json');
         return;
       }
+      if (pixel && pixel.event === 'RESIZE') {
+        const nw = Number(pixel.width);
+        const nh = Number(pixel.height);
+        if (Number.isFinite(nw) && Number.isFinite(nh) && this.glWindow && this.glWindow.expandTextureTo) {
+          this.pendingOptimistic = Object.create(null);
+          this.glWindow.expandTextureTo(nw, nh);
+          this.glWindow.draw();
+        }
+        return;
+      }
       this.reconcileAndApplyPixel(pixel);
     },
     renderSavedPIxels() {

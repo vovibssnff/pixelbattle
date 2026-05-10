@@ -86,3 +86,7 @@ func IncrementRejected(reason string) { metrics.IncrementRejected(reason) }
 func IncrementOptimisticCorrection(reason string) {
 	metrics.IncrementOptimisticCorrection(reason)
 }
+
+func SetCanvasDimensionsGauge(width, height uint) {
+	metrics.SetCanvasDimensionsGauge(width, height)
+}

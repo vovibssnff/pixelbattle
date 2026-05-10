@@ -43,7 +43,7 @@
       "id": 2,
       "options": {
         "mode": "markdown",
-        "content": "## Volkov Labs Business Forms\n\nConfigure POST actions targeting `/api/admin/*` with HTTP header `X-Admin-Token` matching **`ADMIN_API_TOKEN`** (see `pb_backend/app.env.example`).\n\nInfinity datasource points at the backend; add the same header under the datasource or per-panel **Custom HTTP Headers**.\n\nDashboard variable `phase2` is reserved for Phase 2 (canvas resize)."
+        "content": "## Volkov Labs Business Forms\n\nConfigure POST actions targeting `/api/admin/*` with HTTP header `X-Admin-Token` matching **`ADMIN_API_TOKEN`** (see `pb_backend/app.env.example`).\n\n**Canvas resize (Phase 2, ADR-003):** `POST /api/admin/canvas/resize` with JSON `{\"width\":<int>,\"height\":<int>}` (expand-only). Same header. After success, Prometheus `canvas_dimensions` updates and WebSocket clients receive `{\"event\":\"RESIZE\",...}`.\n\nDashboard variable **`phase2`** can drive a Business Form panel (set to `1` when wiring resize fields)."
       },
       "title": "Operator notes",
       "type": "text"
@@ -64,11 +64,11 @@
         "type": "textbox"
       },
       {
-        "current": {"selected": true, "text": "0", "value": "0"},
-        "hide": 2,
-        "label": "phase2",
+        "current": {"selected": true, "text": "1", "value": "1"},
+        "hide": 0,
+        "label": "phase2 (resize UI)",
         "name": "phase2",
-        "query": "0",
+        "query": "1",
         "skipUrlSync": true,
         "type": "constant"
       }

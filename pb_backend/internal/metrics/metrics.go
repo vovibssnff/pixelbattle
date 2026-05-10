@@ -264,6 +264,14 @@ var (
 		},
 		[]string{"reason"},
 	)
+
+	canvasDimensions = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "canvas_dimensions",
+			Help: "Logical canvas size in pixels after last initialize or admin resize (ADR-003)",
+		},
+		[]string{"axis"},
+	)
 )
 
 func init() {
@@ -300,6 +308,7 @@ func init() {
 		adminActionTotal,
 		rejectedTotal,
 		optimisticCorrectionTotal,
+		canvasDimensions,
 	)
 }
 
@@ -442,6 +451,12 @@ func IncrementOptimisticCorrection(reason string) {
 		reason = "unknown"
 	}
 	optimisticCorrectionTotal.WithLabelValues(reason).Inc()
+}
+
+// SetCanvasDimensionsGauge updates canvas_dimensions{width,height} (plan §11.6, ADR-003).
+func SetCanvasDimensionsGauge(width, height uint) {
+	canvasDimensions.WithLabelValues("width").Set(float64(width))
+	canvasDimensions.WithLabelValues("height").Set(float64(height))
 }
 
 func RecordHeatmapPixel(x, y uint) {

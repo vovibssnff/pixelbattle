@@ -29,6 +29,15 @@ func PixelMetaKey(x, y uint) string {
 
 const pixelKeyGlob = "pixel:*"
 
+// CanvasSizeKey stores logical width/height in a small Redis HASH (ADR-003).
+// Hash-tagged for cluster so meta lives in one slot.
+func CanvasSizeKey(hashTagKeys bool) string {
+	if hashTagKeys {
+		return "{canvas}:size"
+	}
+	return "canvas:size"
+}
+
 // collectKeysMatching returns all keys matching pattern. For *redis.ClusterClient it scans
 // each master (KEYS is not cluster-safe). For standalone *redis.Client it uses KEYS.
 func collectKeysMatching(ctx context.Context, rdb redis.Cmdable, pattern string) ([]string, error) {

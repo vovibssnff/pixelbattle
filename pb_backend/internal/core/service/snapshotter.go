@@ -82,7 +82,11 @@ func (s *CanvasSnapshotter) refresh() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	img := s.canvas.CreateImage(s.height, s.width)
+	w, h, dimErr := s.canvas.CanvasDimensions(ctx)
+	if dimErr != nil || w == 0 || h == 0 {
+		w, h = s.width, s.height
+	}
+	img := s.canvas.CreateImage(h, w)
 	if err := s.canvas.GetCanvas(ctx, img); err != nil {
 		logrus.Errorf("canvas_snapshotter: GetCanvas: %v", err)
 		return

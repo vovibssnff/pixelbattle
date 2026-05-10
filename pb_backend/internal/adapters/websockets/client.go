@@ -18,6 +18,7 @@ type Client struct {
 	conn           *websocket.Conn
 	server         *WsServer
 	send           chan *domain.Pixel
+	control        chan []byte
 	initialReplay  []*domain.Pixel
 	wireV2         bool
 	userid         string
@@ -63,6 +64,7 @@ func NewClient(
 		conn:          conn,
 		server:        server,
 		send:          make(chan *domain.Pixel, 256),
+		control:       make(chan []byte, 32),
 		initialReplay: initialReplay,
 		wireV2:        wireV2,
 		userid:        userid,
@@ -359,6 +361,12 @@ func (c *Client) writePump() {
 
 	for {
 		select {
+		case payload := <-c.control:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+				service.IncrementWSError("write")
+				return
+			}
 		case pixel, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {

@@ -49,6 +49,9 @@ type CanvasRepository interface {
 	CheckInitialized(ctx context.Context) bool
 	GetCanvas(ctx context.Context) (map[string][]string, error)
 	LoadHeatMap(ctx context.Context) (map[string]int64, error)
+	// GetCanvasDimensions returns persisted logical size (0,0 if unknown). See ADR-003.
+	GetCanvasDimensions(ctx context.Context) (width, height uint, err error)
+	SetCanvasDimensions(ctx context.Context, width, height uint) error
 }
 
 type CanvasService interface {
@@ -58,6 +61,10 @@ type CanvasService interface {
 	GetCanvas(ctx context.Context, img *Image) error
 	GetHeatMap(ctx context.Context) ([]HeatMapUnit, error)
 	CreateImage(h, w uint) *Image
+	// CanvasDimensions returns stored size or infers from canvas keys (ADR-003).
+	CanvasDimensions(ctx context.Context) (width, height uint, err error)
+	// ExpandCanvas grows the canvas (new cells white); shrink rejected.
+	ExpandCanvas(ctx context.Context, width, height uint) error
 }
 
 type TimerRepository interface {

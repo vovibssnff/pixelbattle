@@ -109,5 +109,17 @@ func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, e
 	return result, nil
 }
 
+// GetCanvasDimensions returns (0,0) so service infers from GetCanvas (no meta table).
+func (r *CanvasRepository) GetCanvasDimensions(ctx context.Context) (uint, uint, error) {
+	_, _ = ctx, r
+	return 0, 0, nil
+}
+
+// SetCanvasDimensions is a no-op for Postgres (extent is implicit in data).
+func (r *CanvasRepository) SetCanvasDimensions(ctx context.Context, width, height uint) error {
+	_, _, _, _ = ctx, r, width, height
+	return nil
+}
+
 // Ensure CanvasRepository implements domain.CanvasRepository interface
 var _ domain.CanvasRepository = (*CanvasRepository)(nil)

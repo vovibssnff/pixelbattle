@@ -11,11 +11,18 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ResizeNotice carries a JSON control frame for all clients (processed on the WS Run goroutine).
+type ResizeNotice struct {
+	Width, Height uint
+	Payload       []byte
+}
+
 type WsServer struct {
 	clients          map[*Client]bool
 	broadcast        chan *domain.Pixel
 	register         chan *Client
 	unregister       chan *Client
+	resizeNotify     chan ResizeNotice
 	sessionService   domain.SessionService
 	timerService     domain.TimerService
 	userService      domain.UserService
@@ -42,6 +49,7 @@ func NewWebSocketServer(
 		broadcast:        make(chan *domain.Pixel),
 		register:         make(chan *Client),
 		unregister:       make(chan *Client),
+		resizeNotify:     make(chan ResizeNotice, 4),
 		sessionService:   sessionService,
 		timerService:     timerService,
 		userService:      userService,
@@ -72,8 +80,33 @@ func (server *WsServer) Run() {
 			tp = "pixel"
 			logrus.Info("Server received pixel: ", pixel)
 			server.setPixel(pixel)
+		case rn := <-server.resizeNotify:
+			tp = "resize"
+			server.canvasWidth = rn.Width
+			server.canvasHeight = rn.Height
+			for client := range server.clients {
+				p := append([]byte(nil), rn.Payload...)
+				select {
+				case client.control <- p:
+				default:
+					service.IncrementWSError("control_buffer_full")
+				}
+			}
 		}
 		service.ObserveWebSocketMessageDuration(tp, start)
+	}
+}
+
+// NotifyCanvasResize updates in-memory WS bounds and broadcasts a JSON control message (ADR-003).
+func (s *WsServer) NotifyCanvasResize(width, height uint, payload []byte) {
+	if s == nil {
+		return
+	}
+	msg := ResizeNotice{Width: width, Height: height, Payload: append([]byte(nil), payload...)}
+	select {
+	case s.resizeNotify <- msg:
+	default:
+		logrus.Warn("ws: resize notify channel full")
 	}
 }
 
@@ -128,7 +161,7 @@ func StartWebSocketServer(
 	allowAnonymousWS bool,
 	limiter *LimiterHub,
 	replay *PixelReplayBuffer,
-) {
+) *WsServer {
 	var ch, cw uint
 	if canvasHeight > 0 {
 		ch = uint(canvasHeight)
@@ -142,4 +175,5 @@ func StartWebSocketServer(
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ServeWs(ws, w, r)
 	})
+	return ws
 }

@@ -109,6 +109,7 @@ func main() {
 			logrus.Fatalf("Failed to initialize canvas: %v", err)
 		}
 	}
+	service.SetCanvasDimensionsGauge(cw, ch)
 
 	router := mux.NewRouter()
 	router.Handle("/metrics", service.MetricsHandler())
@@ -120,16 +121,16 @@ func main() {
 
 	wsReplay := websockets.NewPixelReplayBuffer(200_000)
 
-	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService,
-		timerService, strings.TrimSpace(config.AdminAPIToken), snapshotter,
-		config.CanvasHeight, config.CanvasWidth, router)
-
 	if config.WSAllowAnonymous {
 		logrus.Warn("WS_ALLOW_ANONYMOUS is enabled: /ws accepts connections without auth (for benchmarks only)")
 	}
 	wsLimit := websockets.NewLimiterHub(config.RateLimitPixelPerSec, config.RateLimitWSConnPerMinPerIP)
-	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router,
+	ws := websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router,
 		config.CanvasHeight, config.CanvasWidth, config.WSAllowAnonymous, wsLimit, wsReplay)
+
+	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService,
+		timerService, strings.TrimSpace(config.AdminAPIToken), snapshotter, ws,
+		config.CanvasHeight, config.CanvasWidth, router)
 
 	logrus.Info("Starting server on port 8080")
 	handler := service.InstrumentHandler(router)

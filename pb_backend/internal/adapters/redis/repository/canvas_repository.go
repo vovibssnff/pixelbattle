@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"pb_backend/internal/metrics"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -22,6 +23,53 @@ func NewCanvasRepository(rdb redis.Cmdable, hashTagKeys bool) *CanvasRepository 
 
 func (r *CanvasRepository) pixelKey(x, y uint) string {
 	return PixelKey(r.hashTagKeys, x, y)
+}
+
+func (r *CanvasRepository) sizeKey() string {
+	return CanvasSizeKey(r.hashTagKeys)
+}
+
+// GetCanvasDimensions reads persisted logical size (0,0 if unset).
+func (r *CanvasRepository) GetCanvasDimensions(ctx context.Context) (uint, uint, error) {
+	start := time.Now()
+	ws, err := r.rdb.HGet(ctx, r.sizeKey(), "width").Result()
+	if err == redis.Nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), nil)
+		return 0, 0, nil
+	}
+	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), err)
+		return 0, 0, err
+	}
+	hs, err := r.rdb.HGet(ctx, r.sizeKey(), "height").Result()
+	if err == redis.Nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), nil)
+		return 0, 0, nil
+	}
+	if err != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), err)
+		return 0, 0, err
+	}
+	w64, err1 := strconv.ParseUint(ws, 10, 32)
+	h64, err2 := strconv.ParseUint(hs, 10, 32)
+	if err1 != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), err1)
+		return 0, 0, err1
+	}
+	if err2 != nil {
+		metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), err2)
+		return 0, 0, err2
+	}
+	metrics.ObserveDatabaseOperation("get_canvas_size", "redis", time.Since(start), nil)
+	return uint(w64), uint(h64), nil
+}
+
+// SetCanvasDimensions persists logical canvas size (used after init / resize).
+func (r *CanvasRepository) SetCanvasDimensions(ctx context.Context, width, height uint) error {
+	start := time.Now()
+	err := r.rdb.HSet(ctx, r.sizeKey(), "width", strconv.FormatUint(uint64(width), 10), "height", strconv.FormatUint(uint64(height), 10)).Err()
+	metrics.ObserveDatabaseOperation("set_canvas_size", "redis", time.Since(start), err)
+	return err
 }
 
 func (r *CanvasRepository) WritePixel(ctx context.Context, x, y uint, pixelData []byte) error {

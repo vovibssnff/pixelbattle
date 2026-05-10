@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,12 +23,13 @@ type RestHandlers struct {
 	userService    domain.UserService
 	timerService   domain.TimerService
 	snapshotter    *service.CanvasSnapshotter
+	wsHub          WSResizeNotifier
 	// adminAPIToken: when non-empty, requests with matching X-Admin-Token may call admin APIs without a session.
 	adminAPIToken string
 }
 
 func NewRestHandlers(sessionService domain.SessionService, vkAuthProvider vk.VKAuthProvider, canvasService domain.CanvasService,
-	userService domain.UserService, timerService domain.TimerService, adminAPIToken string, snapshotter *service.CanvasSnapshotter) *RestHandlers {
+	userService domain.UserService, timerService domain.TimerService, adminAPIToken string, snapshotter *service.CanvasSnapshotter, wsHub WSResizeNotifier) *RestHandlers {
 	return &RestHandlers{
 		sessionService: sessionService,
 		canvasService:  canvasService,
@@ -35,8 +37,21 @@ func NewRestHandlers(sessionService domain.SessionService, vkAuthProvider vk.VKA
 		vkAuthProvider: vkAuthProvider,
 		timerService:   timerService,
 		snapshotter:    snapshotter,
+		wsHub:          wsHub,
 		adminAPIToken:  strings.TrimSpace(adminAPIToken),
 	}
+}
+
+func (h *RestHandlers) effectiveCanvasDims(ctx context.Context, fbW, fbH uint) (uint, uint) {
+	w, he, err := h.canvasService.CanvasDimensions(ctx)
+	if err != nil {
+		logrus.Debugf("canvas dimensions: %v", err)
+		return fbW, fbH
+	}
+	if w == 0 || he == 0 {
+		return fbW, fbH
+	}
+	return w, he
 }
 
 // HandleVKLogin is the VK OAuth callback (GET with query payload).
@@ -269,7 +284,8 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	img := h.canvasService.CreateImage(height, width)
+	cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
+	img := h.canvasService.CreateImage(ch, cw)
 	if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
 		logrus.Error(err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -316,7 +332,8 @@ func (h *RestHandlers) HandleCanvasPNG(w http.ResponseWriter, r *http.Request, h
 	}
 
 	if len(b) == 0 {
-		img := h.canvasService.CreateImage(height, width)
+		cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
+		img := h.canvasService.CreateImage(ch, cw)
 		if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
 			logrus.Error(err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
