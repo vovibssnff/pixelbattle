@@ -42,8 +42,9 @@
   when: "'loaders' in group_names"
   block:
     - name: "preflight (loaders): ps top-5 by RSS"
-      ansible.builtin.shell: >-
-        ps -eo rss,pid,comm --no-headers | sort -nr | head -5
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && ps -eo rss,pid,comm --no-headers | sort -nr | head -5"
+        executable: /bin/bash
       register: benchmark_loader_top_rss
       changed_when: false
 

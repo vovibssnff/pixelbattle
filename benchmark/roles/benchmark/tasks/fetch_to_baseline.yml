@@ -88,7 +88,7 @@
 
 - name: "fetch_to_baseline: resolve Prometheus URL from VM host"
   ansible.builtin.set_fact:
-    _fetch_prometheus_url: >-
+    benchmark_fetch_prometheus_url: >-
       {{ "http://" ~ (hostvars[benchmark_db_delegate_host]['ansible_host']
          | default(hostvars[benchmark_db_delegate_host]['inventory_hostname']
          | default(benchmark_target_host))) ~ ":9090" }}
@@ -98,7 +98,7 @@
 
 - name: "fetch_to_baseline: scrape Prometheus snapshot to local prom/ directory"
   ansible.builtin.uri:
-    url: "{{ _fetch_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
+    url: "{{ benchmark_fetch_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
     method: GET
     return_content: true
     timeout: 15
