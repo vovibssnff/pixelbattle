@@ -272,6 +272,49 @@ var (
 		},
 		[]string{"axis"},
 	)
+
+	// --- Phase 2 architecture-internal metrics (plan §3, ADR-004) ---
+
+	// opstreamLagSeconds: per-gateway lag on the Redis Streams op-log consumer group.
+	// Updated on each XREADGROUP cycle as (now_ms - last_entry_ms) / 1000.
+	opstreamLagSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "opstream_lag_seconds",
+			Help: "Lag of the gateway op-log consumer (seconds; (now - last_entry_id) / 1000)",
+		},
+		[]string{"consumer_group", "consumer", "shard_id"},
+	)
+
+	// redisReplicationLagSeconds: scraped from per-shard Redis INFO replication via the
+	// gateway's periodic poll. We expose the same metric ourselves (rather than relying
+	// on redis_exporter alone) so the candidate-column comparison report can read one
+	// canonical source no matter which exporter is installed.
+	redisReplicationLagSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "redis_replication_lag_seconds",
+			Help: "Per-shard Redis master->replica lag in seconds (gateway-scraped INFO replication)",
+		},
+		[]string{"shard_id"},
+	)
+
+	// gatewayFanoutRecipients: recipients per broadcast (gRPC fan-out + local WS hub).
+	gatewayFanoutRecipients = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gateway_fanout_recipients",
+			Help:    "Recipient count per broadcast across local WS clients and remote gateway peers",
+			Buckets: []float64{0, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500},
+		},
+		[]string{"path"},
+	)
+
+	// gatewayInstanceInfo: 1-valued info gauge so PromQL can join shard/instance labels easily.
+	gatewayInstanceInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gateway_instance_info",
+			Help: "Gateway instance metadata; value is always 1",
+		},
+		[]string{"instance_id", "hostname", "version"},
+	)
 )
 
 func init() {
@@ -309,7 +352,48 @@ func init() {
 		rejectedTotal,
 		optimisticCorrectionTotal,
 		canvasDimensions,
+		opstreamLagSeconds,
+		redisReplicationLagSeconds,
+		gatewayFanoutRecipients,
+		gatewayInstanceInfo,
 	)
+}
+
+// SetOpstreamLag records the current op-log consumer lag for a (group, consumer, shard) triple.
+// Call from the gateway XREADGROUP loop on every poll cycle (plan §3, p2-internal-metrics).
+func SetOpstreamLag(group, consumer, shardID string, lag time.Duration) {
+	if shardID == "" {
+		shardID = MonolithShardID
+	}
+	opstreamLagSeconds.WithLabelValues(group, consumer, shardID).Set(lag.Seconds())
+}
+
+// SetRedisReplicationLag records the per-shard master->replica lag scraped from INFO replication.
+// Even on a no-replica cluster, the gateway emits 0 so the metric exists and PromQL's
+// `sum by (shard_id)` is non-empty for the candidate column of the comparison report.
+func SetRedisReplicationLag(shardID string, lag time.Duration) {
+	if shardID == "" {
+		shardID = MonolithShardID
+	}
+	redisReplicationLagSeconds.WithLabelValues(shardID).Set(lag.Seconds())
+}
+
+// ObserveGatewayFanout records recipients of a broadcast.
+// path: "local_ws" for clients on this gateway, "grpc_peer" for cross-gateway gRPC fan-out.
+func ObserveGatewayFanout(path string, recipients int) {
+	if path == "" {
+		path = "local_ws"
+	}
+	gatewayFanoutRecipients.WithLabelValues(path).Observe(float64(recipients))
+}
+
+// SetGatewayInstanceInfo registers identity labels of the running gateway. Called once at
+// composition root (cmd/app/main.go) when the binary is in gateway mode.
+func SetGatewayInstanceInfo(instanceID, hostname, version string) {
+	if instanceID == "" {
+		instanceID = MonolithInstanceID
+	}
+	gatewayInstanceInfo.WithLabelValues(instanceID, hostname, version).Set(1)
 }
 
 func RecordRequest(path, method string, duration time.Duration, statusCode int) {
@@ -325,6 +409,14 @@ func RecordRequest(path, method string, duration time.Duration, statusCode int) 
 
 func Handler() http.Handler {
 	return promhttp.Handler()
+}
+
+// RegisterCollector exposes the default Prometheus registry to packages that own their
+// own collector implementations (e.g. the gRPC interceptor metrics). Called from
+// internal/adapters/grpc on startup so grpc_server_handled_total / grpc_server_handling_seconds
+// land on /metrics alongside the rest of the surface.
+func RegisterCollector(c prometheus.Collector) error {
+	return prometheus.Register(c)
 }
 
 func IncrementCurrentUsers()         { currentUsers.Inc() }

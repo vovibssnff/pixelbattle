@@ -1,0 +1,245 @@
+---
+# Provision 6 KVM micro-VMs on the libvirt default network for the Phase 2 Swarm topology.
+# See adr/004-kvm-swarm-multi-vm.md.
+#
+# Usage (from repo root, host machine):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/kvm-provision.yml \
+#       -e kvm_ssh_pubkey="$(cat ~/.ssh/id_ed25519.pub)" \
+#       -e swarm_default_user=ubuntu
+#
+# Idempotent: skips VMs that already exist.
+# Pre-flight already verified by the operator (see context/phase2-swarm-build.md).
+
+- name: Phase 2 — provision 6 KVM micro-VMs (3x redis, 2x backend, 1x manager)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    kvm_image_dir: /var/lib/libvirt/images
+    kvm_cloud_image_url: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    kvm_cloud_image_path: "{{ kvm_image_dir }}/noble-server-cloudimg-amd64.img"
+    kvm_libvirt_network: default
+    kvm_ssh_pubkey: "{{ lookup('env', 'KVM_SSH_PUBKEY') }}"
+    swarm_default_user: ubuntu
+    kvm_vms:
+      - { name: vm-manager,    ip: 192.168.122.10, vcpus: 2, mem_mb: 6144, role: manager }
+      - { name: vm-backend-1,  ip: 192.168.122.11, vcpus: 3, mem_mb: 5120, role: backend }
+      - { name: vm-backend-2,  ip: 192.168.122.12, vcpus: 3, mem_mb: 5120, role: backend }
+      - { name: vm-redis-1,    ip: 192.168.122.13, vcpus: 1, mem_mb: 2048, role: redis }
+      - { name: vm-redis-2,    ip: 192.168.122.14, vcpus: 1, mem_mb: 2048, role: redis }
+      - { name: vm-redis-3,    ip: 192.168.122.15, vcpus: 1, mem_mb: 2048, role: redis }
+
+  tasks:
+    - name: Verify required SSH public key is provided
+      ansible.builtin.assert:
+        that:
+          - kvm_ssh_pubkey is defined
+          - kvm_ssh_pubkey | length > 0
+        fail_msg: "Pass -e kvm_ssh_pubkey=<key> or set KVM_SSH_PUBKEY env"
+
+    - name: Verify host has KVM enabled
+      ansible.builtin.command: virt-host-validate qemu
+      register: kvm_validate
+      changed_when: false
+      failed_when: false
+
+    - name: Show host KVM validation
+      ansible.builtin.debug:
+        var: kvm_validate.stdout_lines
+
+    - name: Ensure libvirt + virt-install + cloud-image-utils are installed
+      become: true
+      ansible.builtin.package:
+        name:
+          - libvirt-daemon-system
+          - libvirt-clients
+          - qemu-kvm
+          - virtinst
+          - cloud-image-utils
+          - genisoimage
+        state: present
+
+    - name: Ensure libvirt service is running
+      become: true
+      ansible.builtin.service:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    - name: Ensure default libvirt network is active
+      become: true
+      ansible.builtin.command: virsh net-start {{ kvm_libvirt_network }}
+      register: net_start
+      changed_when: "'started' in net_start.stdout or 'started' in net_start.stderr"
+      failed_when:
+        - net_start.rc != 0
+        - "'already active' not in (net_start.stderr | default(''))"
+
+    - name: Ensure default network is autostart
+      become: true
+      ansible.builtin.command: virsh net-autostart {{ kvm_libvirt_network }}
+      register: net_autostart
+      changed_when: "'marked as autostarted' in net_autostart.stdout"
+      failed_when: false
+
+    - name: Ensure base cloud image exists
+      become: true
+      ansible.builtin.get_url:
+        url: "{{ kvm_cloud_image_url }}"
+        dest: "{{ kvm_cloud_image_path }}"
+        mode: "0644"
+
+    - name: Check which VMs already exist
+      become: true
+      ansible.builtin.command: virsh list --all --name
+      register: existing_vms
+      changed_when: false
+
+    - name: Build per-VM disk
+      become: true
+      ansible.builtin.command:
+        cmd: >-
+          qemu-img create -f qcow2
+          -F qcow2 -b {{ kvm_cloud_image_path }}
+          {{ kvm_image_dir }}/{{ item.name }}.qcow2
+          20G
+        creates: "{{ kvm_image_dir }}/{{ item.name }}.qcow2"
+      loop: "{{ kvm_vms }}"
+      when: item.name not in existing_vms.stdout_lines
+
+    - name: Build per-VM cloud-init user-data
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ kvm_image_dir }}/{{ item.name }}-user-data.yaml"
+        mode: "0644"
+        content: |
+          #cloud-config
+          hostname: {{ item.name }}
+          fqdn: {{ item.name }}.local
+          manage_etc_hosts: true
+          users:
+            - name: {{ swarm_default_user }}
+              groups: [adm, sudo, docker]
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              shell: /bin/bash
+              ssh_authorized_keys:
+                - {{ kvm_ssh_pubkey }}
+          chpasswd:
+            expire: false
+          package_update: true
+          package_upgrade: false
+          packages:
+            - chrony
+            - curl
+            - jq
+            - ca-certificates
+          write_files:
+            - path: /etc/docker/daemon.json
+              owner: root:root
+              permissions: '0644'
+              content: |
+                {
+                  "log-driver": "json-file",
+                  "log-opts": { "max-size": "20m", "max-file": "5" }
+                }
+          runcmd:
+            - install -d -m 0755 /etc/apt/keyrings
+            - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            - chmod a+r /etc/apt/keyrings/docker.gpg
+            - >-
+              echo "deb [arch=$(dpkg --print-architecture)
+              signed-by=/etc/apt/keyrings/docker.gpg]
+              https://download.docker.com/linux/ubuntu noble stable"
+              > /etc/apt/sources.list.d/docker.list
+            - apt-get update
+            - >-
+              DEBIAN_FRONTEND=noninteractive apt-get install -y
+              docker-ce docker-ce-cli containerd.io
+              docker-buildx-plugin docker-compose-plugin
+            - systemctl enable --now docker
+            - usermod -aG docker {{ swarm_default_user }}
+            - systemctl enable --now chrony
+      loop: "{{ kvm_vms }}"
+      when: item.name not in existing_vms.stdout_lines
+
+    - name: Build per-VM cloud-init network-config
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ kvm_image_dir }}/{{ item.name }}-network-config.yaml"
+        mode: "0644"
+        content: |
+          version: 2
+          ethernets:
+            eth0:
+              dhcp4: false
+              addresses: [{{ item.ip }}/24]
+              gateway4: 192.168.122.1
+              nameservers:
+                addresses: [192.168.122.1, 1.1.1.1]
+      loop: "{{ kvm_vms }}"
+      when: item.name not in existing_vms.stdout_lines
+
+    - name: Build per-VM cloud-init ISO
+      become: true
+      ansible.builtin.command:
+        cmd: >-
+          cloud-localds
+          -v
+          --network-config={{ kvm_image_dir }}/{{ item.name }}-network-config.yaml
+          {{ kvm_image_dir }}/{{ item.name }}-seed.iso
+          {{ kvm_image_dir }}/{{ item.name }}-user-data.yaml
+        creates: "{{ kvm_image_dir }}/{{ item.name }}-seed.iso"
+      loop: "{{ kvm_vms }}"
+      when: item.name not in existing_vms.stdout_lines
+
+    - name: Define + start KVM VM
+      become: true
+      ansible.builtin.command:
+        cmd: >-
+          virt-install
+          --name {{ item.name }}
+          --memory {{ item.mem_mb }}
+          --vcpus {{ item.vcpus }}
+          --disk path={{ kvm_image_dir }}/{{ item.name }}.qcow2,format=qcow2
+          --disk path={{ kvm_image_dir }}/{{ item.name }}-seed.iso,device=cdrom
+          --os-variant ubuntu24.04
+          --network network={{ kvm_libvirt_network }},model=virtio
+          --graphics none
+          --noautoconsole
+          --import
+        creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
+      loop: "{{ kvm_vms }}"
+      when: item.name not in existing_vms.stdout_lines
+
+    - name: Mark every VM autostart
+      become: true
+      ansible.builtin.command: virsh autostart {{ item.name }}
+      register: vm_autostart
+      changed_when: "'marked as autostarted' in vm_autostart.stdout"
+      failed_when: false
+      loop: "{{ kvm_vms }}"
+
+    - name: Wait for SSH on every guest (cloud-init may take ~3 min)
+      ansible.builtin.wait_for:
+        host: "{{ item.ip }}"
+        port: 22
+        delay: 10
+        timeout: 300
+      loop: "{{ kvm_vms }}"
+
+    - name: Append /etc/hosts entries for the 6 VMs
+      become: true
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} pixelbattle phase2 swarm"
+        block: |
+          {% for vm in kvm_vms %}
+          {{ vm.ip }}  {{ vm.name }} {{ vm.name }}.local
+          {% endfor %}
+
+    - name: Done
+      ansible.builtin.debug:
+        msg:
+          - "Phase 2 KVM topology provisioned."
+          - "Manager: 192.168.122.10 — backends: .11/.12 — redis: .13/.14/.15"
+          - "Next step: ansible-playbook -i deploy/inventory.yml deploy/playbooks/swarm-init.yml"

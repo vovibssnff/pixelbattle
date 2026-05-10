@@ -7,8 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"pb_backend/internal/core/domain"
 	"pb_backend/internal/core/domain/crdt"
 	"pb_backend/internal/metrics"
+
+	"github.com/sirupsen/logrus"
 )
 
 func writerFromPixelPayload(pixelData []byte) string {
@@ -67,6 +70,7 @@ func (r *CanvasRepository) writePixelWithOpLog(ctx context.Context, x, y uint, p
 		metrics.ObserveDatabaseOperation("write_pixel", "redis", time.Since(start), errBadOpLogReturn)
 		return errBadOpLogReturn
 	}
+	streamID, _ := arr[0].(string)
 	pathCode, ok := redisLuaInt(arr[2])
 	if !ok {
 		metrics.ObserveDatabaseOperation("write_pixel", "redis", time.Since(start), errBadOpLogReturn)
@@ -81,6 +85,22 @@ func (r *CanvasRepository) writePixelWithOpLog(ctx context.Context, x, y uint, p
 		metrics.ObserveCRDTMergeDuration(time.Since(start))
 	}
 	metrics.ObserveDatabaseOperation("write_pixel", "redis", time.Since(start), nil)
+
+	// Phase 2 fan-out: publish to fanout:{global} so peer gateways see this pixel via XREADGROUP.
+	// Gateway-mode-only; in monolith mode r.gatewayOrigin stays empty and we skip the XADD to avoid
+	// emitting an extra Redis op on Phase 1 baseline runs.
+	if r.gatewayOrigin != "" {
+		fxStart := time.Now()
+		var rp domain.RedisPixel
+		_ = json.Unmarshal(pixelData, &rp)
+		p := &domain.Pixel{X: x, Y: y, Color: rp.Color}
+		if xerr := XAddFanout(ctx, r.rdb, r.gatewayOrigin, p, streamID); xerr != nil {
+			logrus.Debugf("oplog: XAddFanout failed: %v", xerr)
+			metrics.ObserveDatabaseOperation("xadd_fanout", "redis", time.Since(fxStart), xerr)
+		} else {
+			metrics.ObserveDatabaseOperation("xadd_fanout", "redis", time.Since(fxStart), nil)
+		}
+	}
 	return nil
 }
 

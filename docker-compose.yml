@@ -220,6 +220,7 @@ services:
     user: "0:0"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
       - ./monitoring/prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

@@ -11,14 +11,21 @@ import (
 )
 
 type CanvasRepository struct {
-	rdb         redis.Cmdable
-	hashTagKeys bool // true: pixel:{y:x} / opstream:{y:x}; false: pixel:y:x (Phase 1)
+	rdb           redis.Cmdable
+	hashTagKeys   bool // true: pixel:{y:x} / opstream:{y:x}; false: pixel:y:x (Phase 1)
+	gatewayOrigin string
 }
 
 // NewCanvasRepository stores canvas pixels in Redis lists. hashTagKeys must be true for
 // Redis Cluster so each cell's keys share one hash slot (plan §11.4).
 func NewCanvasRepository(rdb redis.Cmdable, hashTagKeys bool) *CanvasRepository {
 	return &CanvasRepository{rdb: rdb, hashTagKeys: hashTagKeys}
+}
+
+// SetGatewayOrigin tags every fan-out XADD with this gateway's instance_id so the
+// XREADGROUP consumer can dedupe its own pixels (plan §11.4, ADR-004).
+func (r *CanvasRepository) SetGatewayOrigin(origin string) {
+	r.gatewayOrigin = origin
 }
 
 func (r *CanvasRepository) pixelKey(x, y uint) string {

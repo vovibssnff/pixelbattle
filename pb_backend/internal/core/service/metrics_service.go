@@ -90,3 +90,24 @@ func IncrementOptimisticCorrection(reason string) {
 func SetCanvasDimensionsGauge(width, height uint) {
 	metrics.SetCanvasDimensionsGauge(width, height)
 }
+
+// SetOpstreamLag re-exports metrics.SetOpstreamLag so adapter code does not import the
+// metrics package directly (keeps ADR-002 adapter-boundary clean).
+func SetOpstreamLag(group, consumer, shardID string, lag time.Duration) {
+	metrics.SetOpstreamLag(group, consumer, shardID, lag)
+}
+
+// SetRedisReplicationLag re-exports metrics.SetRedisReplicationLag.
+func SetRedisReplicationLag(shardID string, lag time.Duration) {
+	metrics.SetRedisReplicationLag(shardID, lag)
+}
+
+// ObserveGatewayFanout re-exports metrics.ObserveGatewayFanout.
+func ObserveGatewayFanout(path string, recipients int) {
+	metrics.ObserveGatewayFanout(path, recipients)
+}
+
+// SetGatewayInstanceInfo re-exports metrics.SetGatewayInstanceInfo.
+func SetGatewayInstanceInfo(instanceID, hostname, version string) {
+	metrics.SetGatewayInstanceInfo(instanceID, hostname, version)
+}

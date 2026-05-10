@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/core/service"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -17,12 +18,35 @@ type ResizeNotice struct {
 	Payload       []byte
 }
 
+// PeerFanout is the cross-gateway hook (gRPC PeerPool) installed by main when running in
+// gateway mode. setPixel calls FanOutPixel after a successful Redis write so peers see
+// new pixels immediately. nil in monolith mode (no peers).
+type PeerFanout interface {
+	FanOutPixel(ctx context.Context, p *domain.Pixel, streamID string) int
+	FanOutControl(ctx context.Context, event string, payload []byte) int
+}
+
+// fromPeer wraps an inbound pixel from another gateway so the Run loop can fan it out
+// to local WS clients only — bypassing the canvas write and the peer fan-out paths.
+type fromPeer struct {
+	pixel *domain.Pixel
+	ack   chan int
+}
+
+// fromPeerControl wraps an inbound control payload from another gateway.
+type fromPeerControl struct {
+	payload []byte
+	ack     chan int
+}
+
 type WsServer struct {
 	clients          map[*Client]bool
 	broadcast        chan *domain.Pixel
 	register         chan *Client
 	unregister       chan *Client
 	resizeNotify     chan ResizeNotice
+	peerPixel        chan fromPeer
+	peerControl      chan fromPeerControl
 	sessionService   domain.SessionService
 	timerService     domain.TimerService
 	userService      domain.UserService
@@ -32,6 +56,9 @@ type WsServer struct {
 	allowAnonymousWS bool
 	limiter          *LimiterHub
 	replay           *PixelReplayBuffer
+
+	peerMu     sync.RWMutex
+	peerFanout PeerFanout
 }
 
 func NewWebSocketServer(
@@ -50,6 +77,8 @@ func NewWebSocketServer(
 		register:         make(chan *Client),
 		unregister:       make(chan *Client),
 		resizeNotify:     make(chan ResizeNotice, 4),
+		peerPixel:        make(chan fromPeer, 256),
+		peerControl:      make(chan fromPeerControl, 16),
 		sessionService:   sessionService,
 		timerService:     timerService,
 		userService:      userService,
@@ -59,6 +88,64 @@ func NewWebSocketServer(
 		allowAnonymousWS: allowAnonymousWS,
 		limiter:          limiter,
 		replay:           replay,
+	}
+}
+
+// SetPeerFanout installs the gRPC peer fan-out implementation (Phase 2 gateway mode).
+// Safe to call before or after Run() begins.
+func (s *WsServer) SetPeerFanout(p PeerFanout) {
+	s.peerMu.Lock()
+	defer s.peerMu.Unlock()
+	s.peerFanout = p
+}
+
+func (s *WsServer) currentPeerFanout() PeerFanout {
+	s.peerMu.RLock()
+	defer s.peerMu.RUnlock()
+	return s.peerFanout
+}
+
+// BroadcastFromPeer is called by the gRPC server when a peer gateway forwards a pixel.
+// It blocks briefly to send into the Run goroutine (which then fans out to local WS
+// clients), then returns the recipient count. Bypasses Redis write and peer fan-out
+// to prevent loops.
+func (s *WsServer) BroadcastFromPeer(p *domain.Pixel) int {
+	if s == nil || p == nil {
+		return 0
+	}
+	ack := make(chan int, 1)
+	select {
+	case s.peerPixel <- fromPeer{pixel: p, ack: ack}:
+	case <-time.After(250 * time.Millisecond):
+		service.IncrementWSError("peer_pixel_buffer_full")
+		return 0
+	}
+	select {
+	case n := <-ack:
+		return n
+	case <-time.After(500 * time.Millisecond):
+		return 0
+	}
+}
+
+// BroadcastControlFromPeer fans out a JSON control payload (e.g. a forwarded RESIZE) to
+// local WS clients only.
+func (s *WsServer) BroadcastControlFromPeer(payload []byte) int {
+	if s == nil || len(payload) == 0 {
+		return 0
+	}
+	ack := make(chan int, 1)
+	select {
+	case s.peerControl <- fromPeerControl{payload: append([]byte(nil), payload...), ack: ack}:
+	case <-time.After(250 * time.Millisecond):
+		service.IncrementWSError("peer_control_buffer_full")
+		return 0
+	}
+	select {
+	case n := <-ack:
+		return n
+	case <-time.After(500 * time.Millisecond):
+		return 0
 	}
 }
 
@@ -78,8 +165,13 @@ func (server *WsServer) Run() {
 			logrus.Info("Current users: ", len(server.clients))
 		case pixel := <-server.broadcast:
 			tp = "pixel"
-			logrus.Info("Server received pixel: ", pixel)
 			server.setPixel(pixel)
+		case fp := <-server.peerPixel:
+			tp = "peer_pixel"
+			fp.ack <- server.broadcastLocalOnly(fp.pixel)
+		case fpc := <-server.peerControl:
+			tp = "peer_control"
+			fpc.ack <- server.broadcastControlLocalOnly(fpc.payload)
 		case rn := <-server.resizeNotify:
 			tp = "resize"
 			server.canvasWidth = rn.Width
@@ -92,9 +184,53 @@ func (server *WsServer) Run() {
 					service.IncrementWSError("control_buffer_full")
 				}
 			}
+			// Mirror to peers (gRPC fan-out path) so other gateways' clients also resize.
+			if pf := server.currentPeerFanout(); pf != nil {
+				go pf.FanOutControl(context.Background(), "RESIZE", append([]byte(nil), rn.Payload...))
+			}
 		}
 		service.ObserveWebSocketMessageDuration(tp, start)
 	}
+}
+
+// broadcastLocalOnly fans out a pixel to local WS clients without touching Redis or
+// peers. Used by the peer-pixel and op-log paths. Returns recipient count.
+func (server *WsServer) broadcastLocalOnly(pixel *domain.Pixel) int {
+	if pixel == nil {
+		return 0
+	}
+	pixel.Userid = ""
+	pixel.Faculty = ""
+	n := 0
+	for client := range server.clients {
+		select {
+		case client.send <- pixel:
+			n++
+		default:
+			service.IncrementWSError("send_buffer_full")
+		}
+	}
+	service.ObserveGatewayFanout("local_ws", n)
+	return n
+}
+
+// broadcastControlLocalOnly fans out an opaque control payload to local WS clients only.
+// payload is the already-encoded JSON frame the client expects (e.g. RESIZE).
+func (server *WsServer) broadcastControlLocalOnly(payload []byte) int {
+	if len(payload) == 0 {
+		return 0
+	}
+	n := 0
+	for client := range server.clients {
+		p := append([]byte(nil), payload...)
+		select {
+		case client.control <- p:
+			n++
+		default:
+			service.IncrementWSError("control_buffer_full")
+		}
+	}
+	return n
 }
 
 // NotifyCanvasResize updates in-memory WS bounds and broadcasts a JSON control message (ADR-003).
@@ -141,12 +277,20 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 	if server.replay != nil {
 		server.replay.Add(pixel, replayMs)
 	}
+	local := 0
 	for client := range server.clients {
 		select {
 		case client.send <- pixel:
+			local++
 		default:
 			service.IncrementWSError("send_buffer_full")
 		}
+	}
+	service.ObserveGatewayFanout("local_ws", local)
+	// Phase 2: forward to peer gateways in a goroutine so the Run loop is not blocked.
+	if pf := server.currentPeerFanout(); pf != nil {
+		px := *pixel
+		go pf.FanOutPixel(context.Background(), &px, "")
 	}
 	service.ObservePixelWriteVisible(time.Since(visibleStart))
 }

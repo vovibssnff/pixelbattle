@@ -1,0 +1,91 @@
+---
+# Form a Docker Swarm across the 6 KVM VMs created by kvm-provision.yml.
+# See adr/004-kvm-swarm-multi-vm.md.
+#
+# Usage:
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/swarm-init.yml
+#
+# Idempotent: re-running on an already-formed Swarm is a no-op.
+
+- name: Phase 2 — initialise Swarm manager
+  hosts: swarm_manager
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read swarm node info (idempotent check)
+      ansible.builtin.command: docker info --format '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+      register: swarm_state
+      changed_when: false
+      failed_when: false
+
+    - name: docker swarm init
+      ansible.builtin.command: docker swarm init --advertise-addr {{ swarm_advertise_addr }}
+      when: "'active' not in (swarm_state.stdout | default(''))"
+      register: swarm_init
+      changed_when: "'Swarm initialized' in (swarm_init.stdout | default(''))"
+
+    - name: Capture worker join token
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: worker_token_cmd
+      changed_when: false
+
+    - name: Save worker join token to fact
+      ansible.builtin.set_fact:
+        swarm_worker_token: "{{ worker_token_cmd.stdout }}"
+        swarm_manager_addr: "{{ swarm_advertise_addr }}"
+
+- name: Phase 2 — join workers to the Swarm
+  hosts: swarm_workers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read worker swarm state
+      ansible.builtin.command: docker info --format '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+      register: worker_swarm_state
+      changed_when: false
+      failed_when: false
+
+    - name: docker swarm join (worker)
+      ansible.builtin.command: >-
+        docker swarm join
+        --token {{ hostvars[groups['swarm_manager'][0]].swarm_worker_token }}
+        {{ hostvars[groups['swarm_manager'][0]].swarm_manager_addr }}:2377
+      when: "'active' not in (worker_swarm_state.stdout | default(''))"
+      register: worker_join
+      changed_when: "'This node joined a swarm as a worker' in (worker_join.stdout | default(''))"
+
+- name: Phase 2 — label nodes by role
+  hosts: swarm_manager
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait until all workers visible to manager
+      ansible.builtin.command: docker node ls --format '{{ "{{" }}.Hostname{{ "}}" }}'
+      register: node_ls
+      changed_when: false
+      retries: 6
+      delay: 5
+      until: |
+        (groups['swarm_workers'] | difference(node_ls.stdout_lines)) | length == 0
+
+    - name: Label each node role={{ "{{" }}swarm_role{{ "}}" }}
+      ansible.builtin.command: >-
+        docker node update --label-add role={{ hostvars[item].swarm_role }}
+        --label-add node_ip={{ hostvars[item].ansible_host }}
+        --label-add instance_id={{ hostvars[item].gateway_instance_id | default(hostvars[item].redis_shard_id | default(item)) }}
+        {{ item }}
+      loop: "{{ groups['swarm_all'] }}"
+      register: label_result
+      changed_when: "'Node updated' in (label_result.stdout | default(''))"
+      failed_when:
+        - label_result.rc != 0
+        - "'no such node' not in (label_result.stderr | default(''))"
+
+    - name: Verify cluster topology
+      ansible.builtin.command: docker node ls
+      register: final_topology
+      changed_when: false
+
+    - name: Show final Swarm topology
+      ansible.builtin.debug:
+        var: final_topology.stdout_lines

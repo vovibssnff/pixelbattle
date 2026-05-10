@@ -178,6 +178,24 @@ jobs:
       - name: Unit tests
         run: go test ./...
 
+  buf-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.50.0
+      - name: buf lint
+        run: buf lint
+      - name: buf format check
+        run: buf format -d --exit-code
+      - name: buf breaking (vs main)
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=master,subdir=pb_backend"
+        continue-on-error: true
+
   docker-build:
     needs:
       - secrets-scan
@@ -186,6 +204,7 @@ jobs:
       - backend-test
       - backend-lint
       - backend-sast
+      - buf-lint
       - frontend-lint
       - frontend-security
       - dockerfile-lint

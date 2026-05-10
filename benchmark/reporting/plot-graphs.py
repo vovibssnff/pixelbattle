@@ -13,9 +13,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def _latest_run_dir(phase_root: Path) -> Optional[Path]:
+    if not phase_root.exists():
+        return None
+    if (phase_root / "benchmarks").exists():
+        return phase_root
+    candidates = [d for d in phase_root.iterdir() if d.is_dir() and any(d.iterdir())]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda d: d.name, reverse=True)
+    return candidates[0]
+
+
 def _load_latest_by_storage(results_dir: Path) -> Dict[str, List[dict]]:
     out: Dict[str, List[dict]] = {}
-    bench_dir = results_dir / "benchmarks"
+    run_dir = _latest_run_dir(results_dir)
+    if run_dir is None:
+        return out
+    bench_dir = run_dir / "benchmarks"
     if not bench_dir.exists():
         return out
 
@@ -30,6 +45,31 @@ def _load_latest_by_storage(results_dir: Path) -> Dict[str, List[dict]]:
     return out
 
 
+def _load_saturation_vus(phase_root: Path) -> Optional[int]:
+    run_dir = _latest_run_dir(phase_root)
+    if run_dir is None:
+        return None
+    k6_dir = run_dir / "k6"
+    if not k6_dir.exists():
+        return None
+    best: Optional[int] = None
+    for jf in k6_dir.glob("**/*.json"):
+        try:
+            payload = json.loads(jf.read_text())
+        except Exception:
+            continue
+        sat = payload.get("metrics", {}).get("saturation_vus")
+        if not isinstance(sat, dict):
+            continue
+        v = (sat.get("values") or {}).get("min")
+        if v is None:
+            continue
+        v_int = int(v)
+        if v_int > 0 and (best is None or v_int < best):
+            best = v_int
+    return best
+
+
 def _scenario_metric(data: Dict[str, List[dict]], key: str) -> Dict[str, float]:
     out: Dict[str, float] = {}
     for storage, rows in data.items():
@@ -40,7 +80,10 @@ def _scenario_metric(data: Dict[str, List[dict]], key: str) -> Dict[str, float]:
 
 
 def _load_summary_metric(results_dir: Path, key: str) -> Optional[float]:
-    p = results_dir / "rum" / "summary.json"
+    run_dir = _latest_run_dir(results_dir)
+    if run_dir is None:
+        run_dir = results_dir
+    p = run_dir / "rum" / "summary.json"
     if not p.exists():
         return None
     try:
@@ -117,6 +160,17 @@ def main() -> None:
         _load_summary_metric(root / "candidate", "client_fps_avg"),
         out_dir / "client_fps_comparison.png",
     )
+
+    # k6 saturation_vus: higher is better, captured by test-breakpoint.js
+    base_sat = _load_saturation_vus(root / "baseline")
+    cand_sat = _load_saturation_vus(root / "candidate")
+    _plot_single_metric(
+        "k6 saturation_vus (min, breakpoint stage)",
+        float(base_sat) if base_sat is not None else None,
+        float(cand_sat) if cand_sat is not None else None,
+        out_dir / "saturation_vus_comparison.png",
+    )
+
     print(f"Saved graphs in: {out_dir}")
 
 

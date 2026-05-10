@@ -35,8 +35,12 @@ id_rsa.pub
 *.swo
 *~
 
-# --- Cursor (local workspace / worktrees) ---
+# --- Cursor ---
 .cursor/
+
+# --- ADRs ---
+adr/
+context/
 
 # --- Go (pb_backend) ---
 pb_backend/bin/
@@ -120,10 +124,12 @@ venv/
 *.pdf
 _minted*/
 build/
+BENCHMARKING.md
 
 # --- OS ---
 .DS_Store
 Thumbs.db
+ubuntu-*
 
 # --- Misc local paths ---
 root/

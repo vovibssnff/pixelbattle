@@ -1,0 +1,67 @@
+---
+# Bootstrap a 3-master Redis Cluster across the three KVM redis VMs once the stack
+# is deployed. Uses the libvirt bridge IPs (192.168.122.13/14/15) as the cluster
+# announce-ip so cross-VM slot redirects resolve correctly. See ADR-004.
+#
+# Usage (after `docker stack deploy -c deploy/stack.yml pixelbattle`):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/swarm-redis-cluster.yml
+
+- name: Phase 2 — wait for redis-cN containers to be reachable
+  hosts: swarm_redis_workers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait for redis-{{ "{{" }}redis_shard_id{{ "}}" }} on {{ "{{" }}ansible_host{{ "}}" }}:6379
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6379
+        timeout: 180
+        delay: 5
+      delegate_to: "{{ groups['swarm_manager'][0] }}"
+
+    - name: Verify redis answers PING
+      ansible.builtin.command: docker exec $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-{{ redis_shard_id }} -q) redis-cli ping
+      register: redis_ping
+      retries: 12
+      delay: 5
+      until: "'PONG' in redis_ping.stdout"
+      changed_when: false
+
+- name: Phase 2 — bootstrap the cluster from the manager
+  hosts: swarm_manager
+  become: true
+  gather_facts: false
+  vars:
+    redis_node_addrs: "{{ groups['swarm_redis_workers'] | map('extract', hostvars, 'ansible_host') | list }}"
+  tasks:
+    - name: Check if cluster is already formed (cluster_state ok on first node)
+      ansible.builtin.shell: >-
+        docker run --rm --network host redis:7.4.2
+        redis-cli -h {{ redis_node_addrs[0] }} -p 6379
+        cluster info | grep -c 'cluster_state:ok'
+      register: cluster_status
+      changed_when: false
+      failed_when: false
+
+    - name: Form the 3-master cluster (no replicas; matches docker-compose redis-cluster profile)
+      ansible.builtin.command: >-
+        docker run --rm --network host redis:7.4.2
+        redis-cli --cluster create
+        {{ redis_node_addrs[0] }}:6379
+        {{ redis_node_addrs[1] }}:6379
+        {{ redis_node_addrs[2] }}:6379
+        --cluster-replicas 0 --cluster-yes
+      when: cluster_status.stdout | int == 0
+      register: cluster_create
+      changed_when: "'OK' in (cluster_create.stdout | default(''))"
+
+    - name: Final cluster info
+      ansible.builtin.shell: >-
+        docker run --rm --network host redis:7.4.2
+        redis-cli -h {{ redis_node_addrs[0] }} -p 6379 cluster info
+      register: cluster_info
+      changed_when: false
+
+    - name: Show cluster info
+      ansible.builtin.debug:
+        var: cluster_info.stdout_lines

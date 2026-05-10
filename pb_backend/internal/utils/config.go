@@ -28,6 +28,8 @@ var envKeysForViper = []string{
 	"ADMIN_IDS", "ADMIN_USERNAMES",
 	"ADMIN_API_TOKEN",
 	"PIXEL_COOLDOWN_SEC",
+	"GATEWAY_INSTANCE_ID", "GATEWAY_GRPC_PORT", "GATEWAY_PEERS",
+	"GATEWAY_OPSTREAM_GROUP", "GATEWAY_OPSTREAM_CONSUMER",
 }
 
 func mergeProcessEnvIntoViper() {
@@ -84,6 +86,18 @@ type Config struct {
 	CanvasSnapshotIntervalSec int `mapstructure:"CANVAS_SNAPSHOT_INTERVAL_SEC"`
 	// CanvasSnapshotFile: optional path to write the latest PNG atomically (e.g. volume mount for static file server).
 	CanvasSnapshotFile string `mapstructure:"CANVAS_SNAPSHOT_FILE"`
+
+	// GatewayInstanceID identifies this gateway in the Phase 2 Swarm (e.g. "gw-1"). When empty,
+	// the binary runs in legacy/monolith mode and the gRPC server / op-log consumer stay disabled.
+	GatewayInstanceID string `mapstructure:"GATEWAY_INSTANCE_ID"`
+	// GatewayGRPCPort: TCP port for the gRPC mesh server (Phase 2). 0 disables the server.
+	GatewayGRPCPort int `mapstructure:"GATEWAY_GRPC_PORT"`
+	// GatewayPeers: comma-separated host:port peers for inter-gateway gRPC fan-out.
+	GatewayPeers string `mapstructure:"GATEWAY_PEERS"`
+	// GatewayOpStreamGroup: Redis Streams consumer group name for op-log XREADGROUP fan-out.
+	GatewayOpStreamGroup string `mapstructure:"GATEWAY_OPSTREAM_GROUP"`
+	// GatewayOpStreamConsumer: this gateway's consumer name within the group (defaults to GATEWAY_INSTANCE_ID).
+	GatewayOpStreamConsumer string `mapstructure:"GATEWAY_OPSTREAM_CONSUMER"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables

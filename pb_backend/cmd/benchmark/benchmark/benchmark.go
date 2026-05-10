@@ -41,6 +41,9 @@ type BenchmarkResult struct {
 	HistoryDepth      int          `json:"history_depth,omitempty"`
 	TimeBuckets       []TimeBucket `json:"time_buckets,omitempty"`
 	WarmupSkipped     int64        `json:"warmup_skipped_ops,omitempty"`
+	// Topology is a free-form label set by cmd/benchmark via --topology-label so the
+	// comparison report can attribute results to baseline vs candidate columns.
+	Topology string `json:"topology,omitempty"`
 }
 
 type BenchmarkConfig struct {

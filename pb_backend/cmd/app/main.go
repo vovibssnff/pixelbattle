@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"pb_backend/internal/adapters/grpc"
 	"pb_backend/internal/adapters/mongo"
 	mongo_repo "pb_backend/internal/adapters/mongo/repository"
 	redisadp "pb_backend/internal/adapters/redis"
@@ -12,6 +14,7 @@ import (
 	"pb_backend/internal/adapters/websockets"
 	"pb_backend/internal/core/service"
 	"pb_backend/internal/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +73,9 @@ func main() {
 	}
 
 	canvasRepo := redis_repo.NewCanvasRepository(canvasRDB, hashTagKeys)
+	if id := strings.TrimSpace(config.GatewayInstanceID); id != "" {
+		canvasRepo.SetGatewayOrigin(id)
+	}
 	mongoUsrRepo := mongo_repo.NewUserRepository(mongoUserDatabase)
 
 	timerRepo := redis_repo.NewTimerRepo(timerRDB)
@@ -131,6 +137,53 @@ func main() {
 	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService,
 		timerService, strings.TrimSpace(config.AdminAPIToken), snapshotter, ws,
 		config.CanvasHeight, config.CanvasWidth, router)
+
+	// Phase 2 gateway-mode wiring (gRPC mesh + Redis Streams op-log consumer).
+	// Skipped on Phase 1 monolith deployments where GATEWAY_INSTANCE_ID is unset.
+	if instance := strings.TrimSpace(config.GatewayInstanceID); instance != "" {
+		hostname, _ := os.Hostname()
+		service.SetGatewayInstanceInfo(instance, hostname, "phase2")
+
+		// gRPC server (received peer broadcasts → local WS hub).
+		grpcServer := grpc.NewServer(instance, ws)
+		if config.GatewayGRPCPort > 0 {
+			addr := ":" + strconv.Itoa(config.GatewayGRPCPort)
+			go func() {
+				if err := grpcServer.Start(addr); err != nil {
+					logrus.Errorf("gRPC server stopped: %v", err)
+				}
+			}()
+			defer grpcServer.Stop()
+		}
+
+		// gRPC client pool (local WS hub → peer gateways).
+		peers := splitCommaNonEmpty(config.GatewayPeers)
+		if len(peers) > 0 {
+			pool, perr := grpc.NewPeerPool(instance, peers)
+			if perr != nil {
+				logrus.Warnf("gRPC peer pool init failed: %v", perr)
+			} else {
+				ws.SetPeerFanout(pool)
+				defer pool.Close()
+				logrus.Infof("gRPC peer pool: %d peer(s) attached (%s)", len(peers), strings.Join(peers, ","))
+			}
+		}
+
+		// Op-log XREADGROUP consumer (durable / cross-gateway path).
+		group := strings.TrimSpace(config.GatewayOpStreamGroup)
+		if group == "" {
+			group = "pixelbattle-gateway"
+		}
+		consumer := strings.TrimSpace(config.GatewayOpStreamConsumer)
+		if consumer == "" {
+			consumer = instance
+		}
+		opConsumer := redis_repo.NewOpStreamConsumer(canvasRDB, ws, group, consumer, instance)
+		if err := opConsumer.Start(context.Background()); err != nil {
+			logrus.Errorf("op-log consumer: start failed: %v", err)
+		}
+		defer opConsumer.Stop()
+	}
 
 	logrus.Info("Starting server on port 8080")
 	handler := service.InstrumentHandler(router)

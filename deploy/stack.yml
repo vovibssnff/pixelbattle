@@ -1,0 +1,416 @@
+# Phase 2 Docker Swarm stack: 3-master Redis Cluster + 2-replica gateway + monitoring on the manager.
+# See adr/004-kvm-swarm-multi-vm.md and ~/.cursor/plans/phase_2_swarm_completion_62dffe4b.plan.md.
+#
+# Deploy:
+#   docker stack deploy -c deploy/stack.yml pixelbattle
+#
+# IPs (libvirt bridge default 192.168.122.0/24):
+#   manager  192.168.122.10  (vm-manager)
+#   gw-1     192.168.122.11  (vm-backend-1, role=backend, instance_id=gw-1)
+#   gw-2     192.168.122.12  (vm-backend-2, role=backend, instance_id=gw-2)
+#   redis-c1 192.168.122.13  (vm-redis-1,    role=redis,    redis_shard_id=c1)
+#   redis-c2 192.168.122.14  (vm-redis-2,    role=redis,    redis_shard_id=c2)
+#   redis-c3 192.168.122.15  (vm-redis-3,    role=redis,    redis_shard_id=c3)
+
+version: "3.9"
+
+networks:
+  overlay:
+    driver: overlay
+    attachable: true
+
+configs:
+  prometheus_yml:
+    file: ./monitoring/prometheus.yml
+  prometheus_clock_skew_rules:
+    file: ./monitoring/alerts/clock-skew.rules.yml
+  blackbox_yml:
+    file: ./monitoring/blackbox.yml
+  caddyfile:
+    file: ./caddy/Caddyfile.swarm
+  caddy_tls:
+    file: ./caddy/tls.inc
+
+services:
+  # ---- Redis Cluster (3 masters, no replicas) ----
+  redis-c1:
+    image: redis:7.4.2
+    networks: [overlay]
+    command:
+      - redis-server
+      - --port=6379
+      - --cluster-enabled=yes
+      - --cluster-config-file=nodes.conf
+      - --cluster-node-timeout=5000
+      - --appendonly=yes
+      - --bind=0.0.0.0
+      - --protected-mode=no
+      - --cluster-announce-ip=192.168.122.13
+      - --cluster-announce-port=6379
+      - --cluster-announce-bus-port=16379
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c1
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis-c2:
+    image: redis:7.4.2
+    networks: [overlay]
+    command:
+      - redis-server
+      - --port=6379
+      - --cluster-enabled=yes
+      - --cluster-config-file=nodes.conf
+      - --cluster-node-timeout=5000
+      - --appendonly=yes
+      - --bind=0.0.0.0
+      - --protected-mode=no
+      - --cluster-announce-ip=192.168.122.14
+      - --cluster-announce-port=6379
+      - --cluster-announce-bus-port=16379
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c2
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis-c3:
+    image: redis:7.4.2
+    networks: [overlay]
+    command:
+      - redis-server
+      - --port=6379
+      - --cluster-enabled=yes
+      - --cluster-config-file=nodes.conf
+      - --cluster-node-timeout=5000
+      - --appendonly=yes
+      - --bind=0.0.0.0
+      - --protected-mode=no
+      - --cluster-announce-ip=192.168.122.15
+      - --cluster-announce-port=6379
+      - --cluster-announce-bus-port=16379
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c3
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---- Per-shard Redis exporter ----
+  redis-exporter-c1:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    networks: [overlay]
+    environment:
+      - REDIS_ADDR=redis://192.168.122.13:6379
+      - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c1
+      labels:
+        - "prometheus-job=redis_exporter"
+        - "redis_shard_id=c1"
+      resources:
+        limits:
+          memory: 64M
+
+  redis-exporter-c2:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    networks: [overlay]
+    environment:
+      - REDIS_ADDR=redis://192.168.122.14:6379
+      - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c2
+      labels:
+        - "prometheus-job=redis_exporter"
+        - "redis_shard_id=c2"
+      resources:
+        limits:
+          memory: 64M
+
+  redis-exporter-c3:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    networks: [overlay]
+    environment:
+      - REDIS_ADDR=redis://192.168.122.15:6379
+      - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == redis
+          - node.labels.instance_id == c3
+      labels:
+        - "prometheus-job=redis_exporter"
+        - "redis_shard_id=c3"
+      resources:
+        limits:
+          memory: 64M
+
+  # ---- Backend gateways (2 replicas, one per backend VM) ----
+  gateway-1:
+    image: pixelbattle/backend:phase2
+    networks: [overlay]
+    ports:
+      - target: 8080
+        published: 8081
+        mode: host
+      - target: 9000
+        published: 9000
+        mode: host
+    environment:
+      - LOG_LEVEL=info
+      - REDIS_CLUSTER_ADDRS=192.168.122.13:6379,192.168.122.14:6379,192.168.122.15:6379
+      - REDIS_PSW=
+      - REDIS_CANVAS_HASHTAG_KEYS=true
+      - MONGO_URI=mongodb://mongodb:27017/pixelbattle
+      - GATEWAY_INSTANCE_ID=gw-1
+      - GATEWAY_GRPC_PORT=9000
+      - GATEWAY_PEERS=gw-2:9000
+      - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
+      - GATEWAY_OPSTREAM_CONSUMER=gw-1
+      - WS_ALLOW_ANONYMOUS=false
+      - RATE_LIMIT_PIXEL_PER_SEC=5
+      - RATE_LIMIT_WS_CONN_PER_MIN=300
+      - CANVAS_HEIGHT=250
+      - CANVAS_WIDTH=500
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == backend
+          - node.labels.instance_id == gw-1
+      labels:
+        - "prometheus-job=gateway"
+        - "gateway_instance_id=gw-1"
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  gateway-2:
+    image: pixelbattle/backend:phase2
+    networks: [overlay]
+    ports:
+      - target: 8080
+        published: 8081
+        mode: host
+      - target: 9000
+        published: 9000
+        mode: host
+    environment:
+      - LOG_LEVEL=info
+      - REDIS_CLUSTER_ADDRS=192.168.122.13:6379,192.168.122.14:6379,192.168.122.15:6379
+      - REDIS_PSW=
+      - REDIS_CANVAS_HASHTAG_KEYS=true
+      - MONGO_URI=mongodb://mongodb:27017/pixelbattle
+      - GATEWAY_INSTANCE_ID=gw-2
+      - GATEWAY_GRPC_PORT=9000
+      - GATEWAY_PEERS=gw-1:9000
+      - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
+      - GATEWAY_OPSTREAM_CONSUMER=gw-2
+      - WS_ALLOW_ANONYMOUS=false
+      - RATE_LIMIT_PIXEL_PER_SEC=5
+      - RATE_LIMIT_WS_CONN_PER_MIN=300
+      - CANVAS_HEIGHT=250
+      - CANVAS_WIDTH=500
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == backend
+          - node.labels.instance_id == gw-2
+      labels:
+        - "prometheus-job=gateway"
+        - "gateway_instance_id=gw-2"
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ---- Manager-only services ----
+  mongodb:
+    image: mongo:8.2.4
+    networks: [overlay]
+    command: --bind_ip_all
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == manager
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mongosh --quiet --eval 'db.runCommand({ping:1})'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    networks: [overlay]
+    ports:
+      - target: 9090
+        published: 9090
+        mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=180d
+      - --web.enable-lifecycle
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+      - source: prometheus_clock_skew_rules
+        target: /etc/prometheus/alerts/clock-skew.rules.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == manager
+      resources:
+        limits:
+          memory: 1G
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    networks: [overlay]
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    configs:
+      - source: blackbox_yml
+        target: /etc/blackbox/blackbox.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == manager
+      resources:
+        limits:
+          memory: 128M
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    networks: [overlay]
+    ports:
+      - target: 3000
+        published: 3000
+        mode: host
+    environment:
+      - GF_INSTALL_PLUGINS=volkovlabs-form-panel,yesoreyeram-infinity-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == manager
+      resources:
+        limits:
+          memory: 512M
+
+  caddy:
+    image: pixelbattle/frontend:phase2
+    networks: [overlay]
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    environment:
+      CADDY_DOMAIN: pixelbattle.local
+      ACME_EMAIL: ops@example.com
+      GATEWAY_UPSTREAMS: "gateway-1:8080 gateway-2:8080"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+      - source: caddy_tls
+        target: /etc/caddy/tls.inc
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == manager
+      resources:
+        limits:
+          memory: 512M
+
+  # ---- node-exporter on every host (global mode), drives node_timex_offset_seconds ----
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    networks: [overlay]
+    command:
+      - --path.rootfs=/host
+      - --collector.systemd
+      - --collector.processes
+      - --collector.netdev
+    volumes:
+      - /:/host:ro,rslave
+    deploy:
+      mode: global
+      labels:
+        - "prometheus-job=node_exporter"
+      resources:
+        limits:
+          memory: 64M
