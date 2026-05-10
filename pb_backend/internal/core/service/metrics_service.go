@@ -80,3 +80,5 @@ func ObserveClientWSRenderLatencyMs(v float64) { metrics.ObserveClientWSRenderLa
 func IncrementAdminAction(action, result string) {
 	metrics.IncrementAdminAction(action, result)
 }
+
+func IncrementRejected(reason string) { metrics.IncrementRejected(reason) }

@@ -119,8 +119,9 @@ func main() {
 	if config.WSAllowAnonymous {
 		logrus.Warn("WS_ALLOW_ANONYMOUS is enabled: /ws accepts connections without auth (for benchmarks only)")
 	}
+	wsLimit := websockets.NewLimiterHub(config.RateLimitPixelPerSec, config.RateLimitWSConnPerMinPerIP)
 	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router,
-		config.CanvasHeight, config.CanvasWidth, config.WSAllowAnonymous)
+		config.CanvasHeight, config.CanvasWidth, config.WSAllowAnonymous, wsLimit)
 
 	logrus.Info("Starting server on port 8080")
 	handler := service.InstrumentHandler(router)

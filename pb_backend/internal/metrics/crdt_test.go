@@ -26,6 +26,15 @@ func TestObserveDatabaseOperationScopedIncrementsCounter(t *testing.T) {
 	}
 }
 
+func TestIncrementRejected(t *testing.T) {
+	before := testutil.ToFloat64(rejectedTotal.WithLabelValues("rate_limit_pixel"))
+	IncrementRejected("rate_limit_pixel")
+	after := testutil.ToFloat64(rejectedTotal.WithLabelValues("rate_limit_pixel"))
+	if after-before != 1 {
+		t.Fatalf("delta %g", after-before)
+	}
+}
+
 func TestObserveDatabaseOperationDefaultsShardLabels(t *testing.T) {
 	before := testutil.ToFloat64(databaseOperationTotal.WithLabelValues("x", "redis", "success", MonolithShardID, MonolithInstanceID))
 	ObserveDatabaseOperation("x", "redis", time.Millisecond, nil)

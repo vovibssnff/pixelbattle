@@ -248,6 +248,14 @@ var (
 		},
 		[]string{"action", "result"},
 	)
+
+	rejectedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rejected_total",
+			Help: "Rejected requests or actions (rate limits, policy); see label reason",
+		},
+		[]string{"reason"},
+	)
 )
 
 func init() {
@@ -282,6 +290,7 @@ func init() {
 		clientWebVitalMs,
 		clientWSRenderLatencyMs,
 		adminActionTotal,
+		rejectedTotal,
 	)
 }
 
@@ -410,6 +419,12 @@ func ObserveClientWSRenderLatencyMs(v float64) {
 // dashboard's audit table and by the Phase 1 §13.1 acceptance check.
 func IncrementAdminAction(action, result string) {
 	adminActionTotal.WithLabelValues(action, result).Inc()
+}
+
+// IncrementRejected records gateway-style rejections (plan §11.5). reason examples:
+// rate_limit_pixel, rate_limit_ws_ip, malformed, anonymous_disabled.
+func IncrementRejected(reason string) {
+	rejectedTotal.WithLabelValues(reason).Inc()
 }
 
 func RecordHeatmapPixel(x, y uint) {

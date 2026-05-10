@@ -157,6 +157,12 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if server.limiter != nil && !server.limiter.AllowWSConn(clientIP(r)) {
+		service.IncrementRejected("rate_limit_ws_ip")
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logrus.Error(err)
@@ -225,6 +231,11 @@ func (c *Client) readPump(ctx context.Context) {
 		}
 		pixel.Userid = c.userid
 		pixel.Faculty = c.faculty
+
+		if !c.isAdm && c.server.limiter != nil && !c.server.limiter.AllowPlacement(c.userid) {
+			service.IncrementRejected("rate_limit_pixel")
+			continue
+		}
 
 		if c.isAdm {
 			c.server.broadcast <- &pixel

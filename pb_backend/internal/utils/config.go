@@ -16,6 +16,7 @@ import (
 var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
 	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS",
+	"RATE_LIMIT_PIXEL_PER_SEC", "RATE_LIMIT_WS_CONN_PER_MIN",
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
@@ -74,6 +75,10 @@ type Config struct {
 	PixelCooldownSec int `mapstructure:"PIXEL_COOLDOWN_SEC"`
 	// ADMIN_API_TOKEN: static bearer for Grafana / automation (X-Admin-Token header). Empty = token auth disabled.
 	AdminAPIToken string `mapstructure:"ADMIN_API_TOKEN"`
+	// RateLimitPixelPerSec: max pixel WS messages per second per authenticated userid (non-admins). 0 disables. Default 5 when env unset.
+	RateLimitPixelPerSec int `mapstructure:"RATE_LIMIT_PIXEL_PER_SEC"`
+	// RateLimitWSConnPerMinPerIP: max new /ws handshakes per minute per client IP. 0 disables (recommended for k6 from one loader IP). Set in production (e.g. 50).
+	RateLimitWSConnPerMinPerIP int `mapstructure:"RATE_LIMIT_WS_CONN_PER_MIN"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables
@@ -112,6 +117,13 @@ func LoadConfig(path string) (*Config, error) {
 		config.SessionSecure = viper.GetBool("SESSION_SECURE")
 	} else {
 		config.SessionSecure = true
+	}
+
+	if !viper.IsSet("RATE_LIMIT_PIXEL_PER_SEC") {
+		config.RateLimitPixelPerSec = 5
+	}
+	if !viper.IsSet("RATE_LIMIT_WS_CONN_PER_MIN") {
+		config.RateLimitWSConnPerMinPerIP = 0
 	}
 
 	// Manually parse ADMIN_IDS

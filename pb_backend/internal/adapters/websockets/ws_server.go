@@ -23,6 +23,7 @@ type WsServer struct {
 	canvasHeight     uint
 	canvasWidth      uint
 	allowAnonymousWS bool
+	limiter          *LimiterHub
 }
 
 func NewWebSocketServer(
@@ -32,6 +33,7 @@ func NewWebSocketServer(
 	canvasService domain.CanvasService,
 	canvasHeight, canvasWidth uint,
 	allowAnonymousWS bool,
+	limiter *LimiterHub,
 ) *WsServer {
 	return &WsServer{
 		clients:          make(map[*Client]bool),
@@ -45,6 +47,7 @@ func NewWebSocketServer(
 		canvasHeight:     canvasHeight,
 		canvasWidth:      canvasWidth,
 		allowAnonymousWS: allowAnonymousWS,
+		limiter:          limiter,
 	}
 }
 
@@ -116,6 +119,7 @@ func StartWebSocketServer(
 	router *mux.Router,
 	canvasHeight, canvasWidth int,
 	allowAnonymousWS bool,
+	limiter *LimiterHub,
 ) {
 	var ch, cw uint
 	if canvasHeight > 0 {
@@ -124,7 +128,7 @@ func StartWebSocketServer(
 	if canvasWidth > 0 {
 		cw = uint(canvasWidth)
 	}
-	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, ch, cw, allowAnonymousWS)
+	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, ch, cw, allowAnonymousWS, limiter)
 	go ws.Run()
 
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

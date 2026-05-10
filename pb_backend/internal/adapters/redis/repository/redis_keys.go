@@ -22,6 +22,11 @@ func OpStreamKey(x, y uint) string {
 	return fmt.Sprintf("opstream:{%d:%d}", y, x)
 }
 
+// PixelMetaKey is a HASH holding latest_stream_id and HLC fields for LWW (same slot as pixel / opstream).
+func PixelMetaKey(x, y uint) string {
+	return fmt.Sprintf("pixmeta:{%d:%d}", y, x)
+}
+
 const pixelKeyGlob = "pixel:*"
 
 // collectKeysMatching returns all keys matching pattern. For *redis.ClusterClient it scans

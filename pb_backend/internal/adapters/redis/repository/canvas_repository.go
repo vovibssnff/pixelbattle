@@ -25,6 +25,9 @@ func (r *CanvasRepository) pixelKey(x, y uint) string {
 }
 
 func (r *CanvasRepository) WritePixel(ctx context.Context, x, y uint, pixelData []byte) error {
+	if r.hashTagKeys {
+		return r.writePixelWithOpLog(ctx, x, y, pixelData)
+	}
 	start := time.Now()
 	err := r.rdb.RPush(ctx, r.pixelKey(x, y), pixelData).Err()
 	metrics.ObserveDatabaseOperation("write_pixel", "redis", time.Since(start), err)
