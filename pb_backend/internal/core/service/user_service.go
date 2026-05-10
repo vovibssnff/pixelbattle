@@ -6,12 +6,22 @@ import (
 	"fmt"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
+	"regexp"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 const bcryptCost = bcrypt.DefaultCost
+
+var canonicalUserIDPattern = regexp.MustCompile(`^(vk_[0-9]+|[a-z0-9_]{3,32})$`)
+
+func validateCanonicalUserID(userid string) error {
+	if !canonicalUserIDPattern.MatchString(userid) {
+		return fmt.Errorf("invalid user id")
+	}
+	return nil
+}
 
 type UserService struct {
 	repo         domain.UserRepository
@@ -147,6 +157,9 @@ func (s *UserService) GrantAdminRole(ctx context.Context, userid string) error {
 	if userid == "" {
 		return fmt.Errorf("empty user id")
 	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
+	}
 	return s.repo.GrantAdminRole(ctx, userid)
 }
 
@@ -155,6 +168,9 @@ func (s *UserService) RevokeAdminRole(ctx context.Context, userid string) error 
 	userid = strings.TrimSpace(userid)
 	if userid == "" {
 		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
 	}
 	return s.repo.RevokeAdminRole(ctx, userid)
 }
@@ -170,6 +186,9 @@ func (s *UserService) BanUser(ctx context.Context, userid string) error {
 	if userid == "" {
 		return fmt.Errorf("empty user id")
 	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
+	}
 	return s.repo.BanUser(ctx, userid)
 }
 
@@ -178,6 +197,9 @@ func (s *UserService) UnbanUser(ctx context.Context, userid string) error {
 	userid = strings.TrimSpace(userid)
 	if userid == "" {
 		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
 	}
 	return s.repo.UnbanUser(ctx, userid)
 }
