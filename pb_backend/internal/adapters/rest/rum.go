@@ -9,17 +9,22 @@ import (
 	"time"
 )
 
+type rumCorrection struct {
+	Reason string `json:"reason"`
+}
+
 type rumBeaconPayload struct {
-	Session          string   `json:"session"`
-	Version          string   `json:"version"`
-	FPSAvg           float64  `json:"fps_avg"`
-	FPSP10           float64  `json:"fps_p10"`
-	FrameTimeP95Ms   float64  `json:"frame_time_ms_p95"`
-	LCPMs            float64  `json:"lcp_ms"`
-	INPMs            float64  `json:"inp_ms"`
-	TTFBMs           float64  `json:"ttfb_ms"`
-	WSRenderLatP95Ms float64  `json:"ws_render_lat_ms_p95"`
-	Errors           []string `json:"errors"`
+	Session          string          `json:"session"`
+	Version          string          `json:"version"`
+	FPSAvg           float64         `json:"fps_avg"`
+	FPSP10           float64         `json:"fps_p10"`
+	FrameTimeP95Ms   float64         `json:"frame_time_ms_p95"`
+	LCPMs            float64         `json:"lcp_ms"`
+	INPMs            float64         `json:"inp_ms"`
+	TTFBMs           float64         `json:"ttfb_ms"`
+	WSRenderLatP95Ms float64         `json:"ws_render_lat_ms_p95"`
+	Errors           []string        `json:"errors"`
+	Corrections      []rumCorrection `json:"optimistic_corrections"`
 }
 
 func (h *RestHandlers) HandleRUMBeacon(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +64,10 @@ func (h *RestHandlers) HandleRUMBeacon(w http.ResponseWriter, r *http.Request) {
 
 	for range payload.Errors {
 		service.IncrementWSError("client")
+	}
+
+	for _, c := range payload.Corrections {
+		service.IncrementOptimisticCorrection(c.Reason)
 	}
 
 	service.IncrementRUMBeacon("success")

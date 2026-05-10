@@ -82,3 +82,7 @@ func IncrementAdminAction(action, result string) {
 }
 
 func IncrementRejected(reason string) { metrics.IncrementRejected(reason) }
+
+func IncrementOptimisticCorrection(reason string) {
+	metrics.IncrementOptimisticCorrection(reason)
+}

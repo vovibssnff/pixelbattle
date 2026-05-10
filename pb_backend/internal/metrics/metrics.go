@@ -256,6 +256,14 @@ var (
 		},
 		[]string{"reason"},
 	)
+
+	optimisticCorrectionTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optimistic_correction_total",
+			Help: "Optimistic UI rollbacks reported via RUM (plan §11.1); reason distinguishes mismatch vs superseded",
+		},
+		[]string{"reason"},
+	)
 )
 
 func init() {
@@ -291,6 +299,7 @@ func init() {
 		clientWSRenderLatencyMs,
 		adminActionTotal,
 		rejectedTotal,
+		optimisticCorrectionTotal,
 	)
 }
 
@@ -425,6 +434,14 @@ func IncrementAdminAction(action, result string) {
 // rate_limit_pixel, rate_limit_ws_ip, malformed, anonymous_disabled.
 func IncrementRejected(reason string) {
 	rejectedTotal.WithLabelValues(reason).Inc()
+}
+
+// IncrementOptimisticCorrection records a client-reported optimistic UI rollback (RUM beacon).
+func IncrementOptimisticCorrection(reason string) {
+	if reason == "" {
+		reason = "unknown"
+	}
+	optimisticCorrectionTotal.WithLabelValues(reason).Inc()
 }
 
 func RecordHeatmapPixel(x, y uint) {
