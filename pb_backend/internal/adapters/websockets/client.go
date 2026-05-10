@@ -15,25 +15,25 @@ import (
 )
 
 type Client struct {
-	conn           *websocket.Conn
-	server         *WsServer
-	send           chan *domain.Pixel
-	control        chan []byte
-	initialReplay  []*domain.Pixel
-	wireV2         bool
-	userid         string
-	faculty        string
-	isAdm          bool
-	timerService   domain.TimerService
-	userService    domain.UserService
-	canvasWidth    uint
-	canvasHeight   uint
+	conn          *websocket.Conn
+	server        *WsServer
+	send          chan *domain.Pixel
+	control       chan []byte
+	initialReplay []*domain.Pixel
+	wireV2        bool
+	userid        string
+	faculty       string
+	isAdm         bool
+	timerService  domain.TimerService
+	userService   domain.UserService
+	canvasWidth   uint
+	canvasHeight  uint
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:      4096,
-	WriteBufferSize:     4096,
-	EnableCompression:   true,
+	ReadBufferSize:    4096,
+	WriteBufferSize:   4096,
+	EnableCompression: true,
 	CheckOrigin: func(_ *http.Request) bool {
 		return true
 	},

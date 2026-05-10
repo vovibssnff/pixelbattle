@@ -14,8 +14,8 @@ const (
 )
 
 const (
-	wirePixelV2Type     = byte(1)
-	wirePixelV2Len      = 20 // type + xy + rgb + client_seq + ts
+	wirePixelV2Type      = byte(1)
+	wirePixelV2Len       = 20 // type + xy + rgb + client_seq + ts
 	wirePixelV2LenLegacy = 16 // pre–client_seq v2 frames (client_seq=0)
 	wirePixelV2MaxCoord  = 65535
 )

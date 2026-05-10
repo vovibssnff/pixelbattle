@@ -38,9 +38,10 @@ func CanvasSizeKey(hashTagKeys bool) string {
 	return "canvas:size"
 }
 
-// collectKeysMatching returns all keys matching pattern. For *redis.ClusterClient it scans
+// collectPixelKeys returns all canvas pixel keys (pixel:* / hashtag form). For *redis.ClusterClient it scans
 // each master (KEYS is not cluster-safe). For standalone *redis.Client it uses KEYS.
-func collectKeysMatching(ctx context.Context, rdb redis.Cmdable, pattern string) ([]string, error) {
+func collectPixelKeys(ctx context.Context, rdb redis.Cmdable) ([]string, error) {
+	pattern := pixelKeyGlob
 	if cl, ok := rdb.(*redis.ClusterClient); ok {
 		var out []string
 		err := cl.ForEachMaster(ctx, func(ctx context.Context, c *redis.Client) error {

@@ -53,6 +53,8 @@ scrape_configs:
       - targets:
           - http://caddy/healthz
           - http://caddy/init_canvas
+          # Phase 2 §11.3: snapshot init path (plan §9 blackbox contract)
+          - http://caddy/api/canvas.png
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

@@ -70,10 +70,11 @@ const encodedClockLen = 12
 
 // Encode appends a fixed-width big-endian encoding of c to buf and returns the extended slice.
 func Encode(buf []byte, c Clock) []byte {
-	out := append(buf, make([]byte, encodedClockLen)...)
-	i := len(buf)
-	binary.BigEndian.PutUint64(out[i:i+8], c.Millis)
-	binary.BigEndian.PutUint32(out[i+8:i+12], c.Logical)
+	n := len(buf)
+	out := make([]byte, n+encodedClockLen)
+	copy(out, buf)
+	binary.BigEndian.PutUint64(out[n:n+8], c.Millis)
+	binary.BigEndian.PutUint32(out[n+8:n+12], c.Logical)
 	return out
 }
 

@@ -84,7 +84,7 @@ func (r *CanvasRepository) WritePixel(ctx context.Context, x, y uint, pixelData 
 
 func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
 	start := time.Now()
-	keys, err := collectKeysMatching(ctx, r.rdb, pixelKeyGlob)
+	keys, err := collectPixelKeys(ctx, r.rdb)
 	metrics.ObserveDatabaseOperation("check_initialized", "redis", time.Since(start), err)
 	if err != nil {
 		logrus.Error(err)
@@ -95,7 +95,7 @@ func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
 
 func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, error) {
 	start := time.Now()
-	keys, err := collectKeysMatching(ctx, r.rdb, pixelKeyGlob)
+	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), err)
 		return nil, err
@@ -126,7 +126,7 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 
 func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]string, error) {
 	start := time.Now()
-	keys, err := collectKeysMatching(ctx, r.rdb, pixelKeyGlob)
+	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), err)
 		return nil, err
@@ -157,7 +157,7 @@ func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]s
 
 func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, error) {
 	start := time.Now()
-	keys, err := collectKeysMatching(ctx, r.rdb, pixelKeyGlob)
+	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), err)
 		return nil, err
