@@ -19,6 +19,7 @@ type Client struct {
 	server         *WsServer
 	send           chan *domain.Pixel
 	initialReplay  []*domain.Pixel
+	wireV2         bool
 	userid         string
 	faculty        string
 	isAdm          bool
@@ -29,11 +30,14 @@ type Client struct {
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  4096,
-	WriteBufferSize: 4096,
+	ReadBufferSize:      4096,
+	WriteBufferSize:     4096,
+	EnableCompression:   true,
 	CheckOrigin: func(_ *http.Request) bool {
 		return true
 	},
+	// Prefer v2 (binary pixels); client may omit header → no subprotocol → JSON v1.
+	Subprotocols: []string{SubprotocolV2, SubprotocolV1},
 }
 
 const (
@@ -53,12 +57,14 @@ func NewClient(
 	userService domain.UserService,
 	canvasWidth, canvasHeight uint,
 	initialReplay []*domain.Pixel,
+	wireV2 bool,
 ) *Client {
 	return &Client{
 		conn:          conn,
 		server:        server,
 		send:          make(chan *domain.Pixel, 256),
 		initialReplay: initialReplay,
+		wireV2:        wireV2,
 		userid:        userid,
 		faculty:       faculty,
 		isAdm:         isAdm,
@@ -189,6 +195,8 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		initialReplay = server.replay.Since(ra)
 	}
 
+	wireV2 := conn.Subprotocol() == SubprotocolV2
+
 	client := NewClient(
 		conn,
 		server,
@@ -200,6 +208,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		server.canvasWidth,
 		server.canvasHeight,
 		initialReplay,
+		wireV2,
 	)
 
 	go client.writePump()
@@ -219,7 +228,7 @@ func (c *Client) readPump(ctx context.Context) {
 		return nil
 	})
 	for {
-		_, msg, err := c.conn.ReadMessage()
+		mt, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				logrus.Error(err)
@@ -232,9 +241,21 @@ func (c *Client) readPump(ctx context.Context) {
 		serverRecvMs := time.Now().UnixMilli()
 
 		var pixel domain.Pixel
-		if err = utils.DeserializePixel(msg, &pixel); err != nil {
-			logrus.Error(err)
-			service.IncrementWSError("deserialize")
+		switch mt {
+		case websocket.BinaryMessage:
+			pixel, err = decodeClientPixelV2(msg)
+			if err != nil {
+				logrus.Debug(err)
+				service.IncrementWSError("deserialize_binary")
+				continue
+			}
+		case websocket.TextMessage:
+			if err = utils.DeserializePixel(msg, &pixel); err != nil {
+				logrus.Error(err)
+				service.IncrementWSError("deserialize")
+				continue
+			}
+		default:
 			continue
 		}
 		if !validPixel(&pixel, c.canvasWidth, c.canvasHeight) {
@@ -281,6 +302,24 @@ func (c *Client) readPump(ctx context.Context) {
 	}
 }
 
+func (c *Client) writeBinary(b []byte) error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+		service.IncrementWSError("write")
+		return err
+	}
+	return nil
+}
+
+func (c *Client) writePixelOut(pixel *domain.Pixel) error {
+	if c.wireV2 {
+		if b := encodePixelV2(pixel); b != nil {
+			return c.writeBinary(b)
+		}
+	}
+	return c.writePixelJSON(pixel)
+}
+
 func (c *Client) writePixelJSON(pixel *domain.Pixel) error {
 	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	w, err := c.conn.NextWriter(websocket.TextMessage)
@@ -312,7 +351,7 @@ func (c *Client) writePump() {
 		c.conn.Close()
 	}()
 	for _, p := range c.initialReplay {
-		if err := c.writePixelJSON(p); err != nil {
+		if err := c.writePixelOut(p); err != nil {
 			return
 		}
 	}
@@ -327,7 +366,7 @@ func (c *Client) writePump() {
 				return
 			}
 
-			if err := c.writePixelJSON(pixel); err != nil {
+			if err := c.writePixelOut(pixel); err != nil {
 				return
 			}
 		case <-ticker.C:

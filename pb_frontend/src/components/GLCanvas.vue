@@ -291,13 +291,33 @@ export default {
       } catch { /* outside canvas */ }
     },
     send(x, y, color) {
+      const xn = Math.floor(x);
+      const yn = Math.floor(y);
+      if (
+        this.ws &&
+        this.ws.readyState === WebSocket.OPEN &&
+        this.ws.protocol === 'pixelbattle.v2'
+      ) {
+        const buf = new ArrayBuffer(16);
+        const v = new DataView(buf);
+        const u8 = new Uint8Array(buf);
+        u8[0] = 1;
+        v.setUint16(1, xn, true);
+        v.setUint16(3, yn, true);
+        u8[5] = color[0];
+        u8[6] = color[1];
+        u8[7] = color[2];
+        v.setBigInt64(8, BigInt(Date.now()), true);
+        this.ws.send(buf);
+        return;
+      }
       const pixel = {
-          x: Math.floor(x),
-          y: Math.floor(y),
-          color: [color[0], color[1], color[2]],
-          client_sent_ms: Date.now(),
-        };
-        this.ws.send(JSON.stringify(pixel));
+        x: xn,
+        y: yn,
+        color: [color[0], color[1], color[2]],
+        client_sent_ms: Date.now(),
+      };
+      this.ws.send(JSON.stringify(pixel));
     },
     sendPixel(x, y, color) {
       // console.log(this.isGod);
@@ -345,7 +365,7 @@ export default {
       if (replayAfterMs != null && replayAfterMs > 0) {
         url.searchParams.set('replay_after_ms', String(replayAfterMs));
       }
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(url, ['pixelbattle.v2', 'pixelbattle.v1']);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
     /** Backend JSON uses x, y, color (Go json tags); tolerate legacy X, Y, Color. */
@@ -362,13 +382,48 @@ export default {
         new Uint8Array([Number(c[0]), Number(c[1]), Number(c[2])]),
       );
     },
+    applyBinaryPixelV2(u8) {
+      if (u8.length !== 16 || u8[0] !== 1) {
+        this.rum?.errors?.push('ws_bad_binary');
+        return;
+      }
+      const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      const x = v.getUint16(1, true);
+      const y = v.getUint16(3, true);
+      const serverRecvMs = Number(v.getBigInt64(8, true));
+      const pixel = {
+        x,
+        y,
+        color: [u8[5], u8[6], u8[7]],
+        server_recv_ms: serverRecvMs,
+      };
+      if (serverRecvMs) {
+        this.rum?.recordWSRenderLatency(serverRecvMs);
+      }
+      if (!this.loaded) {
+        this.savedPixels.push(pixel);
+      } else {
+        this.applyRemotePixel(pixel);
+      }
+    },
     handleNewPixel(event) {
+      const d = event.data;
+      if (d instanceof ArrayBuffer) {
+        this.applyBinaryPixelV2(new Uint8Array(d));
+        return;
+      }
+      if (typeof Blob !== 'undefined' && d instanceof Blob) {
+        d.arrayBuffer().then((buf) => this.applyBinaryPixelV2(new Uint8Array(buf)));
+        return;
+      }
+      if (typeof d !== 'string') {
+        return;
+      }
       let pixel;
       try {
-        pixel = JSON.parse(event.data);
+        pixel = JSON.parse(d);
       } catch {
         this.rum?.errors?.push('ws_non_json');
-        /* non-JSON websocket message */
         return;
       }
       const serverRecvMs = pixel.server_recv_ms ?? pixel.serverRecvMs;
