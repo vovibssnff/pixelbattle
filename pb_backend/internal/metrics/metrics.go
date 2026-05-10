@@ -352,6 +352,7 @@ func ObserveDatabaseOperationScoped(operation, storageType, shardID, instanceID 
 }
 
 // IncrementCRDTResolved records which ordering path won (path: stream_id | hlc_fallback).
+// Call from adapters after domain/crdt.DecideLWW — see adr/002-phase2-adapter-boundaries.md (ADR-002).
 func IncrementCRDTResolved(path string) {
 	crdtResolvedTotal.WithLabelValues(path).Inc()
 }

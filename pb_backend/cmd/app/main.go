@@ -74,7 +74,7 @@ func main() {
 	sessionStore.Options.Secure = config.SessionSecure
 	sessionStore.Options.SameSite = http.SameSiteLaxMode
 
-	canvasService := service.NewCanvasService(*canvasRepo)
+	canvasService := service.NewCanvasService(canvasRepo)
 	usrService := service.NewUserService(mongoUsrRepo, config.AdminIDs, config.AdminUsernames)
 	timerService := service.NewTimerService(*timerRepo, config.PixelCooldownSec)
 	sessionService := service.NewSessionService(sessionStore)

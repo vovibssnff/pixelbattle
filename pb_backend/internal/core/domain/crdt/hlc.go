@@ -1,3 +1,5 @@
+// Package crdt holds pure last-write-wins ordering: Hybrid Logical Clocks and Redis stream IDs.
+// See adr/001-crdt-hexagonal-layering.md at repo root (ADR-001).
 package crdt
 
 import (
@@ -109,6 +111,12 @@ func CompareStreamIDs(a, b string) (int, error) {
 	default:
 		return 0, nil
 	}
+}
+
+// ValidStreamID reports whether s parses as a Redis stream ID.
+func ValidStreamID(s string) bool {
+	_, _, err := parseStreamID(s)
+	return err == nil
 }
 
 func parseStreamID(s string) (ms uint64, seq uint64, err error) {
