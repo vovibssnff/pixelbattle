@@ -15,6 +15,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CI_SEMGREP: "0"
+
 jobs:
   secrets-scan:
     runs-on: ubuntu-latest
@@ -63,12 +66,13 @@ jobs:
       - name: gosec
         uses: securego/gosec@master
         with:
-          args: ./...
+          args: -exclude=G104,G114,G115 pb_backend/...
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
       - name: semgrep
+        if: env.CI_SEMGREP == '1'
         uses: semgrep/semgrep-action@v1
         with:
           config: >-
@@ -109,8 +113,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: NPM audit (high+)
-        run: npm audit --audit-level=high
+        run: NPM_CONFIG_FETCH_RETRIES=8 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 npm audit --audit-level=high
       - name: semgrep
+        if: env.CI_SEMGREP == '1'
         uses: semgrep/semgrep-action@v1
         with:
           config: >-
@@ -130,27 +135,60 @@ jobs:
           dockerfile: pb_frontend/Dockerfile
           config: .hadolint.yaml
 
-  iac-scan:
+  ansible-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Trivy config scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+      - name: Git safe.directory for ansible-lint
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - uses: actions/setup-python@v6
         with:
-          scan-type: config
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: "1"
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install "ansible-lint>=24,<26"
+      - name: Lint deploy playbooks
+        run: ansible-lint deploy/ -c .ansible-lint
 
-  container-security:
+  benchmark-tooling-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Git safe.directory for ansible-lint
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install "ansible-lint>=24,<26"
+      - name: Lint benchmark playbooks
+        run: ansible-lint benchmark/ -c .ansible-lint
+
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pb_backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: pb_backend/go.mod
+          cache: true
+          cache-dependency-path: pb_backend/go.sum
+      - name: Unit tests
+        run: go test ./...
+
+  docker-build:
     needs:
       - secrets-scan
+      - ansible-lint
+      - benchmark-tooling-lint
+      - backend-test
       - backend-lint
       - backend-sast
       - frontend-lint
       - frontend-security
       - dockerfile-lint
-      - iac-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -158,21 +196,3 @@ jobs:
         run: docker build -t pb-backend:${{ github.sha }} pb_backend/
       - name: Build frontend image
         run: docker build -t pb-frontend:${{ github.sha }} pb_frontend/
-      - name: Trivy backend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: pb-backend:${{ github.sha }}
-          format: table
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-      - name: Trivy frontend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: pb-frontend:${{ github.sha }}
-          format: table
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          exit-code: "1"

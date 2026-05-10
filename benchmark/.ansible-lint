@@ -1,0 +1,24 @@
+---
+# Prefer the repo root `.ansible-lint` when linting from CI. Local runs from
+# benchmark/ only may use this file unless you pass `-c ../.ansible-lint`.
+profile: production
+
+exclude_paths:
+  - .venv/
+  - .cache/
+
+warn_list:
+  - no-changed-when
+  - name[casing]
+  - jinja[spacing]
+  - key-order[task]
+  - yaml[empty-lines]
+  - yaml[line-length]
+  - schema[meta]
+  - command-instead-of-module
+
+enable_list:
+  - fqcn-builtins
+  - no-free-form
+
+offline: true

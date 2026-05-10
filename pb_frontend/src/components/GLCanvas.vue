@@ -80,6 +80,7 @@
 <script>
 import GLWindow from '@/webgl/glwindow.js'
 import Place from '@/webgl/place.js'
+import RUMCollector from '@/utils/rum.js'
 
 export default {
   data() {
@@ -109,7 +110,8 @@ export default {
       activeSwatch: 0,
       loaded: false,
       savedPixels: [],
-      isGod: null
+      isGod: null,
+      rum: null,
     }
   },
   watch: {
@@ -125,6 +127,8 @@ export default {
   },
   mounted() {
     document.title='Pixelbattle';
+    this.rum = new RUMCollector();
+    this.rum.start();
 
     fetch("https://ruddnev.github.io/pixelbattle-tales/tales.txt") // Replace with your actual file URL
       .then(response => response.text())
@@ -207,6 +211,9 @@ export default {
     // this.setField(document.querySelector("#color-field"));
     // window.alert("ПКМ - рисование, ЛКМ - навигация, CTRL+ПКМ - копирование цвета в палитру, https://www.color-hex.com/ - в помощь для подбора цветов");
   },
+  beforeUnmount() {
+    this.rum?.stop();
+  },
   methods: {
     selectSwatch(index) {
       if (this.activeSwatch == index) {
@@ -283,6 +290,7 @@ export default {
           x: Math.floor(x),
           y: Math.floor(y),
           color: [color[0], color[1], color[2]],
+          client_sent_ms: Date.now(),
         };
         this.ws.send(JSON.stringify(pixel));
     },
@@ -351,8 +359,13 @@ export default {
       try {
         pixel = JSON.parse(event.data);
       } catch {
+        this.rum?.errors?.push('ws_non_json');
         /* non-JSON websocket message */
         return;
+      }
+      const serverRecvMs = pixel.server_recv_ms ?? pixel.serverRecvMs;
+      if (serverRecvMs) {
+        this.rum?.recordWSRenderLatency(serverRecvMs);
       }
       if (!this.loaded) {
         this.savedPixels.push(pixel);

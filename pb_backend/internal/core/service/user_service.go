@@ -6,12 +6,22 @@ import (
 	"fmt"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/utils"
+	"regexp"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 const bcryptCost = bcrypt.DefaultCost
+
+var canonicalUserIDPattern = regexp.MustCompile(`^(vk_[0-9]+|[a-z0-9_]{3,32})$`)
+
+func validateCanonicalUserID(userid string) error {
+	if !canonicalUserIDPattern.MatchString(userid) {
+		return fmt.Errorf("invalid user id")
+	}
+	return nil
+}
 
 type UserService struct {
 	repo         domain.UserRepository
@@ -133,11 +143,51 @@ func (s *UserService) IsAdmin(id string) bool {
 	return false
 }
 
+// IsEffectiveAdmin includes static admins and Mongo `admin_grants`.
+func (s *UserService) IsEffectiveAdmin(ctx context.Context, id string) bool {
+	if s.IsAdmin(id) {
+		return true
+	}
+	return s.repo.IsDynamicAdmin(ctx, strings.TrimSpace(id))
+}
+
+// GrantAdminRole persists a dynamic admin grant (Mongo).
+func (s *UserService) GrantAdminRole(ctx context.Context, userid string) error {
+	userid = strings.TrimSpace(userid)
+	if userid == "" {
+		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
+	}
+	return s.repo.GrantAdminRole(ctx, userid)
+}
+
+// RevokeAdminRole removes a dynamic admin grant.
+func (s *UserService) RevokeAdminRole(ctx context.Context, userid string) error {
+	userid = strings.TrimSpace(userid)
+	if userid == "" {
+		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
+	}
+	return s.repo.RevokeAdminRole(ctx, userid)
+}
+
+// ListUserIDs returns up to `limit` user _id values for admin UI dropdowns.
+func (s *UserService) ListUserIDs(ctx context.Context, limit int) ([]string, error) {
+	return s.repo.ListUserIDs(ctx, limit)
+}
+
 // BanUser bans a user by canonical id (e.g. vk_123 or local username).
 func (s *UserService) BanUser(ctx context.Context, userid string) error {
 	userid = strings.TrimSpace(userid)
 	if userid == "" {
 		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
 	}
 	return s.repo.BanUser(ctx, userid)
 }
@@ -147,6 +197,9 @@ func (s *UserService) UnbanUser(ctx context.Context, userid string) error {
 	userid = strings.TrimSpace(userid)
 	if userid == "" {
 		return fmt.Errorf("empty user id")
+	}
+	if err := validateCanonicalUserID(userid); err != nil {
+		return err
 	}
 	return s.repo.UnbanUser(ctx, userid)
 }

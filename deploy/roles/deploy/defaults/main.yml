@@ -9,6 +9,11 @@ deploy_git_branch: "main"
 deploy_compose_retries: 5
 deploy_compose_retry_delay: 45
 
+# Docker Compose project name → volumes are named ${project}_<volume_key>.
+# Leave empty to use the last path segment of deploy_project_dir (e.g. pixelbattle).
+# Override if COMPOSE_PROJECT_NAME in the target .env differs.
+deploy_compose_project_name: ""
+
 # Wait at most retries*delay seconds for the public Caddy endpoint to come up.
 deploy_health_retries: 30
 deploy_health_delay: 5

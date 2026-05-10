@@ -1,0 +1,299 @@
+---
+- name: Ensure collection directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_collected_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [collect]
+
+# --- Database benchmark results ---
+
+- name: Check benchmark results directory exists
+  ansible.builtin.stat:
+    path: "{{ benchmark_results_dir }}"
+  register: benchmark_bench_dir
+  tags: [collect]
+
+- name: Collect database benchmark results
+  tags: [collect]
+  when: benchmark_bench_dir.stat.exists
+  block:
+    - name: Find benchmark JSON result files
+      ansible.builtin.find:
+        paths: "{{ benchmark_results_dir }}"
+        patterns: "*.json"
+        file_type: file
+      register: benchmark_bench_json_files
+
+    - name: Find benchmark log files
+      ansible.builtin.find:
+        paths: "{{ benchmark_results_dir }}"
+        patterns: "*.txt"
+        file_type: file
+      register: benchmark_bench_log_files
+
+    - name: Create benchmarks subdirectory in collection
+      ansible.builtin.file:
+        path: "{{ benchmark_collected_dir }}/benchmarks"
+        state: directory
+        mode: "0755"
+
+    - name: Copy benchmark JSON results
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_collected_dir }}/benchmarks/{{ item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+      loop: "{{ benchmark_bench_json_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Create benchmarks/logs subdirectory in collection
+      ansible.builtin.file:
+        path: "{{ benchmark_collected_dir }}/benchmarks/logs"
+        state: directory
+        mode: "0755"
+      when: benchmark_bench_log_files.files | length > 0
+
+    - name: Copy benchmark log files
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_collected_dir }}/benchmarks/logs/{{ item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+      loop: "{{ benchmark_bench_log_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+# --- k6 results ---
+
+- name: Check k6 results directory exists
+  ansible.builtin.stat:
+    path: "{{ benchmark_k6_results_dir }}"
+  register: benchmark_k6_dir_stat
+  tags: [collect]
+
+- name: Collect k6 test results
+  tags: [collect]
+  when: benchmark_k6_dir_stat.stat.exists
+  block:
+    - name: Find k6 JSON result files
+      ansible.builtin.find:
+        paths: "{{ benchmark_k6_results_dir }}"
+        patterns: "*.json"
+        file_type: file
+      register: benchmark_k6_json_files
+
+    - name: Find k6 log files
+      ansible.builtin.find:
+        paths: "{{ benchmark_k6_results_dir }}"
+        patterns: "*.txt"
+        file_type: file
+      register: benchmark_k6_log_files
+
+    - name: Create k6 subdirectory in collection
+      ansible.builtin.file:
+        path: "{{ benchmark_collected_dir }}/k6"
+        state: directory
+        mode: "0755"
+
+    - name: Copy k6 JSON results
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_collected_dir }}/k6/{{ item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+      loop: "{{ benchmark_k6_json_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Create k6/logs subdirectory in collection
+      ansible.builtin.file:
+        path: "{{ benchmark_collected_dir }}/k6/logs"
+        state: directory
+        mode: "0755"
+      when: benchmark_k6_log_files.files | length > 0
+
+    - name: Copy k6 log files
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ benchmark_collected_dir }}/k6/logs/{{ item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+      loop: "{{ benchmark_k6_log_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+# --- Prometheus metrics ---
+
+- name: Ensure Prometheus collection directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_collected_dir }}/prometheus"
+    state: directory
+    mode: "0755"
+  tags: [collect]
+
+- name: Collect Prometheus metrics
+  tags: [collect]
+  block:
+    - name: Probe Prometheus availability
+      ansible.builtin.uri:
+        url: "{{ benchmark_prometheus_url }}/api/v1/query?query=up"
+        method: GET
+        status_code: [200, 404]
+      register: benchmark_prometheus_probe
+      failed_when: false
+
+    - name: Collect database operation metrics
+      ansible.builtin.uri:
+        url: "{{ benchmark_prometheus_url }}/api/v1/query?query=database_operation_duration_seconds"
+        method: GET
+        return_content: true
+      register: benchmark_db_metrics
+      when: benchmark_prometheus_probe.status == 200
+      failed_when: false
+
+    - name: Save database operation metrics
+      ansible.builtin.copy:
+        content: "{{ benchmark_db_metrics.json | to_nice_json }}"
+        dest: "{{ benchmark_collected_dir }}/prometheus/database_operations.json"
+        mode: "0644"
+      when:
+        - benchmark_prometheus_probe.status == 200
+        - benchmark_db_metrics is defined
+        - benchmark_db_metrics.json is defined
+
+    - name: Collect WebSocket metrics
+      ansible.builtin.uri:
+        url: "{{ benchmark_prometheus_url }}/api/v1/query?query=websocket_message_duration_seconds"
+        method: GET
+        return_content: true
+      register: benchmark_ws_metrics
+      when: benchmark_prometheus_probe.status == 200
+      failed_when: false
+
+    - name: Save WebSocket metrics
+      ansible.builtin.copy:
+        content: "{{ benchmark_ws_metrics.json | to_nice_json }}"
+        dest: "{{ benchmark_collected_dir }}/prometheus/websocket_metrics.json"
+        mode: "0644"
+      when:
+        - benchmark_prometheus_probe.status == 200
+        - benchmark_ws_metrics is defined
+        - benchmark_ws_metrics.json is defined
+
+    - name: Collect general metrics snapshot
+      ansible.builtin.uri:
+        url: "{{ benchmark_prometheus_url }}/api/v1/query?query=up"
+        method: GET
+        return_content: true
+      register: benchmark_metrics_snapshot
+      when: benchmark_prometheus_probe.status == 200
+      failed_when: false
+
+    - name: Save general metrics snapshot
+      ansible.builtin.copy:
+        content: "{{ benchmark_metrics_snapshot.json | to_nice_json }}"
+        dest: "{{ benchmark_collected_dir }}/prometheus/metrics_snapshot.json"
+        mode: "0644"
+      when:
+        - benchmark_prometheus_probe.status == 200
+        - benchmark_metrics_snapshot is defined
+        - benchmark_metrics_snapshot.json is defined
+
+    - name: Warn when Prometheus is not reachable
+      ansible.builtin.debug:
+        msg: "Prometheus not reachable at {{ benchmark_prometheus_url }} -- skipping metric collection."
+      when: benchmark_prometheus_probe.status != 200
+  rescue:
+    - name: Warn on Prometheus collection failure
+      ansible.builtin.debug:
+        msg: "Prometheus metric collection failed -- continuing without metrics."
+
+# --- Docker container logs ---
+
+- name: Ensure logs collection directory exists
+  ansible.builtin.file:
+    path: "{{ benchmark_collected_dir }}/logs"
+    state: directory
+    mode: "0755"
+  tags: [collect]
+
+- name: Check Docker is available
+  ansible.builtin.command: which docker
+  register: benchmark_docker_check
+  changed_when: false
+  failed_when: false
+  tags: [collect]
+
+- name: Collect Docker container logs
+  tags: [collect]
+  when:
+    - benchmark_docker_check.rc == 0
+    - benchmark_collect_docker_logs | bool
+  block:
+    - name: Define containers to collect logs from
+      ansible.builtin.set_fact:
+        benchmark_containers:
+          - { name: "pixelbattle-backend-1", label: "backend" }
+          - { name: "pixelbattle-postgres-1", label: "postgres" }
+          - { name: "pixelbattle-redis-1", label: "redis" }
+          - { name: "pixelbattle-prometheus-1", label: "prometheus" }
+
+    - name: Fetch container logs
+      ansible.builtin.command: docker logs {{ item.name }} --tail {{ benchmark_docker_log_tail }}
+      register: benchmark_container_logs
+      loop: "{{ benchmark_containers }}"
+      loop_control:
+        label: "{{ item.label }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Save container logs
+      ansible.builtin.copy:
+        content: |
+          {{ item.item.label | title }} Container Logs
+          {{ '=' * (item.item.label | length + 17) }}
+          {{ item.stdout | default('Container not found or no logs available.') }}
+        dest: "{{ benchmark_collected_dir }}/logs/{{ item.item.label }}.log"
+        mode: "0644"
+      loop: "{{ benchmark_container_logs.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: item.rc == 0
+
+# --- Summary ---
+
+- name: Write collection summary
+  ansible.builtin.copy:
+    content: |
+      Results Collection Summary
+      ==========================
+      Timestamp: {{ ansible_date_time.iso8601 }}
+      Collection Directory: {{ benchmark_collected_dir }}
+
+      Collected:
+      - Benchmark results: {{ benchmark_bench_json_files.files | default([]) | length }} JSON files
+      - k6 results: {{ benchmark_k6_json_files.files | default([]) | length }} JSON files
+      - Prometheus metrics: {{ 'yes' if benchmark_prometheus_probe.status | default(0) == 200 else 'no (Prometheus unreachable)' }}
+      - Container logs: {{ 'yes' if benchmark_docker_check.rc == 0 else 'no (Docker not found)' }}
+    dest: "{{ benchmark_collected_dir }}/collection_summary.txt"
+    mode: "0644"
+  tags: [collect]
+
+- name: Report collection directory
+  ansible.builtin.debug:
+    msg: "Results collected to {{ benchmark_collected_dir }}"
+  tags: [collect]

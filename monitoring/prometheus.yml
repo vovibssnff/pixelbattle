@@ -2,10 +2,20 @@ global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
+remote_write:
+  # Enable long-term storage by running:
+  # docker compose --profile longterm up -d mimir
+  - url: 'http://mimir:9009/api/v1/push'
+
 scrape_configs:
   - job_name: 'pixelbattle-backend'
     static_configs:
       - targets: ['backend:8080']
+        labels:
+          # Phase 1 monolith run: every series is tagged version=baseline so the
+          # comparison-dashboard.json `version` template can split baseline vs candidate.
+          # Phase 2 distributed run flips this to `candidate`.
+          version: baseline
     metrics_path: '/metrics'
     scrape_interval: 5s
 
@@ -28,6 +38,40 @@ scrape_configs:
   - job_name: 'benchmark'
     static_configs:
       - targets: ['host.docker.internal:9091']
+        labels:
+          # Phase 1 baseline label; flip with Phase 2 candidate run.
+          version: baseline
     metrics_path: '/metrics'
     scrape_interval: 5s
     scrape_timeout: 3s
+
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://caddy/healthz
+          - http://caddy/init_canvas
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: 'blackbox-ws-handshake'
+    metrics_path: /probe
+    params:
+      module: [ws_handshake]
+    static_configs:
+      - targets:
+          - caddy:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

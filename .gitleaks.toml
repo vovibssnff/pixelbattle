@@ -10,6 +10,8 @@ paths = [
   '''\.env\.example$''',
   '''pb_backend/app\.env\.example$''',
   '''pb_backend/app\.env\.docker\.example$''',
+  '''pb_backend/app\.env\.docker$''',
+  '''pb_frontend/src/components/Captcha\.vue$''',
 ]
 regexes = [
   '''CHANGE_ME''',

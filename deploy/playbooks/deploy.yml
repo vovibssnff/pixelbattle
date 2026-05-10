@@ -29,3 +29,24 @@
 
   roles:
     - role: deploy
+
+  post_tasks:
+    - name: Publish Grafana deployment annotation (optional)
+      ansible.builtin.uri:
+        url: "{{ grafana_annotation_url }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_annotation_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          time: "{{ (ansible_date_time.epoch | int) * 1000 }}"
+          tags:
+            - "deploy"
+            - "version:{{ deploy_annotation_version | default('unknown') }}"
+          text: "PixelBattle deploy completed on {{ inventory_hostname }}"
+        status_code: [200]
+      when:
+        - (grafana_annotation_url | default('')) | length > 0
+        - (grafana_annotation_token | default('')) | length > 0
+      changed_when: false

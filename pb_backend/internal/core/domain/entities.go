@@ -39,21 +39,24 @@ func VKUserID(vkNumericID int) string {
 type Color [3]uint
 
 type Pixel struct {
-	X       uint   `json:"x"`
-	Y       uint   `json:"y"`
-	Color   []uint `json:"color"`
-	Userid  string `json:"userid"`
-	Faculty string `json:"faculty"`
+	X            uint   `json:"x"`
+	Y            uint   `json:"y"`
+	Color        []uint `json:"color"`
+	Userid       string `json:"userid"`
+	Faculty      string `json:"faculty"`
+	ClientSentMs int64  `json:"client_sent_ms,omitempty"`
+	ServerRecvMs int64  `json:"server_recv_ms,omitempty"`
 }
 
 // UnmarshalJSON accepts userid as string or number (WebSocket clients vary).
 func (p *Pixel) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		X       uint            `json:"x"`
-		Y       uint            `json:"y"`
-		Color   []uint          `json:"color"`
-		Userid  json.RawMessage `json:"userid"`
-		Faculty string          `json:"faculty"`
+		X            uint            `json:"x"`
+		Y            uint            `json:"y"`
+		Color        []uint          `json:"color"`
+		Userid       json.RawMessage `json:"userid"`
+		Faculty      string          `json:"faculty"`
+		ClientSentMs int64           `json:"client_sent_ms"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -64,6 +67,7 @@ func (p *Pixel) UnmarshalJSON(data []byte) error {
 	}
 	p.X, p.Y, p.Color, p.Faculty = aux.X, aux.Y, aux.Color, aux.Faculty
 	p.Userid = uid
+	p.ClientSentMs = aux.ClientSentMs
 	return nil
 }
 

@@ -1,0 +1,61 @@
+---
+# Pull benchmark artifacts from benchmark_vm (inventory group vms) to this machine under results/from_vm_<epoch>/extracted/
+# Usage (from benchmark/): ansible-playbook playbooks/sync_results_from_vm.yml
+- name: Sync benchmark results from VM to controller
+  hosts: benchmark_vm
+  gather_facts: true
+  vars:
+    local_pull_dir: "{{ playbook_dir | dirname | dirname }}/results/from_vm_{{ ansible_date_time.epoch }}"
+  tasks:
+    - name: Ensure benchmark results directory exists on VM
+      ansible.builtin.file:
+        path: "{{ benchmark_results_root }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure local destination directory on controller
+      ansible.builtin.file:
+        path: "{{ local_pull_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      connection: local
+
+    - name: Archive benchmark results on VM
+      ansible.builtin.shell: |
+        set -euo pipefail
+        rm -f /tmp/pb-bench.tgz
+        tar -czf /tmp/pb-bench.tgz -C "{{ benchmark_results_root }}" .
+        chmod 644 /tmp/pb-bench.tgz
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: true
+
+    - name: Fetch archive to controller
+      ansible.builtin.fetch:
+        src: /tmp/pb-bench.tgz
+        dest: "{{ local_pull_dir }}/pb-bench.tgz"
+        flat: true
+
+    - name: Ensure local extracted directory exists
+      ansible.builtin.file:
+        path: "{{ local_pull_dir }}/extracted"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      connection: local
+
+    - name: Extract archive on controller
+      ansible.builtin.unarchive:
+        src: "{{ local_pull_dir }}/pb-bench.tgz"
+        dest: "{{ local_pull_dir }}/extracted/"
+        remote_src: false
+      delegate_to: localhost
+      connection: local
+
+    - name: Report local path
+      ansible.builtin.debug:
+        msg: "Synced to {{ local_pull_dir }}/extracted/"
+      delegate_to: localhost
+      connection: local

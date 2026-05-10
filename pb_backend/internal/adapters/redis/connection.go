@@ -9,3 +9,10 @@ func NewRedisConnection(addr, password string, db int) *redis.Client {
 		DB:       db,
 	})
 }
+
+func NewRedisClusterConnection(addrs []string, password string) *redis.ClusterClient {
+	return redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:    addrs,
+		Password: password,
+	})
+}

@@ -55,7 +55,7 @@ func NewClient(
 	return &Client{
 		conn:         conn,
 		server:       server,
-		send:         make(chan *domain.Pixel),
+		send:         make(chan *domain.Pixel, 256),
 		userid:       userid,
 		faculty:      faculty,
 		isAdm:        isAdm,
@@ -122,7 +122,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid faculty (use KTU|TINT|FTMF|FTMI|NOZH)", http.StatusBadRequest)
 			return
 		}
-		isAdm = server.userService.IsAdmin(userid)
+		isAdm = server.userService.IsEffectiveAdmin(r.Context(), userid)
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Anonymous WS rejected: banned ", userid)
 			service.IncrementBannedRejected()
@@ -147,7 +147,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 
 		userid = server.sessionService.GetUserID(session)
 		faculty = server.sessionService.GetFaculty(session)
-		isAdm = server.userService.IsAdmin(userid)
+		isAdm = server.userService.IsEffectiveAdmin(r.Context(), userid)
 
 		if server.userService.IsUserBanned(r.Context(), userid) {
 			logrus.Info("Request from banned user: ", userid)
@@ -196,19 +196,32 @@ func (c *Client) readPump(ctx context.Context) {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				logrus.Error(err)
+				service.IncrementWSError("unexpected_close")
 			}
+			service.IncrementWSError("read")
 			break
 		}
 		service.IncrementWebSocketMessagesReceived("pixel")
+		serverRecvMs := time.Now().UnixMilli()
 
 		var pixel domain.Pixel
 		if err = utils.DeserializePixel(msg, &pixel); err != nil {
 			logrus.Error(err)
+			service.IncrementWSError("deserialize")
 			continue
 		}
 		if !validPixel(&pixel, c.canvasWidth, c.canvasHeight) {
 			logrus.Warn("invalid pixel rejected")
+			service.IncrementWSError("invalid_pixel")
 			continue
+		}
+		if service.IsCanvasFrozen() {
+			service.IncrementWSError("frozen")
+			continue
+		}
+		pixel.ServerRecvMs = serverRecvMs
+		if pixel.ClientSentMs > 0 && serverRecvMs > pixel.ClientSentMs {
+			service.ObserveE2EPixelLatency("ws_client_to_server", time.Duration(serverRecvMs-pixel.ClientSentMs)*time.Millisecond)
 		}
 		pixel.Userid = c.userid
 		pixel.Faculty = c.faculty
@@ -253,23 +266,28 @@ func (c *Client) writePump() {
 
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				service.IncrementWSError("next_writer")
 				return
 			}
 			serialized, err := utils.SerializePixel(pixel)
 			if err != nil {
 				logrus.Error(err)
+				service.IncrementWSError("serialize")
 				return
 			}
 			if _, err := w.Write(serialized); err != nil {
+				service.IncrementWSError("write")
 				return
 			}
 
 			if err := w.Close(); err != nil {
+				service.IncrementWSError("writer_close")
 				return
 			}
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				service.IncrementWSError("ping")
 				return
 			}
 		}

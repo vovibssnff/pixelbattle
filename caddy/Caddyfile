@@ -11,25 +11,29 @@
 	metrics /metrics
 }
 
-(security_headers) {
+(common_security_headers) {
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'"
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Resource-Policy "same-origin"
 		-Server
 	}
 }
 
-{$CADDY_DOMAIN} {
+{$CADDY_DOMAIN}, localhost, 192.168.122.71 {
 	import /etc/caddy/tls.inc
 
 	encode gzip
-	import security_headers
+	import common_security_headers
+
+	@notpanel {
+		not path /panel /panel/*
+	}
+	header @notpanel X-Frame-Options "DENY"
+	header @notpanel Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'"
 
 	# API and WebSocket (must be before file_server)
 	handle /api/* {
@@ -42,12 +46,12 @@
 		reverse_proxy backend:8080
 	}
 
-	# Grafana (preserve /panel prefix; matches GF_SERVER_ROOT_URL)
-	handle /panel/* {
-		reverse_proxy grafana:3000
-	}
 	handle /panel {
 		redir /panel/ permanent
+	}
+	handle /panel/* {
+		header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src 'self' wss: https:; frame-ancestors 'self'"
+		reverse_proxy grafana:3000
 	}
 
 	# Prometheus UI is NOT exposed here: it has no built-in auth and would leak

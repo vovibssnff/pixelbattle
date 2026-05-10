@@ -82,6 +82,14 @@ monitoring/grafana/data/
 results/
 *.retry
 
+# --- Playwright (benchmark UX harness) — deps + browsers + artefacts belong on disk only ---
+benchmark/playwright/node_modules/
+benchmark/playwright/test-results/
+benchmark/playwright/playwright-report/
+benchmark/playwright/blob-report/
+benchmark/playwright/.cache/
+benchmark/playwright/**/trace.zip
+
 # --- Python (benchmark/reporting, tooling) ---
 __pycache__/
 *.py[cod]

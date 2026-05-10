@@ -1,0 +1,51 @@
+---
+# Phase 1 storage deepdive (plan §7.1 companion). Targets-only; no 30-min budget.
+# Used offline when you want the long-form Go DB benchmark scenarios (history=3,
+# sustained=30s, RUW=60s) without running k6 / Playwright.
+#
+# Invocation:
+#   ansible-playbook -i inventory.yml playbooks/run_storage_deepdive.yml
+
+- name: "Phase 1: storage deepdive on VM"
+  hosts: targets
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ benchmark_run_id | default(ansible_date_time.epoch) }}"
+    benchmark_phase: baseline_deepdive
+    benchmark_history_rounds: 3
+    benchmark_sustained_duration_sec: 30
+    benchmark_ruw_duration_sec: 60
+    benchmark_enable_db_bench: true
+    benchmark_run_db_on_vm: false
+  tasks:
+    - name: "preflight: VM resource cap check"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: preflight_topology.yml
+
+    - name: "Setup database (Redis only for VKR)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: setup_database.yml
+      vars:
+        benchmark_storage_type: redis
+
+    - name: "Run long-form Go DB benchmark"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_db_benchmarks.yml
+
+    - name: "Collect artefacts on VM"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: collect_results.yml
+      vars:
+        benchmark_collected_dir: "{{ benchmark_results_root }}/deepdive_{{ benchmark_run_id }}"
+
+    - name: "Done"
+      ansible.builtin.debug:
+        msg:
+          - "=== Storage deepdive complete ==="
+          - "Run id: {{ benchmark_run_id }}"
+          - "Artefacts on VM: {{ benchmark_results_root }}/deepdive_{{ benchmark_run_id }}/"
+          - "Sync to laptop: ansible-playbook -i inventory.yml playbooks/sync_results_from_vm.yml"

@@ -17,6 +17,11 @@ type UserRepository interface {
 	CheckBanned(ctx context.Context, userid string) bool
 	BanUser(ctx context.Context, userid string) error
 	UnbanUser(ctx context.Context, userid string) error
+	// Runtime admin grants (Mongo collection admin_grants, _id = canonical user id).
+	GrantAdminRole(ctx context.Context, userid string) error
+	RevokeAdminRole(ctx context.Context, userid string) error
+	IsDynamicAdmin(ctx context.Context, userid string) bool
+	ListUserIDs(ctx context.Context, limit int) ([]string, error)
 }
 
 type UserService interface {
@@ -30,6 +35,11 @@ type UserService interface {
 	DeleteUser(ctx context.Context, usrID string)
 	IsUserBanned(ctx context.Context, userid string) bool
 	IsAdmin(id string) bool
+	// IsEffectiveAdmin is true for static config admins, Mongo-granted admins, or both.
+	IsEffectiveAdmin(ctx context.Context, id string) bool
+	GrantAdminRole(ctx context.Context, userid string) error
+	RevokeAdminRole(ctx context.Context, userid string) error
+	ListUserIDs(ctx context.Context, limit int) ([]string, error)
 	BanUser(ctx context.Context, userid string) error
 	UnbanUser(ctx context.Context, userid string) error
 }
@@ -58,6 +68,8 @@ type TimerRepository interface {
 type TimerService interface {
 	SetTimer(ctx context.Context, userid string) error
 	CheckTime(ctx context.Context, userid string) (int64, error)
+	// SetCooldownSeconds updates the Redis TTL used for the per-user placement timer (runtime admin).
+	SetCooldownSeconds(sec int) error
 }
 
 type SessionService interface {

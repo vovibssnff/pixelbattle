@@ -37,6 +37,10 @@ func main() {
 	canvasDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
 	timerDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisTimer)
 
+	probe := service.NewAvailabilityProbe(canvasDatabase, uint(config.CanvasHeight), uint(config.CanvasWidth), 0)
+	probe.Start()
+	defer probe.Stop()
+
 	mongoUserDatabase, err := mongo.NewMongoConnection(config.MongoURI, "pixelbattle")
 	if err != nil {
 		logrus.Fatalf("Failed to connect to MongoDB: %v", err)
@@ -72,7 +76,7 @@ func main() {
 
 	canvasService := service.NewCanvasService(*canvasRepo)
 	usrService := service.NewUserService(mongoUsrRepo, config.AdminIDs, config.AdminUsernames)
-	timerService := service.NewTimerService(*timerRepo, 3)
+	timerService := service.NewTimerService(*timerRepo, config.PixelCooldownSec)
 	sessionService := service.NewSessionService(sessionStore)
 	vkAuthProvider := vk.NewVKAuthProvider(config.ServiceToken, config.APIVersion)
 
@@ -87,6 +91,7 @@ func main() {
 	router.Handle("/metrics", service.MetricsHandler())
 
 	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService,
+		timerService, strings.TrimSpace(config.AdminAPIToken),
 		config.CanvasHeight, config.CanvasWidth, router)
 
 	if config.WSAllowAnonymous {
