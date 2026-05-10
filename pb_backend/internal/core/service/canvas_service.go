@@ -83,8 +83,7 @@ func (s *CanvasService) GetCanvas(ctx context.Context, img *domain.Image) error 
 		if err := utils.DeserializeRedisPixel([]byte(values[0]), &deserialized); err != nil {
 			return err
 		}
-		var y, x uint
-		_, err = fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
+		x, y, err := utils.ParseRedisPixelKey(key)
 		if err != nil {
 			return err
 		}
@@ -106,8 +105,7 @@ func (s *CanvasService) GetHeatMap(ctx context.Context) ([]domain.HeatMapUnit, e
 	}
 	res := make([]domain.HeatMapUnit, 0)
 	for key, length := range heatmapData {
-		var y, x uint
-		_, err := fmt.Sscanf(key, "pixel:%d:%d", &y, &x)
+		x, y, err := utils.ParseRedisPixelKey(key)
 		if err != nil {
 			return nil, err
 		}

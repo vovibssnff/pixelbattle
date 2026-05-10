@@ -15,6 +15,7 @@ import (
 // a missing on-disk app.env leaves MONGO_URI etc. empty even when set in the environment.
 var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
+	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS",
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
@@ -41,6 +42,10 @@ type Config struct {
 	RedisPsw         string `mapstructure:"REDIS_PSW"`
 	RedisHistory     int    `mapstructure:"REDIS_HISTORY"`
 	RedisTimer       int    `mapstructure:"REDIS_TIMER"`
+	// RedisClusterAddrs: comma-separated host:port list for redis.NewClusterClient. When non-empty, canvas + timer use the cluster (DB index is ignored).
+	RedisClusterAddrs string `mapstructure:"REDIS_CLUSTER_ADDRS"`
+	// RedisCanvasHashTagKeys: use pixel:{y:x} keys (required for Redis Cluster; optional on standalone for migration drills).
+	RedisCanvasHashTagKeys bool `mapstructure:"REDIS_CANVAS_HASHTAG_KEYS"`
 	RedisUsers       int    `mapstructure:"REDIS_USERS"`
 	RedisBanned      int    `mapstructure:"REDIS_BANNED"`
 	PostgresHost     string `mapstructure:"POSTGRES_HOST"`

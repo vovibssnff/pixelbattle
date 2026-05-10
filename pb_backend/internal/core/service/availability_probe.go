@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -29,18 +28,19 @@ type sentinelPixel struct {
 	Probe     bool   `json:"probe"`
 }
 
-// NewAvailabilityProbe creates a probe that uses a fixed canvas coordinate for
-// write-then-read latency measurements. The coordinate is the bottom-right
-// corner (height-1, width-1) to minimise interference with real user pixels.
-func NewAvailabilityProbe(rdb redis.Cmdable, canvasHeight, canvasWidth uint, interval time.Duration) *AvailabilityProbe {
+// NewAvailabilityProbe uses sentinelPixelListKey as the Redis list key for the bottom-right
+// canvas cell; it must match the key format used by CanvasRepository (legacy pixel:y:x or hashtag pixel:{y:x}).
+func NewAvailabilityProbe(rdb redis.Cmdable, sentinelPixelListKey string, interval time.Duration) *AvailabilityProbe {
+	if sentinelPixelListKey == "" {
+		logrus.Fatal("availability_probe: sentinelPixelListKey is required")
+	}
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
-	coord := fmt.Sprintf("pixel:%d:%d", canvasHeight-1, canvasWidth-1)
 	return &AvailabilityProbe{
 		rdb:      rdb,
 		interval: interval,
-		coord:    coord,
+		coord:    sentinelPixelListKey,
 		stop:     make(chan struct{}),
 	}
 }

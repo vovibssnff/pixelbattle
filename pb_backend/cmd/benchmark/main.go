@@ -66,14 +66,15 @@ func main() {
 	switch *storageType {
 	case "redis":
 		storageName = "redis"
+		hashTagKeys := config.RedisCanvasHashTagKeys
 		if *redisCluster {
-			addrs := parseAddrs(*redisAddrsStr, config.RedisAddr)
+			addrs := parseAddrs(*redisAddrsStr, config.RedisClusterAddrs, config.RedisAddr)
 			redisClient := redis.NewRedisClusterConnection(addrs, config.RedisPsw)
-			repo = redis_repo.NewCanvasRepository(redisClient)
+			repo = redis_repo.NewCanvasRepository(redisClient, true)
 			storageName = "redis_cluster"
 		} else {
 			redisClient := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
-			repo = redis_repo.NewCanvasRepository(redisClient)
+			repo = redis_repo.NewCanvasRepository(redisClient, hashTagKeys)
 		}
 
 	case "postgres":
@@ -165,10 +166,10 @@ func parseRates(s string) []int {
 	return rates
 }
 
-func parseAddrs(flagValue, fallback string) []string {
-	raw := flagValue
-	if strings.TrimSpace(raw) == "" {
-		raw = fallback
+func parseAddrs(flagValue, configClusterAddrs, singleAddr string) []string {
+	raw := strings.TrimSpace(flagValue)
+	if raw == "" {
+		raw = strings.TrimSpace(configClusterAddrs)
 	}
 	addrs := make([]string, 0)
 	for _, p := range strings.Split(raw, ",") {
@@ -176,6 +177,9 @@ func parseAddrs(flagValue, fallback string) []string {
 		if p != "" {
 			addrs = append(addrs, p)
 		}
+	}
+	if len(addrs) == 0 && strings.TrimSpace(singleAddr) != "" {
+		addrs = append(addrs, strings.TrimSpace(singleAddr))
 	}
 	if len(addrs) == 0 {
 		addrs = append(addrs, "localhost:6379")

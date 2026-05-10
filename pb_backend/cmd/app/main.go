@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"pb_backend/internal/adapters/mongo"
 	mongo_repo "pb_backend/internal/adapters/mongo/repository"
-	"pb_backend/internal/adapters/redis"
+	redisadp "pb_backend/internal/adapters/redis"
 	redis_repo "pb_backend/internal/adapters/redis/repository"
 	"pb_backend/internal/adapters/rest"
 	vk "pb_backend/internal/adapters/vk_auth"
@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,10 +35,31 @@ func main() {
 	}
 	logrus.SetLevel(level)
 
-	canvasDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
-	timerDatabase := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisTimer)
+	var canvasRDB goredis.Cmdable
+	var timerRDB goredis.Cmdable
+	hashTagKeys := config.RedisCanvasHashTagKeys
+	if ca := strings.TrimSpace(config.RedisClusterAddrs); ca != "" {
+		addrs := splitCommaNonEmpty(ca)
+		if len(addrs) == 0 {
+			logrus.Fatal("REDIS_CLUSTER_ADDRS is set but contains no addresses")
+		}
+		cluster := redisadp.NewRedisClusterConnection(addrs, config.RedisPsw)
+		canvasRDB = cluster
+		timerRDB = cluster
+		hashTagKeys = true
+		if config.RedisHistory != 0 || config.RedisTimer != 0 {
+			logrus.Warn("Redis Cluster mode uses a single DB 0; REDIS_HISTORY / REDIS_TIMER indices are ignored")
+		}
+		logrus.Infof("Redis Cluster client enabled (%d seed addrs)", len(addrs))
+	} else {
+		canvasRDB = redisadp.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
+		timerRDB = redisadp.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisTimer)
+	}
 
-	probe := service.NewAvailabilityProbe(canvasDatabase, uint(config.CanvasHeight), uint(config.CanvasWidth), 0)
+	ch := uint(config.CanvasHeight)
+	cw := uint(config.CanvasWidth)
+	sentinelKey := redis_repo.PixelKey(hashTagKeys, cw-1, ch-1)
+	probe := service.NewAvailabilityProbe(canvasRDB, sentinelKey, 0)
 	probe.Start()
 	defer probe.Stop()
 
@@ -46,10 +68,10 @@ func main() {
 		logrus.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 
-	canvasRepo := redis_repo.NewCanvasRepository(canvasDatabase)
+	canvasRepo := redis_repo.NewCanvasRepository(canvasRDB, hashTagKeys)
 	mongoUsrRepo := mongo_repo.NewUserRepository(mongoUserDatabase)
 
-	timerRepo := redis_repo.NewTimerRepo(timerDatabase)
+	timerRepo := redis_repo.NewTimerRepo(timerRDB)
 
 	var authKey []byte
 	sk := strings.TrimSpace(config.SessionKey)
@@ -105,4 +127,16 @@ func main() {
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		logrus.Fatal("Failed to start server: ", err)
 	}
+}
+
+func splitCommaNonEmpty(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
