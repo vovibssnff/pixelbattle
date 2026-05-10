@@ -2,6 +2,9 @@ version: "2"
 
 run:
   timeout: 5m
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*_grpc\\.pb\\.go$"
 
 linters:
   default: none
@@ -34,6 +37,9 @@ linters:
       # Idiomatic deferred Close() on cursors, response bodies, websocket conns, etc.
       - linters: [errcheck]
         text: 'Error return value of .*\.Close.* is not checked'
+      # Generated protobuf / gRPC (Phase 2); gosec is run on hand-written code only.
+      - path: '(^|/)gen/.*\.go$|.*\.pb\.go$|.*_grpc\.pb\.go$'
+        linters: [gosec]
 
 formatters:
   enable:

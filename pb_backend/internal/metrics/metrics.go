@@ -125,7 +125,7 @@ var (
 			Help:    "Histogram of database operation durations",
 			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		},
-		[]string{"operation", "storage_type"},
+		[]string{"operation", "storage_type", "shard_id", "instance_id"},
 	)
 
 	databaseOperationTotal = prometheus.NewCounterVec(
@@ -133,7 +133,23 @@ var (
 			Name: "database_operation_total",
 			Help: "Total number of database operations",
 		},
-		[]string{"operation", "storage_type", "status"},
+		[]string{"operation", "storage_type", "status", "shard_id", "instance_id"},
+	)
+
+	crdtResolvedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "crdt_resolved_total",
+			Help: "CRDT / LWW conflict resolutions by ordering path (stream_id primary, hlc_fallback)",
+		},
+		[]string{"path"},
+	)
+
+	crdtMergeDurationSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "crdt_merge_duration_seconds",
+			Help:    "Wall time spent in CRDT merge on the HLC fallback path",
+			Buckets: []float64{.000001, .000005, .00001, .000025, .00005, .0001, .00025, .0005, .001, .0025, .005},
+		},
 	)
 
 	databaseConnectionPoolSize = prometheus.NewGaugeVec(
@@ -252,6 +268,8 @@ func init() {
 		heatmapMetrics,
 		databaseOperationDuration,
 		databaseOperationTotal,
+		crdtResolvedTotal,
+		crdtMergeDurationSeconds,
 		databaseConnectionPoolSize,
 		pixelWriteQueueDepth,
 		e2ePixelLatencySeconds,
@@ -309,13 +327,38 @@ func ObserveCanvasInitDuration(start time.Time) {
 	canvasInitDuration.Observe(time.Since(start).Seconds())
 }
 
+// MonolithShardID and MonolithInstanceID are the default shard labels for the single-node deployment (Phase 1 / baseline).
+const MonolithShardID = "single"
+const MonolithInstanceID = "single"
+
 func ObserveDatabaseOperation(operation, storageType string, duration time.Duration, err error) {
+	ObserveDatabaseOperationScoped(operation, storageType, MonolithShardID, MonolithInstanceID, duration, err)
+}
+
+// ObserveDatabaseOperationScoped records DB latency with architecture-internal shard labels (gateways set shard_id / instance_id).
+func ObserveDatabaseOperationScoped(operation, storageType, shardID, instanceID string, duration time.Duration, err error) {
 	status := "success"
 	if err != nil {
 		status = "error"
 	}
-	databaseOperationDuration.WithLabelValues(operation, storageType).Observe(duration.Seconds())
-	databaseOperationTotal.WithLabelValues(operation, storageType, status).Inc()
+	if shardID == "" {
+		shardID = MonolithShardID
+	}
+	if instanceID == "" {
+		instanceID = MonolithInstanceID
+	}
+	databaseOperationDuration.WithLabelValues(operation, storageType, shardID, instanceID).Observe(duration.Seconds())
+	databaseOperationTotal.WithLabelValues(operation, storageType, status, shardID, instanceID).Inc()
+}
+
+// IncrementCRDTResolved records which ordering path won (path: stream_id | hlc_fallback).
+func IncrementCRDTResolved(path string) {
+	crdtResolvedTotal.WithLabelValues(path).Inc()
+}
+
+// ObserveCRDTMergeDuration records merge wall time on the HLC fallback path.
+func ObserveCRDTMergeDuration(d time.Duration) {
+	crdtMergeDurationSeconds.Observe(d.Seconds())
 }
 
 func SetDatabaseConnectionPoolSize(storageType string, open, idle, inUse int) {
