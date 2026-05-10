@@ -173,9 +173,10 @@ export default {
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
     if (process.env.NODE_ENV === 'production') {
-      this.initConnection("/init_canvas");
-      this.connectToWebSocket("/ws");
-      this.initEventListeners();
+      this.initConnection("/api/canvas.png").then((snapshotMs) => {
+        this.connectToWebSocket("/ws", snapshotMs);
+        this.initEventListeners();
+      });
     } else {
       this.loaded = true;
       this.ws = {}
@@ -249,7 +250,7 @@ export default {
     initConnection(endpoint) {
       this.$data.place.loadingp.style.color = "white"
       this.$data.place.loadingp.innerHTML = "loading canvas"
-      fetch(endpoint)
+      return fetch(endpoint, { cache: "no-store" })
 			.then(async resp => {
 				let buf = await this.$data.place.downloadProgress(resp);
 				await this.$data.place.setImage(buf);
@@ -257,9 +258,13 @@ export default {
         this.$data.place.loadingp.innerHTML = "";
         this.$data.place.uiwrapper.setAttribute("hide", true);
         this.$data.isGod = resp.headers.get("Is-God");
+        const raw = resp.headers.get("X-Snapshot-Ms");
+        const ms = raw ? parseInt(raw, 10) : 0;
+        return Number.isFinite(ms) ? ms : 0;
 			})
       .catch(() => {
         this.$router.push('/login');
+        return 0;
       });
     },
     initEventListeners() {
@@ -334,9 +339,12 @@ export default {
         }, 1000);
       }
     },
-    connectToWebSocket(endpoint) {
+    connectToWebSocket(endpoint, replayAfterMs) {
       const url = new URL(endpoint, location.href);
       url.protocol = 'wss';
+      if (replayAfterMs != null && replayAfterMs > 0) {
+        url.searchParams.set('replay_after_ms', String(replayAfterMs));
+      }
       this.ws = new WebSocket(url);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },

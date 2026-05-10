@@ -15,16 +15,17 @@ import (
 )
 
 type Client struct {
-	conn         *websocket.Conn
-	server       *WsServer
-	send         chan *domain.Pixel
-	userid       string
-	faculty      string
-	isAdm        bool
-	timerService domain.TimerService
-	userService  domain.UserService
-	canvasWidth  uint
-	canvasHeight uint
+	conn           *websocket.Conn
+	server         *WsServer
+	send           chan *domain.Pixel
+	initialReplay  []*domain.Pixel
+	userid         string
+	faculty        string
+	isAdm          bool
+	timerService   domain.TimerService
+	userService    domain.UserService
+	canvasWidth    uint
+	canvasHeight   uint
 }
 
 var upgrader = websocket.Upgrader{
@@ -51,18 +52,20 @@ func NewClient(
 	timerService domain.TimerService,
 	userService domain.UserService,
 	canvasWidth, canvasHeight uint,
+	initialReplay []*domain.Pixel,
 ) *Client {
 	return &Client{
-		conn:         conn,
-		server:       server,
-		send:         make(chan *domain.Pixel, 256),
-		userid:       userid,
-		faculty:      faculty,
-		isAdm:        isAdm,
-		timerService: timerService,
-		userService:  userService,
-		canvasWidth:  canvasWidth,
-		canvasHeight: canvasHeight,
+		conn:          conn,
+		server:        server,
+		send:          make(chan *domain.Pixel, 256),
+		initialReplay: initialReplay,
+		userid:        userid,
+		faculty:       faculty,
+		isAdm:         isAdm,
+		timerService:  timerService,
+		userService:   userService,
+		canvasWidth:   canvasWidth,
+		canvasHeight:  canvasHeight,
 	}
 }
 
@@ -85,6 +88,18 @@ func validPixel(p *domain.Pixel, canvasW, canvasH uint) bool {
 }
 
 // benchmarkUIDToCanonical maps k6 "uid" query to a canonical user id (numeric -> vk_*).
+func parseReplayAfterMS(r *http.Request) int64 {
+	q := strings.TrimSpace(r.URL.Query().Get("replay_after_ms"))
+	if q == "" {
+		return 0
+	}
+	v, err := strconv.ParseInt(q, 10, 64)
+	if err != nil || v < 0 {
+		return 0
+	}
+	return v
+}
+
 func benchmarkUIDToCanonical(uidStr string) (string, bool) {
 	uidStr = strings.TrimSpace(uidStr)
 	if uidStr == "" {
@@ -169,6 +184,11 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var initialReplay []*domain.Pixel
+	if ra := parseReplayAfterMS(r); ra > 0 && server.replay != nil {
+		initialReplay = server.replay.Since(ra)
+	}
+
 	client := NewClient(
 		conn,
 		server,
@@ -179,6 +199,7 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 		server.userService,
 		server.canvasWidth,
 		server.canvasHeight,
+		initialReplay,
 	)
 
 	go client.writePump()
@@ -260,12 +281,43 @@ func (c *Client) readPump(ctx context.Context) {
 	}
 }
 
+func (c *Client) writePixelJSON(pixel *domain.Pixel) error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	w, err := c.conn.NextWriter(websocket.TextMessage)
+	if err != nil {
+		service.IncrementWSError("next_writer")
+		return err
+	}
+	serialized, err := utils.SerializePixel(pixel)
+	if err != nil {
+		logrus.Error(err)
+		service.IncrementWSError("serialize")
+		return err
+	}
+	if _, err := w.Write(serialized); err != nil {
+		service.IncrementWSError("write")
+		return err
+	}
+	if err := w.Close(); err != nil {
+		service.IncrementWSError("writer_close")
+		return err
+	}
+	return nil
+}
+
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
 	}()
+	for _, p := range c.initialReplay {
+		if err := c.writePixelJSON(p); err != nil {
+			return
+		}
+	}
+	c.initialReplay = nil
+
 	for {
 		select {
 		case pixel, ok := <-c.send:
@@ -275,24 +327,7 @@ func (c *Client) writePump() {
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				service.IncrementWSError("next_writer")
-				return
-			}
-			serialized, err := utils.SerializePixel(pixel)
-			if err != nil {
-				logrus.Error(err)
-				service.IncrementWSError("serialize")
-				return
-			}
-			if _, err := w.Write(serialized); err != nil {
-				service.IncrementWSError("write")
-				return
-			}
-
-			if err := w.Close(); err != nil {
-				service.IncrementWSError("writer_close")
+			if err := c.writePixelJSON(pixel); err != nil {
 				return
 			}
 		case <-ticker.C:

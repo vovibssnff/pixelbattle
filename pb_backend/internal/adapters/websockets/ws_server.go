@@ -24,6 +24,7 @@ type WsServer struct {
 	canvasWidth      uint
 	allowAnonymousWS bool
 	limiter          *LimiterHub
+	replay           *PixelReplayBuffer
 }
 
 func NewWebSocketServer(
@@ -34,6 +35,7 @@ func NewWebSocketServer(
 	canvasHeight, canvasWidth uint,
 	allowAnonymousWS bool,
 	limiter *LimiterHub,
+	replay *PixelReplayBuffer,
 ) *WsServer {
 	return &WsServer{
 		clients:          make(map[*Client]bool),
@@ -48,6 +50,7 @@ func NewWebSocketServer(
 		canvasWidth:      canvasWidth,
 		allowAnonymousWS: allowAnonymousWS,
 		limiter:          limiter,
+		replay:           replay,
 	}
 }
 
@@ -101,6 +104,10 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 	service.SetPixelWriteQueueDepth(len(server.broadcast))
 	pixel.Userid = ""
 	pixel.Faculty = ""
+	replayMs := time.Now().UnixMilli()
+	if server.replay != nil {
+		server.replay.Add(pixel, replayMs)
+	}
 	for client := range server.clients {
 		select {
 		case client.send <- pixel:
@@ -120,6 +127,7 @@ func StartWebSocketServer(
 	canvasHeight, canvasWidth int,
 	allowAnonymousWS bool,
 	limiter *LimiterHub,
+	replay *PixelReplayBuffer,
 ) {
 	var ch, cw uint
 	if canvasHeight > 0 {
@@ -128,7 +136,7 @@ func StartWebSocketServer(
 	if canvasWidth > 0 {
 		cw = uint(canvasWidth)
 	}
-	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, ch, cw, allowAnonymousWS, limiter)
+	ws := NewWebSocketServer(sessionService, timerService, userService, canvasService, ch, cw, allowAnonymousWS, limiter, replay)
 	go ws.Run()
 
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ import (
 	"pb_backend/internal/core/service"
 	"pb_backend/internal/utils"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -112,8 +113,15 @@ func main() {
 	router := mux.NewRouter()
 	router.Handle("/metrics", service.MetricsHandler())
 
+	snapInterval := time.Duration(config.CanvasSnapshotIntervalSec) * time.Second
+	snapshotter := service.NewCanvasSnapshotter(canvasService, ch, cw, snapInterval, strings.TrimSpace(config.CanvasSnapshotFile))
+	snapshotter.Start()
+	defer snapshotter.Stop()
+
+	wsReplay := websockets.NewPixelReplayBuffer(200_000)
+
 	rest.StartRestServer(sessionService, *vkAuthProvider, canvasService, usrService,
-		timerService, strings.TrimSpace(config.AdminAPIToken),
+		timerService, strings.TrimSpace(config.AdminAPIToken), snapshotter,
 		config.CanvasHeight, config.CanvasWidth, router)
 
 	if config.WSAllowAnonymous {
@@ -121,7 +129,7 @@ func main() {
 	}
 	wsLimit := websockets.NewLimiterHub(config.RateLimitPixelPerSec, config.RateLimitWSConnPerMinPerIP)
 	websockets.StartWebSocketServer(sessionService, canvasService, timerService, usrService, router,
-		config.CanvasHeight, config.CanvasWidth, config.WSAllowAnonymous, wsLimit)
+		config.CanvasHeight, config.CanvasWidth, config.WSAllowAnonymous, wsLimit, wsReplay)
 
 	logrus.Info("Starting server on port 8080")
 	handler := service.InstrumentHandler(router)

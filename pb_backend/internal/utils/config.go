@@ -17,6 +17,7 @@ var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
 	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS",
 	"RATE_LIMIT_PIXEL_PER_SEC", "RATE_LIMIT_WS_CONN_PER_MIN",
+	"CANVAS_SNAPSHOT_INTERVAL_SEC", "CANVAS_SNAPSHOT_FILE",
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
@@ -79,6 +80,10 @@ type Config struct {
 	RateLimitPixelPerSec int `mapstructure:"RATE_LIMIT_PIXEL_PER_SEC"`
 	// RateLimitWSConnPerMinPerIP: max new /ws handshakes per minute per client IP. 0 disables (recommended for k6 from one loader IP). Set in production (e.g. 50).
 	RateLimitWSConnPerMinPerIP int `mapstructure:"RATE_LIMIT_WS_CONN_PER_MIN"`
+	// CanvasSnapshotIntervalSec: period for background PNG snapshot (GET /api/canvas.png). Default 2 when unset or 0.
+	CanvasSnapshotIntervalSec int `mapstructure:"CANVAS_SNAPSHOT_INTERVAL_SEC"`
+	// CanvasSnapshotFile: optional path to write the latest PNG atomically (e.g. volume mount for static file server).
+	CanvasSnapshotFile string `mapstructure:"CANVAS_SNAPSHOT_FILE"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables
@@ -124,6 +129,10 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if !viper.IsSet("RATE_LIMIT_WS_CONN_PER_MIN") {
 		config.RateLimitWSConnPerMinPerIP = 0
+	}
+
+	if config.CanvasSnapshotIntervalSec <= 0 {
+		config.CanvasSnapshotIntervalSec = 2
 	}
 
 	// Manually parse ADMIN_IDS

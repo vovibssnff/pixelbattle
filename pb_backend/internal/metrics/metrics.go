@@ -83,7 +83,7 @@ var (
 	canvasInitDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "canvas_init_duration_seconds",
-			Help:    "Time to serve /init_canvas responses",
+			Help:    "Time to serve canvas init responses (/init_canvas and /api/canvas.png)",
 			Buckets: []float64{.01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		},
 	)
