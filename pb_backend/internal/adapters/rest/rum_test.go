@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +21,7 @@ func TestRUMBeaconGoldenJSONAccepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(h.HandleRUMBeacon))
 	t.Cleanup(srv.Close)
 
-	req, err := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader([]byte(goldenRUMPayload)))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL, bytes.NewReader([]byte(goldenRUMPayload)))
 	if err != nil {
 		t.Fatal(err)
 	}

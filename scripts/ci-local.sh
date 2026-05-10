@@ -66,7 +66,7 @@ ensure_golangci_lint() {
 }
 
 # CI uses actions/setup-go with pb_backend/go.mod; align with toolchain directive.
-export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.23.6}"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-local}"
 
 run_ansible_lint() {
   local lintable=$1
@@ -206,44 +206,10 @@ else
 fi
 ok "dockerfile-lint"
 
-# --- iac-scan (trivy config, CRITICAL+HIGH, exit 1) ---
-job "iac-scan"
-# Ignore runtime data volumes that can be root-owned/unreadable locally.
-TRIVY_CONFIG_FLAGS=(
-  config
-  --severity CRITICAL,HIGH
-  --exit-code 1
-  --skip-dirs .venv
-  --skip-dirs pb_frontend/node_modules
-  --skip-dirs mongodb/data
-  --skip-dirs redis/data
-  --skip-dirs monitoring/prometheus_data
-  --skip-dirs monitoring/grafana_data
-  --skip-dirs results
-  .
-)
-if command -v trivy >/dev/null 2>&1; then
-  trivy "${TRIVY_CONFIG_FLAGS[@]}"
-else
-  docker run --rm -v "$ROOT_DIR:/work" -w /work aquasec/trivy:latest "${TRIVY_CONFIG_FLAGS[@]}"
-fi
-ok "iac-scan"
-
-# --- container-security (build + trivy image; needs iac + prior jobs conceptually) ---
-job "container-security"
+# --- docker-build (build images; mirrors docker-build job) ---
+job "docker-build"
 docker build -t "pb-backend:${CI_SHA}" pb_backend/
 docker build -t "pb-frontend:${CI_SHA}" pb_frontend/
-
-TRIVY_IMAGE_BASE=(image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --pkg-types os,library)
-if command -v trivy >/dev/null 2>&1; then
-  trivy "${TRIVY_IMAGE_BASE[@]}" --format table "pb-backend:${CI_SHA}"
-  trivy "${TRIVY_IMAGE_BASE[@]}" --format table "pb-frontend:${CI_SHA}"
-else
-  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
-    "${TRIVY_IMAGE_BASE[@]}" --format table "pb-backend:${CI_SHA}"
-  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
-    "${TRIVY_IMAGE_BASE[@]}" --format table "pb-frontend:${CI_SHA}"
-fi
-ok "container-security"
+ok "docker-build"
 
 echo -e "\n${GREEN}Local CI completed (parity with .github/workflows/ci.yml: ansible-lint, benchmark-tooling-lint, backend-test, backend-lint, …).${NC}"

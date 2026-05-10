@@ -14,9 +14,9 @@ import (
 )
 
 type UserRepository struct {
-	users        *mongo.Collection
-	banned       *mongo.Collection
-	adminGrants  *mongo.Collection
+	users       *mongo.Collection
+	banned      *mongo.Collection
+	adminGrants *mongo.Collection
 }
 
 func NewUserRepository(db *mongo.Database) *UserRepository {

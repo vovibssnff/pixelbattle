@@ -1,8 +1,8 @@
 module pb_backend
 
-go 1.23.0
+go 1.25.0
 
-toolchain go1.23.6
+toolchain go1.26.2
 
 require (
 	github.com/gorilla/securecookie v1.1.2

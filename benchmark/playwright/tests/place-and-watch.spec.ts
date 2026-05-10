@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
+import { loginTestUser } from './helpers/auth';
 
-test('place and watch latency', async ({ page }, testInfo) => {
-  await page.goto('/main', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#viewport-canvas', { timeout: 30_000 });
+test('place and watch latency', async ({ page, baseURL }, testInfo) => {
+  await loginTestUser(page, baseURL!);
+
+  await page.goto('/main', { waitUntil: 'networkidle' });
+  await page.waitForSelector('#viewport-canvas', { state: 'attached', timeout: 60_000 });
 
   await page.evaluate(() => {
     (window as any).__pbMetrics = { wsToRender: [] as number[], clickToRender: [] as number[] };
@@ -29,4 +32,3 @@ test('place and watch latency', async ({ page }, testInfo) => {
   const outPath = path.join(outDir, `place-and-watch-${testInfo.project.name}.json`);
   fs.writeFileSync(outPath, JSON.stringify(metrics, null, 2));
 });
-

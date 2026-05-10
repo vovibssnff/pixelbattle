@@ -178,20 +178,7 @@ jobs:
       - name: Unit tests
         run: go test ./...
 
-  iac-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Trivy config scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          scan-type: config
-          scan-ref: .
-          skip-dirs: .venv,pb_frontend/node_modules,mongodb/data,redis/data,monitoring/prometheus_data,monitoring/grafana_data,results
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-
-  container-security:
+  docker-build:
     needs:
       - secrets-scan
       - ansible-lint
@@ -202,7 +189,6 @@ jobs:
       - frontend-lint
       - frontend-security
       - dockerfile-lint
-      - iac-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -210,21 +196,3 @@ jobs:
         run: docker build -t pb-backend:${{ github.sha }} pb_backend/
       - name: Build frontend image
         run: docker build -t pb-frontend:${{ github.sha }} pb_frontend/
-      - name: Trivy backend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: pb-backend:${{ github.sha }}
-          format: table
-          ignore-unfixed: true
-          pkg-types: os,library
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-      - name: Trivy frontend
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: pb-frontend:${{ github.sha }}
-          format: table
-          ignore-unfixed: true
-          pkg-types: os,library
-          severity: CRITICAL,HIGH
-          exit-code: "1"

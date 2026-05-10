@@ -8,6 +8,8 @@ profile: production
 exclude_paths:
   - .venv/
   - .cache/
+  - benchmark/playwright/node_modules/
+  - pb_frontend/node_modules/
 
 warn_list:
   - no-changed-when # handled case-by-case with explicit changed_when: false
