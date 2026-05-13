@@ -38,8 +38,7 @@ id_rsa.pub
 # --- Cursor ---
 .cursor/
 
-# --- ADRs ---
-adr/
+# --- Local notes / scratch (ADRs live under adr/ and remain tracked) ---
 context/
 
 # --- Go (pb_backend) ---

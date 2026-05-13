@@ -155,6 +155,9 @@ func (s *CanvasService) GetCanvas(ctx context.Context, img *domain.Image) error 
 		return err
 	}
 	for key, values := range canvasData {
+		if len(values) == 0 {
+			continue
+		}
 		var deserialized domain.RedisPixel
 		if err := utils.DeserializeRedisPixel([]byte(values[0]), &deserialized); err != nil {
 			return err

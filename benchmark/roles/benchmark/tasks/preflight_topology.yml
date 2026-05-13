@@ -43,7 +43,8 @@
   block:
     - name: "preflight (loaders): ps top-5 by RSS"
       ansible.builtin.shell:
-        cmd: "set -o pipefail && ps -eo rss,pid,comm --no-headers | sort -nr | head -5"
+        # head closes the pipe early → SIGPIPE (rc=141); that is expected, not an error
+        cmd: "ps -eo rss,pid,comm --no-headers | sort -nr | head -5 || true"
         executable: /bin/bash
       register: benchmark_loader_top_rss
       changed_when: false

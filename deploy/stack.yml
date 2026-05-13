@@ -21,33 +21,52 @@ networks:
 
 configs:
   prometheus_yml:
-    file: ./monitoring/prometheus.yml
+    file: ../monitoring/prometheus.yml
   prometheus_clock_skew_rules:
-    file: ./monitoring/alerts/clock-skew.rules.yml
+    file: ../monitoring/alerts/clock-skew.rules.yml
   blackbox_yml:
-    file: ./monitoring/blackbox.yml
+    file: ../monitoring/blackbox.yml
   caddyfile:
-    file: ./caddy/Caddyfile.swarm
+    file: ../caddy/Caddyfile.swarm
   caddy_tls:
-    file: ./caddy/tls.inc
+    file: ../caddy/tls.inc
 
 services:
   # ---- Redis Cluster (3 masters, no replicas) ----
   redis-c1:
     image: redis:7.4.2
     networks: [overlay]
+    ports:
+      - target: 6379
+        published: 6379
+        protocol: tcp
+        mode: host
+      - target: 16379
+        published: 16379
+        protocol: tcp
+        mode: host
     command:
       - redis-server
-      - --port=6379
-      - --cluster-enabled=yes
-      - --cluster-config-file=nodes.conf
-      - --cluster-node-timeout=5000
-      - --appendonly=yes
-      - --bind=0.0.0.0
-      - --protected-mode=no
-      - --cluster-announce-ip=192.168.122.13
-      - --cluster-announce-port=6379
-      - --cluster-announce-bus-port=16379
+      - "--port"
+      - "6379"
+      - "--cluster-enabled"
+      - "yes"
+      - "--cluster-config-file"
+      - "nodes.conf"
+      - "--cluster-node-timeout"
+      - "5000"
+      - "--appendonly"
+      - "yes"
+      - "--bind"
+      - "0.0.0.0"
+      - "--protected-mode"
+      - "no"
+      - "--cluster-announce-ip"
+      - "192.168.122.13"
+      - "--cluster-announce-port"
+      - "6379"
+      - "--cluster-announce-bus-port"
+      - "16379"
     deploy:
       mode: replicated
       replicas: 1
@@ -67,18 +86,37 @@ services:
   redis-c2:
     image: redis:7.4.2
     networks: [overlay]
+    ports:
+      - target: 6379
+        published: 6379
+        protocol: tcp
+        mode: host
+      - target: 16379
+        published: 16379
+        protocol: tcp
+        mode: host
     command:
       - redis-server
-      - --port=6379
-      - --cluster-enabled=yes
-      - --cluster-config-file=nodes.conf
-      - --cluster-node-timeout=5000
-      - --appendonly=yes
-      - --bind=0.0.0.0
-      - --protected-mode=no
-      - --cluster-announce-ip=192.168.122.14
-      - --cluster-announce-port=6379
-      - --cluster-announce-bus-port=16379
+      - "--port"
+      - "6379"
+      - "--cluster-enabled"
+      - "yes"
+      - "--cluster-config-file"
+      - "nodes.conf"
+      - "--cluster-node-timeout"
+      - "5000"
+      - "--appendonly"
+      - "yes"
+      - "--bind"
+      - "0.0.0.0"
+      - "--protected-mode"
+      - "no"
+      - "--cluster-announce-ip"
+      - "192.168.122.14"
+      - "--cluster-announce-port"
+      - "6379"
+      - "--cluster-announce-bus-port"
+      - "16379"
     deploy:
       mode: replicated
       replicas: 1
@@ -98,18 +136,37 @@ services:
   redis-c3:
     image: redis:7.4.2
     networks: [overlay]
+    ports:
+      - target: 6379
+        published: 6379
+        protocol: tcp
+        mode: host
+      - target: 16379
+        published: 16379
+        protocol: tcp
+        mode: host
     command:
       - redis-server
-      - --port=6379
-      - --cluster-enabled=yes
-      - --cluster-config-file=nodes.conf
-      - --cluster-node-timeout=5000
-      - --appendonly=yes
-      - --bind=0.0.0.0
-      - --protected-mode=no
-      - --cluster-announce-ip=192.168.122.15
-      - --cluster-announce-port=6379
-      - --cluster-announce-bus-port=16379
+      - "--port"
+      - "6379"
+      - "--cluster-enabled"
+      - "yes"
+      - "--cluster-config-file"
+      - "nodes.conf"
+      - "--cluster-node-timeout"
+      - "5000"
+      - "--appendonly"
+      - "yes"
+      - "--bind"
+      - "0.0.0.0"
+      - "--protected-mode"
+      - "no"
+      - "--cluster-announce-ip"
+      - "192.168.122.15"
+      - "--cluster-announce-port"
+      - "6379"
+      - "--cluster-announce-bus-port"
+      - "16379"
     deploy:
       mode: replicated
       replicas: 1
@@ -126,7 +183,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # ---- Per-shard Redis exporter ----
+  # ---- Per-shard Redis exporter (Prometheus metrics; not required for benchmark runs) ----
   redis-exporter-c1:
     image: oliver006/redis_exporter:v1.62.0-alpine
     networks: [overlay]
@@ -209,7 +266,7 @@ services:
       - GATEWAY_PEERS=gw-2:9000
       - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
       - GATEWAY_OPSTREAM_CONSUMER=gw-1
-      - WS_ALLOW_ANONYMOUS=false
+      - WS_ALLOW_ANONYMOUS=true
       - RATE_LIMIT_PIXEL_PER_SEC=5
       - RATE_LIMIT_WS_CONN_PER_MIN=300
       - CANVAS_HEIGHT=250
@@ -227,6 +284,10 @@ services:
       resources:
         limits:
           memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 20s
+        max_attempts: 10
     healthcheck:
       test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
       interval: 15s
@@ -255,7 +316,7 @@ services:
       - GATEWAY_PEERS=gw-1:9000
       - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
       - GATEWAY_OPSTREAM_CONSUMER=gw-2
-      - WS_ALLOW_ANONYMOUS=false
+      - WS_ALLOW_ANONYMOUS=true
       - RATE_LIMIT_PIXEL_PER_SEC=5
       - RATE_LIMIT_WS_CONN_PER_MIN=300
       - CANVAS_HEIGHT=250
@@ -273,6 +334,10 @@ services:
       resources:
         limits:
           memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 20s
+        max_attempts: 10
     healthcheck:
       test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:8080/metrics"]
       interval: 15s
@@ -368,7 +433,7 @@ services:
           memory: 512M
 
   caddy:
-    image: pixelbattle/frontend:phase2
+    image: caddy:2.9-alpine
     networks: [overlay]
     ports:
       - target: 80
@@ -400,6 +465,11 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
     networks: [overlay]
+    ports:
+      - target: 9100
+        published: 9100
+        protocol: tcp
+        mode: host
     command:
       - --path.rootfs=/host
       - --collector.systemd

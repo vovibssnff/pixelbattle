@@ -3,6 +3,9 @@
 #
 # Override at the inventory or CLI level (`-e key=value`) without editing this file.
 
+# --- Ansible connection defaults ---
+ansible_become_password: "{{ vault_become_password }}"
+
 # --- Source ---
 deploy_git_repo: "{{ vault_repo_url }}"
 deploy_git_branch: "phase-1-metrics-baseline"

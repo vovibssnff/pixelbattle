@@ -169,16 +169,24 @@ def _load_prom_kpi(run_dir: Optional[Path], metric_name: str) -> Optional[float]
 
 
 def generate_report(root_dir: Path, output_file: Path) -> None:
-    # Phase 1 fetch layout: results/baseline/<run-id>/benchmarks/*.json
-    # Legacy layout: results/{baseline,candidate}/benchmarks/*.json under root_dir
-    if (root_dir / "benchmarks").is_dir():
+    # Prefer two-tree comparison whenever both branches exist under root_dir.
+    # This avoids accidentally taking single-phase mode when a legacy
+    # root-level benchmarks/ directory is also present.
+    baseline_branch = root_dir / "baseline"
+    candidate_branch = root_dir / "candidate"
+    if baseline_branch.is_dir() and candidate_branch.is_dir():
+        baseline_dir = baseline_branch
+        candidate_dir: Optional[Path] = candidate_branch
+        baseline = _load_latest_by_storage(baseline_dir)
+        candidate = _load_latest_by_storage(candidate_dir)
+    elif (root_dir / "benchmarks").is_dir():
         baseline_dir = root_dir
-        candidate_dir: Optional[Path] = None
+        candidate_dir = None
         baseline = _load_latest_by_storage(baseline_dir)
         candidate: Dict[str, List[Dict[str, Any]]] = {}
     else:
-        baseline_dir = root_dir / "baseline"
-        candidate_dir = root_dir / "candidate"
+        baseline_dir = baseline_branch
+        candidate_dir = candidate_branch
         baseline = _load_latest_by_storage(baseline_dir)
         candidate = _load_latest_by_storage(candidate_dir)
 

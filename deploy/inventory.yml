@@ -25,16 +25,17 @@ all:
           ansible_python_interpreter: /usr/bin/python3
 
     # Phase 2 KVM Swarm topology (created by deploy/playbooks/kvm-provision.yml on the host).
+    # Connection vars are set at the swarm_all group level — do NOT set ansible_user per-host
+    # or per sub-group here, as vault_deploy_user (vovi) would override the ubuntu cloud-init user.
     swarm_manager:
       hosts:
         vm-manager:
           ansible_host: "192.168.122.10"
-          ansible_user: "{{ swarm_default_user }}"
-          ansible_ssh_private_key_file: "{{ swarm_default_ssh_key }}"
-          ansible_python_interpreter: "{{ swarm_default_python }}"
           swarm_role: manager
           vm_cpu: 2
           vm_mem_mb: 6144
+          benchmark_results_root: /home/ubuntu/pixelbattle-benchmark-results
+          benchmark_project_root: /home/ubuntu/pixelbattle
 
     swarm_backend_workers:
       hosts:
@@ -52,10 +53,6 @@ all:
           gateway_instance_id: gw-2
           vm_cpu: 3
           vm_mem_mb: 5120
-      vars:
-        ansible_user: "{{ swarm_default_user }}"
-        ansible_ssh_private_key_file: "{{ swarm_default_ssh_key }}"
-        ansible_python_interpreter: "{{ swarm_default_python }}"
 
     swarm_redis_workers:
       hosts:
@@ -77,10 +74,6 @@ all:
           redis_shard_id: c3
           vm_cpu: 1
           vm_mem_mb: 2048
-      vars:
-        ansible_user: "{{ swarm_default_user }}"
-        ansible_ssh_private_key_file: "{{ swarm_default_ssh_key }}"
-        ansible_python_interpreter: "{{ swarm_default_python }}"
 
     swarm_workers:
       children:
@@ -91,9 +84,20 @@ all:
       children:
         swarm_manager:
         swarm_workers:
+      vars:
+        ansible_user: ubuntu
+        ansible_ssh_private_key_file: "~/.ssh/rsa"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ansible_python_interpreter: /usr/bin/python3
 
-    local:
+    loaders:
       hosts:
         localhost:
           ansible_connection: local
           ansible_become: false
+          benchmark_use_systemd_scope: true
+          benchmark_loader_memory_max: 16G
+
+    local:
+      children:
+        loaders: {}

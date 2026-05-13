@@ -121,8 +121,22 @@
     benchmark_oplog_lag_sec: 60
     benchmark_enable_db_bench: true
     benchmark_run_db_on_vm: true
+    benchmark_db_delegate_host: vm-backend-1
     benchmark_redis_cluster: true
+    benchmark_shards: 3
     benchmark_topology_label: "kvm-swarm-3shards-2gateways"
+    benchmark_target_host: "{{ hostvars['vm-redis-1'].ansible_host }}"
+    benchmark_db_use_local_ports: false
+    benchmark_remote_host: "{{ hostvars['vm-redis-1'].ansible_host }}"
+    benchmark_redis_cluster_addrs: >-
+      {{ groups['swarm_redis_workers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', ':6379') | join(',') }}
+    benchmark_results_root: /home/ubuntu/pixelbattle-benchmark-results
+    # Source was rsynced to ~/pb_backend; mount parent so /workspace/pb_backend resolves
+    benchmark_project_root: /home/ubuntu
+    # No Go binary on vm-backend-1 — run benchmark inside Docker golang image
+    benchmark_go_via_docker: true
+    # Must match go.mod requirement (>= 1.25); same as pb_backend/Dockerfile builder stage
+    benchmark_go_docker_image: golang:1.26-bookworm
   tasks:
     - name: "preflight: include topology check"
       ansible.builtin.include_role:
@@ -142,6 +156,54 @@
         tasks_from: run_db_benchmarks.yml
 
 # ---------------------------------------------------------------------------
+# 3b. Copy DB bench results from vm-backend-1 → vm-manager so the single-host
+#     collection play (play 5) can archive them together with Prom/logs/topology.
+# ---------------------------------------------------------------------------
+
+- name: "Phase 2: sync DB bench results to manager"
+  hosts: vm-backend-1
+  become: true
+  gather_facts: false
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_src: /home/ubuntu/pixelbattle-benchmark-results/benchmarks
+    benchmark_dest_host: "{{ hostvars['vm-manager'].ansible_host }}"
+    benchmark_dest: /home/ubuntu/pixelbattle-benchmark-results/benchmarks
+  tasks:
+    - name: "Ensure destination directory exists on manager"
+      ansible.builtin.file:
+        path: "{{ benchmark_dest }}"
+        state: directory
+        mode: "0755"
+        owner: ubuntu
+      delegate_to: vm-manager
+
+    - name: "List DB bench JSON files on backend-1"
+      ansible.builtin.find:
+        paths: "{{ benchmark_src }}"
+        patterns: "*.json,*.txt"
+      register: bench_files
+
+    - name: "Copy each result file to manager via fetch+copy"
+      when: bench_files.files | length > 0
+      block:
+        - name: "Fetch bench results to controller"
+          ansible.builtin.fetch:
+            src: "{{ item.path }}"
+            dest: "/tmp/pb-bench-sync/"
+            flat: false
+          loop: "{{ bench_files.files }}"
+          loop_control:
+            label: "{{ item.path | basename }}"
+
+        - name: "Push bench results to manager"
+          ansible.builtin.copy:
+            src: "/tmp/pb-bench-sync/{{ inventory_hostname }}{{ benchmark_src }}/"
+            dest: "{{ benchmark_dest }}/"
+            mode: "0644"
+          delegate_to: vm-manager
+
+# ---------------------------------------------------------------------------
 # 4. Loaders (laptop): k6 + Playwright against the Swarm manager (Caddy LB).
 # ---------------------------------------------------------------------------
 
@@ -152,6 +214,7 @@
     benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
     benchmark_phase: candidate
     benchmark_target_host: "{{ hostvars['vm-manager'].ansible_host }}"
+    benchmark_remote_host: "{{ hostvars['vm-manager'].ansible_host }}"
   tasks:
     - name: "preflight: include topology check"
       ansible.builtin.include_role:
@@ -201,6 +264,8 @@
   vars:
     benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
     benchmark_phase: candidate
+    benchmark_results_root: "{{ hostvars[inventory_hostname].benchmark_results_root | default('/home/ubuntu/pixelbattle-benchmark-results') }}"
+    benchmark_project_root: "{{ hostvars[inventory_hostname].benchmark_project_root | default('/home/ubuntu/pixelbattle') }}"
   tasks:
     - name: "Snapshot docker swarm topology"
       ansible.builtin.shell: |
@@ -230,7 +295,8 @@
   vars:
     benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
     benchmark_phase: candidate
-    benchmark_db_delegate_host: swarm_manager
+    # Must be an actual host name, not a group name, so hostvars lookup works.
+    benchmark_db_delegate_host: vm-manager
   tasks:
     - name: "fetch: pull manager artefacts into results/candidate/<run-id>/"
       ansible.builtin.include_role:
@@ -242,7 +308,7 @@
         name: benchmark
         tasks_from: generate_report.yml
       vars:
-        benchmark_results_root: "{{ benchmark_project_root }}/results/candidate/{{ benchmark_run_id }}"
+        benchmark_results_root: "{{ playbook_dir }}/../../results"
 
     - name: "Done"
       ansible.builtin.debug:

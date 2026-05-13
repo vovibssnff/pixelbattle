@@ -1,0 +1,201 @@
+---
+# Deploy (or update) the Phase 2 Docker Swarm stack from the Swarm manager.
+#
+# Config immutability strategy: configs are created externally with an 8-char
+# content-hash suffix (e.g. pixelbattle_caddy_tls_a1b2c3d4). The stack.yml
+# configs: block is rewritten on the manager to mark them external and use
+# the versioned name. Stale config versions are pruned after convergence.
+#
+# Usage (from repo root):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/deploy-stack.yml \
+#       --vault-password-file deploy/.vault_pass
+
+- name: Phase 2 — deploy Swarm stack
+  hosts: swarm_manager
+  gather_facts: false
+  vars:
+    stack_name: pixelbattle
+    deploy_dir: /home/ubuntu/pixelbattle-deploy
+
+    # config_key must match the key name in the configs: block of stack.yml
+    config_sources:
+      - key: prometheus_yml
+        src: "{{ playbook_dir }}/../../monitoring/prometheus.yml"
+      - key: prometheus_clock_skew_rules
+        src: "{{ playbook_dir }}/../../monitoring/alerts/clock-skew.rules.yml"
+      - key: blackbox_yml
+        src: "{{ playbook_dir }}/../../monitoring/blackbox.yml"
+      - key: caddyfile
+        src: "{{ playbook_dir }}/../../caddy/Caddyfile.swarm"
+      - key: caddy_tls
+        src: "{{ playbook_dir }}/../../caddy/tls.inc"
+
+  tasks:
+    # ------------------------------------------------------------------ #
+    # 1. Prepare staging area on manager                                   #
+    # ------------------------------------------------------------------ #
+    - name: Create deploy directory on manager
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/configs"
+        state: directory
+        mode: "0755"
+
+    # ------------------------------------------------------------------ #
+    # 2. Upload config files and compute hashes                            #
+    # ------------------------------------------------------------------ #
+    - name: Upload config files to manager
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ deploy_dir }}/configs/{{ item.key }}"
+        mode: "0644"
+      loop: "{{ config_sources }}"
+
+    - name: Compute content hash for each config
+      ansible.builtin.shell: >-
+        sha256sum {{ deploy_dir }}/configs/{{ item.key }} | awk '{print substr($1,1,8)}'
+      loop: "{{ config_sources }}"
+      register: hash_results
+      changed_when: false
+
+    - name: Build key→versioned-name map
+      ansible.builtin.set_fact:
+        cfg_ver: >-
+          {{
+            cfg_ver | default({}) | combine({
+              item.item.key: stack_name + '_' + item.item.key + '_' + item.stdout
+            })
+          }}
+      loop: "{{ hash_results.results }}"
+
+    - name: Show versioned config names
+      ansible.builtin.debug:
+        msg: "{{ cfg_ver }}"
+
+    # ------------------------------------------------------------------ #
+    # 3. Create any missing config objects on the Swarm                    #
+    # ------------------------------------------------------------------ #
+    - name: List existing Docker configs
+      ansible.builtin.command: docker config ls --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: existing_configs
+      changed_when: false
+
+    - name: Create config object if not present
+      ansible.builtin.command: >-
+        docker config create
+        {{ cfg_ver[item.key] }}
+        {{ deploy_dir }}/configs/{{ item.key }}
+      loop: "{{ config_sources }}"
+      when: cfg_ver[item.key] not in existing_configs.stdout_lines
+      changed_when: true
+
+    # ------------------------------------------------------------------ #
+    # 4. Generate patched stack.yml that uses external versioned configs   #
+    # ------------------------------------------------------------------ #
+    - name: Copy stack.yml to deploy dir
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../stack.yml"
+        dest: "{{ deploy_dir }}/stack.yml"
+        mode: "0644"
+
+    # Replace the entire `configs:` block at the top level with external refs.
+    # Python script is simpler than multi-step regex for YAML block replacement.
+    - name: Rewrite configs block to use external versioned names
+      ansible.builtin.shell: |
+        python3 - << 'PYEOF'
+        import re, sys
+
+        stack_file = "{{ deploy_dir }}/stack.yml"
+        cfg_ver = {{ cfg_ver | to_json }}
+
+        with open(stack_file) as f:
+            content = f.read()
+
+        # Build new configs: block
+        new_block = "configs:\n"
+        for key, versioned in cfg_ver.items():
+            new_block += f"  {key}:\n    external: true\n    name: {versioned}\n"
+
+        # Replace the configs: block (from 'configs:\n' up to 'services:\n')
+        patched = re.sub(
+            r'^configs:.*?(?=^services:)',
+            new_block + "\n",
+            content,
+            flags=re.MULTILINE | re.DOTALL
+        )
+
+        with open(stack_file, 'w') as f:
+            f.write(patched)
+        print("patched ok")
+        PYEOF
+      register: patch_result
+      changed_when: true
+
+    - name: Show patch result
+      ansible.builtin.debug:
+        var: patch_result.stdout
+
+    # ------------------------------------------------------------------ #
+    # 5. Deploy the stack                                                  #
+    # ------------------------------------------------------------------ #
+    - name: docker stack deploy
+      ansible.builtin.command: >-
+        docker stack deploy
+        -c {{ deploy_dir }}/stack.yml
+        {{ stack_name }}
+        --with-registry-auth
+        --detach=true
+      register: stack_deploy
+      changed_when: "'Updating' in stack_deploy.stdout or 'Creating' in stack_deploy.stdout"
+      failed_when:
+        - stack_deploy.rc != 0
+        - "'could not be accessed on a registry' not in stack_deploy.stderr"
+
+    - name: Deploy output
+      ansible.builtin.debug:
+        var: stack_deploy.stdout_lines
+
+    # ------------------------------------------------------------------ #
+    # 6. Wait for all service tasks to converge (up to 6 min)              #
+    # ------------------------------------------------------------------ #
+    - name: Wait for all tasks to be Running
+      ansible.builtin.shell: |
+        desired=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' -q | wc -l)
+        running=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' \
+                  --format '{{ "{{" }}.CurrentState{{ "}}" }}' \
+                  | grep -c '^Running' || true)
+        echo "running=$running desired=$desired"
+        [ "$running" -eq "$desired" ] && [ "$desired" -gt "0" ]
+      register: converge_check
+      retries: 36
+      delay: 10
+      until: converge_check.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Final service table
+      ansible.builtin.command: >-
+        docker stack services {{ stack_name }}
+        --format "table {{ '{{' }}.Name{{ '}}' }}\t{{ '{{' }}.Replicas{{ '}}' }}\t{{ '{{' }}.Image{{ '}}' }}"
+      register: svc_table
+      changed_when: false
+
+    - name: Show services
+      ansible.builtin.debug:
+        var: svc_table.stdout_lines
+
+    # ------------------------------------------------------------------ #
+    # 7. Prune stale configs from previous versions                        #
+    # ------------------------------------------------------------------ #
+    - name: List all configs now
+      ansible.builtin.command: docker config ls --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: all_configs_now
+      changed_when: false
+
+    - name: Remove stale config versions
+      ansible.builtin.command: docker config rm {{ item }}
+      loop: "{{ all_configs_now.stdout_lines }}"
+      when: >
+        item.startswith(stack_name + '_') and
+        item not in cfg_ver.values() | list
+      failed_when: false
+      changed_when: true

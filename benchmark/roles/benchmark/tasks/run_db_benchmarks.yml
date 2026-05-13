@@ -72,6 +72,7 @@
   ansible.builtin.set_fact:
     benchmark_effective_db_env:
       REDIS_ADDR: "{{ benchmark_target_host }}:6379"
+      REDIS_CLUSTER_ADDRS: "{{ benchmark_redis_cluster_addrs | default(benchmark_target_host ~ ':6379') }}"
       POSTGRES_HOST: "{{ benchmark_target_host }}"
       POSTGRES_PORT: "5432"
       MONGO_URI: "mongodb://root:root@{{ benchmark_target_host }}:27017/?directConnection=true"

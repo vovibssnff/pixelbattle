@@ -24,11 +24,17 @@
 	}
 }
 
-{$CADDY_DOMAIN}, localhost, 192.168.122.10 {
+# Include `caddy` so in-cluster probes (Prometheus blackbox → http://caddy/…) match this site.
+{$CADDY_DOMAIN}, localhost, 192.168.122.10, caddy {
 	import /etc/caddy/tls.inc
 
 	encode gzip
 	import common_security_headers
+
+	# Blackbox + load-balancer probes; not defined on gateways.
+	handle /healthz {
+		respond "ok" 200
+	}
 
 	@notpanel {
 		not path /panel /panel/*
