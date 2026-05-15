@@ -89,3 +89,28 @@
     - name: Show final Swarm topology
       ansible.builtin.debug:
         var: final_topology.stdout_lines
+
+# ---------------------------------------------------------------------------
+# High-connection tuning (idempotent). Apply on existing clusters without
+# re-running kvm-provision — see Phase 2 benchmark completion plan.
+# ---------------------------------------------------------------------------
+
+- name: Phase 2 — sysctl tuning for benchmarks (all Swarm nodes)
+  hosts: swarm_all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install high-connection sysctl drop-in
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-pixelbattle-highconn.conf
+        mode: "0644"
+        content: |
+          # k6 breakpoint / many concurrent TLS + WS (Phase 2 bench)
+          fs.file-max = 1048576
+          net.core.somaxconn = 65535
+      register: sysctl_dropin
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+      when: sysctl_dropin.changed | bool
+      changed_when: true

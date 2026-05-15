@@ -1,0 +1,84 @@
+---
+# Phase 2 — Playwright UX harness + Prometheus/RUM snapshot only (no k6, no Go DB bench).
+# Use after stack is healthy to validate Chromium, TLS/SNI, and /api/* routing before a full suite.
+#
+#   cd /home/vovi/Projects/pixelbattle/benchmark
+#   source ../.venv/bin/activate && eval $(ssh-agent -s) && ssh-add ~/.ssh/rsa
+#   ANSIBLE_ROLES_PATH=roles ansible-playbook -i ../deploy/inventory.yml \
+#     playbooks/run_playwright_candidate.yml --vault-password-file ../deploy/.vault_pass -v
+#
+# Override run id:
+#   ... -e benchmark_run_id=my_pw_run
+
+- name: "Phase 2 candidate: derive run id (Playwright-only)"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: "Set candidate run id"
+      ansible.builtin.set_fact:
+        benchmark_run_id: "{{ benchmark_run_id | default(ansible_date_time.epoch) }}"
+        benchmark_phase: candidate
+
+    - name: "Announce run id"
+      ansible.builtin.debug:
+        msg: "Playwright-only candidate run id: {{ benchmark_run_id }} (results/candidate/{{ benchmark_run_id }}/)"
+
+- name: "Phase 2: loader — preflight, Chromium, Playwright, metrics snapshot, report"
+  hosts: loaders
+  gather_facts: true
+  vars:
+    benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
+    benchmark_phase: candidate
+    benchmark_target_host: "{{ hostvars['vm-manager'].ansible_host }}"
+    benchmark_remote_host: "{{ hostvars['vm-manager'].ansible_host }}"
+    benchmark_loader_artefacts_root: "{{ playbook_dir | dirname | dirname }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}"
+    benchmark_k6_results_dir: "{{ benchmark_loader_artefacts_root }}/k6"
+    benchmark_playwright_results_dir: "{{ benchmark_loader_artefacts_root }}/playwright"
+    benchmark_fail_on_playwright_error: true
+  tasks:
+    - name: "preflight: include topology check"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: preflight_topology.yml
+
+    - name: "Ensure empty k6 directory exists (fetch layout expects it)"
+      ansible.builtin.file:
+        path: "{{ benchmark_k6_results_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: "Ensure Playwright Chromium is installed (loader)"
+      when: not (benchmark_skip_playwright_install | default(false) | bool)
+      ansible.builtin.command:
+        cmd: npx playwright install chromium
+        chdir: "{{ playbook_dir }}/../playwright"
+      register: bench_pw_install
+      changed_when: true
+
+    - name: "Playwright UX harness (place-and-watch + long-session)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: run_playwright.yml
+
+    - name: "fetch: write prom/ + rum/ under run tree (skip VM tarball and global results/* copy)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: fetch_to_baseline.yml
+      vars:
+        benchmark_db_delegate_host: vm-manager
+        benchmark_skip_fetch_vm_bundle: true
+
+    - name: "report: emit Markdown comparison report (baseline + candidate)"
+      ansible.builtin.include_role:
+        name: benchmark
+        tasks_from: generate_report.yml
+      vars:
+        benchmark_results_root: "{{ playbook_dir | dirname | dirname }}/results"
+
+    - name: "Done"
+      ansible.builtin.debug:
+        msg:
+          - "=== Playwright-only candidate run complete ==="
+          - "Results: {{ playbook_dir | dirname | dirname }}/results/candidate/{{ benchmark_run_id }}/"
+          - "Inspect playwright/*.json and rum/summary.json; re-run full suite when satisfied."

@@ -73,6 +73,10 @@ type Benchmarker struct {
 	canvasHeight uint
 	canvasWidth  uint
 	config       BenchmarkConfig
+	// clusterBenchMu: go-redis cluster client is not safe for concurrent Pipeline/exec
+	// overlapping with other commands from other goroutines; serialize repo ops in
+	// mixed read+write micro-benchmarks (MixedWorkload, ReadUnderWrite).
+	clusterBenchMu sync.Mutex
 }
 
 func NewBenchmarker(repo Repository, storageType string, height, width uint, cfg BenchmarkConfig) *Benchmarker {
@@ -283,7 +287,9 @@ func (b *Benchmarker) MixedWorkload(concurrency int) BenchmarkResult {
 				x, y := gen.Next()
 				pixelData := b.generatePixelData(x, y)
 				opStart := time.Now()
+				b.clusterBenchMu.Lock()
 				err := b.repo.WritePixel(ctx, x, y, pixelData)
+				b.clusterBenchMu.Unlock()
 				latMs := time.Since(opStart).Seconds() * 1000
 				lc.Record(latMs, err != nil)
 				observePromShard(b.storageType, scenario, b.syntheticShardID(x, y), latMs, err != nil)
@@ -297,7 +303,9 @@ func (b *Benchmarker) MixedWorkload(concurrency int) BenchmarkResult {
 			defer wg.Done()
 			for j := 0; j < readOps/2; j++ {
 				opStart := time.Now()
+				b.clusterBenchMu.Lock()
 				_, err := b.repo.GetCanvas(ctx)
+				b.clusterBenchMu.Unlock()
 				lc.Record(time.Since(opStart).Seconds()*1000, err != nil)
 			}
 		}()
@@ -372,7 +380,9 @@ func (b *Benchmarker) ReadUnderWrite(writers, readers int, duration time.Duratio
 				x, y := gen.Next()
 				pixelData := b.generatePixelData(x, y)
 				opStart := time.Now()
+				b.clusterBenchMu.Lock()
 				err := b.repo.WritePixel(ctx, x, y, pixelData)
+				b.clusterBenchMu.Unlock()
 				latMs := time.Since(opStart).Seconds() * 1000
 				writeLc.Record(latMs, err != nil)
 				observePromShard(b.storageType, writeScenario, b.syntheticShardID(x, y), latMs, err != nil)
@@ -389,7 +399,9 @@ func (b *Benchmarker) ReadUnderWrite(writers, readers int, duration time.Duratio
 			defer ticker.Stop()
 			// do one read immediately
 			opStart := time.Now()
+			b.clusterBenchMu.Lock()
 			_, err := b.repo.GetCanvas(ctx)
+			b.clusterBenchMu.Unlock()
 			readLc.Record(time.Since(opStart).Seconds()*1000, err != nil)
 			atomic.AddInt64(&readOps, 1)
 			for {
@@ -398,7 +410,9 @@ func (b *Benchmarker) ReadUnderWrite(writers, readers int, duration time.Duratio
 					return
 				case <-ticker.C:
 					opStart := time.Now()
+					b.clusterBenchMu.Lock()
 					_, err := b.repo.GetCanvas(ctx)
+					b.clusterBenchMu.Unlock()
 					readLc.Record(time.Since(opStart).Seconds()*1000, err != nil)
 					atomic.AddInt64(&readOps, 1)
 				}

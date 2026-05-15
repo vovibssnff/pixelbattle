@@ -78,6 +78,10 @@
   vars:
     benchmark_run_id: "{{ hostvars['localhost'].benchmark_run_id }}"
     benchmark_phase: baseline
+    benchmark_loader_artefacts_root: "{{ playbook_dir | dirname | dirname }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}"
+    benchmark_k6_results_dir: "{{ benchmark_loader_artefacts_root }}/k6"
+    benchmark_playwright_results_dir: "{{ benchmark_loader_artefacts_root }}/playwright"
+    benchmark_fail_on_playwright_error: true
   tasks:
     - name: "preflight: include topology check"
       ansible.builtin.include_role:

@@ -160,6 +160,13 @@
                   "log-driver": "json-file",
                   "log-opts": { "max-size": "20m", "max-file": "5" }
                 }
+            - path: /etc/sysctl.d/99-pixelbattle-highconn.conf
+              owner: root:root
+              permissions: '0644'
+              content: |
+                # High WebSocket / TLS connection counts (k6 breakpoint) — Phase 2 bench plan
+                fs.file-max = 1048576
+                net.core.somaxconn = 65535
           runcmd:
             - install -d -m 0755 /etc/apt/keyrings
             - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -171,6 +178,7 @@
             - systemctl enable --now docker
             - usermod -aG docker {{ swarm_default_user }}
             - systemctl enable --now chrony
+            - sysctl --system
       loop: "{{ kvm_vms }}"
       when: item.name not in existing_vms.stdout_lines
 

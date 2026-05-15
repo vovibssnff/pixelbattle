@@ -5,11 +5,31 @@
 # Targets the SUT at https://{{ benchmark_target_host }} (configurable via
 # PLAYWRIGHT_BASE_URL). place-and-watch + long-session specs combined fit in 2 min.
 
+- name: "playwright: resolve output directory (per-run path avoids stale JSON in results/playwright)"
+  ansible.builtin.set_fact:
+    benchmark_playwright_output_dir: >-
+      {{
+        benchmark_playwright_results_dir
+        if (benchmark_playwright_results_dir | default('', true) | trim | length) > 0
+        else (benchmark_results_root ~ '/playwright')
+      }}
+  tags: [playwright]
+
 - name: "playwright: ensure results dir exists"
   ansible.builtin.file:
-    path: "{{ benchmark_results_root }}/playwright"
+    path: "{{ benchmark_playwright_output_dir }}"
     state: directory
     mode: "0755"
+  tags: [playwright]
+
+- name: "playwright: remove stale JSON from this run output dir (idempotent)"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    d="{{ benchmark_playwright_output_dir }}"
+    rm -f "$d"/place-and-watch-*.json "$d"/long-session-*.json "$d"/playwright-report.json 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  changed_when: true
   tags: [playwright]
 
 - name: "playwright: check npx is available"
@@ -63,17 +83,17 @@
     chdir: "{{ benchmark_project_root }}/benchmark/playwright"
   environment:
     PLAYWRIGHT_BASE_URL: "https://{{ benchmark_k6_wss_host if benchmark_k6_tls | bool else benchmark_target_host }}"
-    PLAYWRIGHT_RESULTS_DIR: "{{ benchmark_results_root }}/playwright"
+    PLAYWRIGHT_RESULTS_DIR: "{{ benchmark_playwright_output_dir }}"
     NODE_TLS_REJECT_UNAUTHORIZED: "0"  # self-signed certs on the dev VM
   register: benchmark_playwright_result
   changed_when: false
-  failed_when: false
+  ignore_errors: "{{ not (benchmark_fail_on_playwright_error | default(false) | bool) }}"
   when: benchmark_npx_check.rc == 0
   tags: [playwright]
 
 - name: "playwright: record run log"
   ansible.builtin.copy:
-    dest: "{{ benchmark_results_root }}/playwright/run_log_{{ ansible_date_time.epoch }}.txt"
+    dest: "{{ benchmark_playwright_output_dir }}/run_log_{{ ansible_date_time.epoch }}.txt"
     mode: "0644"
     content: |
       Playwright Run Log
@@ -90,4 +110,17 @@
       stderr:
       {{ benchmark_playwright_result.stderr_lines | default([]) | join('\n') }}
   when: benchmark_npx_check.rc == 0
+  tags: [playwright]
+
+- name: "playwright: fail play when strict and tests failed"
+  ansible.builtin.assert:
+    that:
+      - benchmark_playwright_result.rc == 0
+    fail_msg: >-
+      Playwright exited with rc={{ benchmark_playwright_result.rc | default('unknown') }}.
+      See run_log_*.txt under the run playwright/ directory. Fix Chromium install, TLS/SNI
+      (/etc/hosts → pixelbattle.local), and API routes (/api/login must not return 404).
+  when:
+    - benchmark_npx_check.rc == 0
+    - benchmark_fail_on_playwright_error | default(false) | bool
   tags: [playwright]

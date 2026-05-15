@@ -35,6 +35,7 @@
   become: true
   delegate_to: "{{ benchmark_db_delegate_host }}"
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: pull archive to controller"
@@ -43,6 +44,7 @@
     dest: "{{ benchmark_local_run_root }}/pb-bench.tgz"
     flat: true
   delegate_to: "{{ benchmark_db_delegate_host }}"
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: unpack archive on controller"
@@ -52,12 +54,13 @@
     remote_src: false
   delegate_to: localhost
   connection: local
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: collect local k6 results into run tree"
   ansible.builtin.shell: |
     set -euo pipefail
-    src="{{ benchmark_project_root }}/results/k6"
+    src="{{ benchmark_project_root }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}/k6"
     dest="{{ benchmark_local_run_root }}/k6"
     if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
       mkdir -p "$dest"
@@ -68,12 +71,13 @@
   delegate_to: localhost
   connection: local
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: collect local Playwright results into run tree"
   ansible.builtin.shell: |
     set -euo pipefail
-    src="{{ benchmark_project_root }}/results/playwright"
+    src="{{ benchmark_project_root }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}/playwright"
     dest="{{ benchmark_local_run_root }}/playwright"
     if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
       mkdir -p "$dest"
@@ -84,6 +88,7 @@
   delegate_to: localhost
   connection: local
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: resolve Prometheus URL from VM host"
@@ -108,8 +113,10 @@
     - { name: "pixels_placed_total", query: "rate(pixels_placed_total[1m])" }
     - { name: "availability_sli", query: "sum(rate(availability_sli_total{result=\"ok\"}[5m])) / sum(rate(availability_sli_total[5m]))" }
     - { name: "pixel_write_visible_p95", query: "histogram_quantile(0.95, sum by (le) (rate(pixel_write_visible_seconds_bucket[5m])))" }
-    - { name: "requests_per_second", query: "rate(requests_per_second[1m])" }
-    - { name: "error_rate", query: "(sum(rate(http_response_status_total{status=~\"5..\"}[1m])) + sum(rate(ws_errors_total[1m]))) / sum(rate(requests_per_second[1m]))" }
+    # HTTP RPS from real counters (requests_per_second is a Counter but misnamed; prefer http_response_status_total)
+    - { name: "requests_per_second", query: "sum(rate(http_response_status_total[5m]))" }
+    # Fraction of traffic that errored: 5xx + WS errors over HTTP + WS message volume (all counters).
+    - { name: "error_rate", query: "(sum(rate(http_response_status_total{status=~\"5..\"}[5m])) + sum(rate(ws_errors_total[5m]))) / clamp_min(sum(rate(http_response_status_total[5m])) + sum(rate(websocket_messages_received_total[5m])), 1e-9)" }
   loop_control:
     label: "{{ item.name }}"
   failed_when: false

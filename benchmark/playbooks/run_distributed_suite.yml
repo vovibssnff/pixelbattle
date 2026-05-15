@@ -17,9 +17,15 @@
 #  ----
 #  ~32 min total wall-clock, +3 min margin
 #
-# Invocation:
-#   ansible-playbook -i benchmark/inventory.yml benchmark/playbooks/run_distributed_suite.yml \
+# Invocation (must include Swarm hosts — use deploy inventory, not benchmark/inventory.yml alone):
+#   ansible-playbook -i deploy/inventory.yml benchmark/playbooks/run_distributed_suite.yml \
 #       -e benchmark_phase=candidate -e benchmark_redis_cluster=true
+#
+# After changing deploy/stack.yml (rate limits, Caddy memory), redeploy on the manager:
+#   docker stack deploy -c deploy/stack.yml pixelbattle
+#
+# Strict merge gate (fail playbook if k6 summaries miss SLO after fetch + report):
+#   -e benchmark_strict_k6_validation=true
 
 - name: "Phase 2 candidate: derive shared run id"
   hosts: localhost
@@ -215,11 +221,23 @@
     benchmark_phase: candidate
     benchmark_target_host: "{{ hostvars['vm-manager'].ansible_host }}"
     benchmark_remote_host: "{{ hostvars['vm-manager'].ansible_host }}"
+    benchmark_loader_artefacts_root: "{{ playbook_dir | dirname | dirname }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}"
+    benchmark_k6_results_dir: "{{ benchmark_loader_artefacts_root }}/k6"
+    benchmark_playwright_results_dir: "{{ benchmark_loader_artefacts_root }}/playwright"
+    benchmark_fail_on_playwright_error: true
   tasks:
     - name: "preflight: include topology check"
       ansible.builtin.include_role:
         name: benchmark
         tasks_from: preflight_topology.yml
+
+    - name: "Ensure Playwright Chromium is installed (loader)"
+      when: not (benchmark_skip_playwright_install | default(false) | bool)
+      ansible.builtin.command:
+        cmd: npx playwright install chromium
+        chdir: "{{ benchmark_project_root }}/benchmark/playwright"
+      register: bench_pw_install
+      changed_when: true
 
     - name: "k6 nominal (test-medium.js, 4 min)"
       ansible.builtin.include_role:
@@ -309,6 +327,17 @@
         tasks_from: generate_report.yml
       vars:
         benchmark_results_root: "{{ playbook_dir }}/../../results"
+
+    - name: "Optional — strict k6 merge gate (Phase 2 §13.2 style)"
+      when: benchmark_strict_k6_validation | default(false) | bool
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../../benchmark/reporting/validate_phase2_candidate_k6.py"
+          - "{{ playbook_dir }}/../../results/candidate/{{ benchmark_run_id }}"
+      register: bench_k6_gate
+      changed_when: false
+      failed_when: bench_k6_gate.rc != 0
 
     - name: "Done"
       ansible.builtin.debug:

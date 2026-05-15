@@ -5,6 +5,9 @@
 	servers {
 		metrics
 		trusted_proxies static private_ranges
+		timeouts {
+			idle 120s
+		}
 	}
 }
 

@@ -112,3 +112,21 @@ benchmark_db_bench_environment: {}
 
 # Number of Docker log lines to capture per container
 benchmark_docker_log_tail: 1000
+
+# Phase 2 distributed suite: skip `npx playwright install chromium` when true (air-gapped loaders).
+benchmark_skip_playwright_install: false
+
+# When true, run_distributed_suite.yml fails the final play if k6 gates are not met (nominal/stress/saturation).
+benchmark_strict_k6_validation: false
+
+# Playwright JSON + run_log directory. Leave empty to use legacy {{ benchmark_results_root }}/playwright
+# (shared across runs — stale baseline JSON can be copied into candidate runs). Suite playbooks set this to
+# results/<phase>/<run-id>/playwright instead.
+benchmark_playwright_results_dir: ""
+
+# When true, `playwright test` non-zero exit fails the play (recommended for Phase 2 after Chromium + API work).
+benchmark_fail_on_playwright_error: false
+
+# When true, fetch_to_baseline.yml skips the VM tarball + unpack + copying from global results/k6|playwright.
+# Use after a loader-only step when artefacts already live under results/<phase>/<run-id>/.
+benchmark_skip_fetch_vm_bundle: false

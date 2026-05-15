@@ -4,6 +4,7 @@ import (
 	"context"
 	"pb_backend/internal/metrics"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +15,9 @@ type CanvasRepository struct {
 	rdb           redis.Cmdable
 	hashTagKeys   bool // true: pixel:{y:x} / opstream:{y:x}; false: pixel:y:x (Phase 1)
 	gatewayOrigin string
+	// bulkReadMu: go-redis cluster + Pipeline is not safe for concurrent Exec on one client;
+	// concurrent GetCanvas caused SIGSEGV under DB benchmark mixed workload.
+	bulkReadMu sync.Mutex
 }
 
 // NewCanvasRepository stores canvas pixels in Redis lists. hashTagKeys must be true for
@@ -101,6 +105,8 @@ func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
 }
 
 func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, error) {
+	r.bulkReadMu.Lock()
+	defer r.bulkReadMu.Unlock()
 	start := time.Now()
 	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
@@ -132,6 +138,8 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 }
 
 func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]string, error) {
+	r.bulkReadMu.Lock()
+	defer r.bulkReadMu.Unlock()
 	start := time.Now()
 	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
@@ -163,6 +171,8 @@ func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]s
 }
 
 func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, error) {
+	r.bulkReadMu.Lock()
+	defer r.bulkReadMu.Unlock()
 	start := time.Now()
 	keys, err := collectPixelKeys(ctx, r.rdb)
 	if err != nil {
