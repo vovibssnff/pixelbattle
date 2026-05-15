@@ -10,5 +10,5 @@ COPY . .
 RUN npm run build
 
 # Ship static files baked into Caddy — no shared volume needed
-FROM caddy:2.9-alpine AS final
+FROM caddy:2.11-alpine AS final
 COPY --from=builder /app/dist /srv
