@@ -15,8 +15,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/prometheus/client_golang v1.19.1
 	golang.org/x/crypto v0.50.0
-	google.golang.org/grpc v1.69.4
-	google.golang.org/protobuf v1.36.4
+	google.golang.org/grpc v1.79.3
+	google.golang.org/protobuf v1.36.10
 )
 
 require (
@@ -53,7 +53,7 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

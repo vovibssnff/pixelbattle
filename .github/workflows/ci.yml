@@ -146,6 +146,8 @@ jobs:
           python-version: "3.12"
       - name: Install ansible-lint
         run: pip install "ansible-lint>=24,<26"
+      - name: Install Ansible collections (syntax-check for modules)
+        run: ansible-galaxy collection install -r deploy/requirements.yml
       - name: Lint deploy playbooks
         run: ansible-lint deploy/ -c .ansible-lint
 
@@ -160,6 +162,8 @@ jobs:
           python-version: "3.12"
       - name: Install ansible-lint
         run: pip install "ansible-lint>=24,<26"
+      - name: Install Ansible collections (syntax-check for modules)
+        run: ansible-galaxy collection install -r deploy/requirements.yml
       - name: Lint benchmark playbooks
         run: ansible-lint benchmark/ -c .ansible-lint
 

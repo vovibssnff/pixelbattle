@@ -2,9 +2,6 @@ version: "2"
 
 run:
   timeout: 5m
-  exclude-files:
-    - ".*\\.pb\\.go$"
-    - ".*_grpc\\.pb\\.go$"
 
 linters:
   default: none
@@ -33,6 +30,9 @@ linters:
       disabled-checks:
         - ifElseChain
   exclusions:
+    paths:
+      - ".*\\.pb\\.go$"
+      - ".*_grpc\\.pb\\.go$"
     rules:
       # Idiomatic deferred Close() on cursors, response bodies, websocket conns, etc.
       - linters: [errcheck]
