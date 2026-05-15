@@ -1,0 +1,12 @@
+---
+# Test 4: include_role WITHOUT tasks_from (uses main.yml)
+- name: "Test 4 — include_role without tasks_from (main.yml)"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    benchmark_enable_db_bench: false
+  tasks:
+    - name: "include_role main.yml"
+      ansible.builtin.include_role:
+        name: benchmark

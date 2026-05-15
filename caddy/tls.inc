@@ -6,5 +6,5 @@
 # Local / lab without public DNS — uncomment:
 #	tls internal
 #
-# Self-signed PEMs for bench/dev (SANs: pixelbattle.local, localhost, 192.168.122.71):
-	tls /etc/caddy/certs/pixelbattle.crt /etc/caddy/certs/pixelbattle.key
+# Caddy-managed internal CA — no cert files needed (bench/lab mode):
+	tls internal

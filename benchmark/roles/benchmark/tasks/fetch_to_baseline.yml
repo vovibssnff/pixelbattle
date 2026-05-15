@@ -35,6 +35,7 @@
   become: true
   delegate_to: "{{ benchmark_db_delegate_host }}"
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: pull archive to controller"
@@ -43,6 +44,7 @@
     dest: "{{ benchmark_local_run_root }}/pb-bench.tgz"
     flat: true
   delegate_to: "{{ benchmark_db_delegate_host }}"
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: unpack archive on controller"
@@ -52,12 +54,13 @@
     remote_src: false
   delegate_to: localhost
   connection: local
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: collect local k6 results into run tree"
   ansible.builtin.shell: |
     set -euo pipefail
-    src="{{ benchmark_project_root }}/results/k6"
+    src="{{ benchmark_project_root }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}/k6"
     dest="{{ benchmark_local_run_root }}/k6"
     if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
       mkdir -p "$dest"
@@ -68,12 +71,13 @@
   delegate_to: localhost
   connection: local
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: collect local Playwright results into run tree"
   ansible.builtin.shell: |
     set -euo pipefail
-    src="{{ benchmark_project_root }}/results/playwright"
+    src="{{ benchmark_project_root }}/results/{{ benchmark_phase }}/{{ benchmark_run_id }}/playwright"
     dest="{{ benchmark_local_run_root }}/playwright"
     if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
       mkdir -p "$dest"
@@ -84,6 +88,7 @@
   delegate_to: localhost
   connection: local
   changed_when: true
+  when: not (benchmark_skip_fetch_vm_bundle | default(false) | bool)
   tags: [collect]
 
 - name: "fetch_to_baseline: resolve Prometheus URL from VM host"
@@ -108,8 +113,10 @@
     - { name: "pixels_placed_total", query: "rate(pixels_placed_total[1m])" }
     - { name: "availability_sli", query: "sum(rate(availability_sli_total{result=\"ok\"}[5m])) / sum(rate(availability_sli_total[5m]))" }
     - { name: "pixel_write_visible_p95", query: "histogram_quantile(0.95, sum by (le) (rate(pixel_write_visible_seconds_bucket[5m])))" }
-    - { name: "requests_per_second", query: "rate(requests_per_second[1m])" }
-    - { name: "error_rate", query: "(sum(rate(http_response_status_total{status=~\"5..\"}[1m])) + sum(rate(ws_errors_total[1m]))) / sum(rate(requests_per_second[1m]))" }
+    # HTTP RPS from real counters (requests_per_second is a Counter but misnamed; prefer http_response_status_total)
+    - { name: "requests_per_second", query: "sum(rate(http_response_status_total[5m]))" }
+    # Fraction of traffic that errored: 5xx + WS errors over HTTP + WS message volume (all counters).
+    - { name: "error_rate", query: "(sum(rate(http_response_status_total{status=~\"5..\"}[5m])) + sum(rate(ws_errors_total[5m]))) / clamp_min(sum(rate(http_response_status_total[5m])) + sum(rate(websocket_messages_received_total[5m])), 1e-9)" }
   loop_control:
     label: "{{ item.name }}"
   failed_when: false
@@ -150,10 +157,119 @@
   connection: local
   tags: [collect]
 
+# Phase 1 §13.1.4b merge gate: report generator expects `rum/summary.json` with
+# `e2e_latency_ms_p95` and `client_fps_avg`. These come from RUM beacons that the
+# backend converts to Prometheus histograms (`e2e_pixel_latency_seconds{path="rum_ws_to_render"}`,
+# `client_fps`). We snapshot p95/avg over the 5-minute window ending at run end.
+- name: "fetch_to_baseline: scrape RUM-derived Prometheus metrics"
+  ansible.builtin.uri:
+    url: "{{ benchmark_fetch_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
+    method: GET
+    return_content: true
+    timeout: 15
+  register: benchmark_rum_snapshot_results
+  loop:
+    - name: "e2e_latency_ms_p95"
+      query: 'histogram_quantile(0.95, sum by (le) (rate(e2e_pixel_latency_seconds_bucket{path="rum_ws_to_render"}[5m]))) * 1000'
+    - name: "client_fps_avg"
+      query: "avg_over_time(client_fps_sum[5m]) / clamp_min(avg_over_time(client_fps_count[5m]), 1)"
+    - name: "client_frame_time_p95_ms"
+      query: "histogram_quantile(0.95, sum by (le) (rate(client_frame_time_p95_ms_bucket[5m])))"
+    - name: "client_ws_render_p95_ms"
+      query: "histogram_quantile(0.95, sum by (le) (rate(client_ws_render_latency_ms_bucket[5m])))"
+    - name: "rum_beacon_total_success"
+      query: 'sum(rum_beacon_total{result="success"})'
+  loop_control:
+    label: "{{ item.name }}"
+  failed_when: false
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: ensure rum/ dir exists locally"
+  ansible.builtin.file:
+    path: "{{ benchmark_local_run_root }}/rum"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+# Emit rum/summary.json with the scalar values consumed by generate-report.py.
+# A null/NaN value in Prometheus becomes 0 in the JSON so downstream parsing stays simple.
+- name: "fetch_to_baseline: write rum/summary.json"
+  ansible.builtin.copy:
+    content: |
+      {
+        "run_id": "{{ benchmark_run_id }}",
+        "phase": "{{ benchmark_phase }}",
+        "captured_at": "{{ ansible_date_time.iso8601 }}",
+      {% set ns = namespace(values={}) %}
+      {% for r in benchmark_rum_snapshot_results.results | default([]) %}
+      {%   set val = (r.json.data.result[0].value[1] | default('0')) if (r.json is defined and r.json.data is defined and r.json.data.result is defined and r.json.data.result | length > 0) else '0' %}
+      {%   set _ = ns.values.update({r.item.name: val}) %}
+      {% endfor %}
+        "e2e_latency_ms_p95": {{ ns.values.get('e2e_latency_ms_p95', '0') }},
+        "client_fps_avg": {{ ns.values.get('client_fps_avg', '0') }},
+        "client_frame_time_p95_ms": {{ ns.values.get('client_frame_time_p95_ms', '0') }},
+        "client_ws_render_p95_ms": {{ ns.values.get('client_ws_render_p95_ms', '0') }},
+        "rum_beacon_total_success": {{ ns.values.get('rum_beacon_total_success', '0') }}
+      }
+    dest: "{{ benchmark_local_run_root }}/rum/summary.json"
+    mode: "0644"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+# Live-probe stack snapshot (plan §13.1.6 merge gate). Records the freshest
+# blackbox-exporter probe results so the report has evidence the probe stack was
+# actually scraping during the run.
+- name: "fetch_to_baseline: scrape blackbox-exporter live-probe metrics"
+  ansible.builtin.uri:
+    url: "{{ benchmark_fetch_prometheus_url }}/api/v1/query?query={{ item.query | urlencode }}"
+    method: GET
+    return_content: true
+    timeout: 15
+  register: benchmark_probe_snapshot_results
+  loop:
+    - {name: "probe_success", query: 'probe_success{job=~"blackbox-.*"}'}
+    - {name: "probe_duration_seconds", query: 'probe_duration_seconds{job=~"blackbox-.*"}'}
+    - {name: "probe_http_status_code", query: 'probe_http_status_code{job="blackbox-http"}'}
+  loop_control:
+    label: "{{ item.name }}"
+  failed_when: false
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
+- name: "fetch_to_baseline: write prom/live_probe.json"
+  ansible.builtin.copy:
+    content: |
+      {
+        "run_id": "{{ benchmark_run_id }}",
+        "phase": "{{ benchmark_phase }}",
+        "captured_at": "{{ ansible_date_time.iso8601 }}",
+        "queries": [
+      {% for r in benchmark_probe_snapshot_results.results | default([]) %}
+          {
+            "name": "{{ r.item.name }}",
+            "query": "{{ r.item.query }}",
+            "status": {{ r.status | default(0) }},
+            "data": {{ r.json | default({}) | to_json }}
+          }{{ "," if not loop.last else "" }}
+      {% endfor %}
+        ]
+      }
+    dest: "{{ benchmark_local_run_root }}/prom/live_probe.json"
+    mode: "0644"
+  delegate_to: localhost
+  connection: local
+  tags: [collect]
+
 - name: "fetch_to_baseline: report final layout"
   ansible.builtin.debug:
     msg:
       - "Phase '{{ benchmark_phase }}' run '{{ benchmark_run_id }}' fetched to:"
       - "{{ benchmark_local_run_root }}"
-      - "Tree: prom/, k6/, benchmarks/, playwright/, rum/ (when produced)"
+      - "Tree: prom/{comparable_kpis.json,live_probe.json}, k6/, benchmarks/, playwright/, rum/summary.json"
   tags: [collect]

@@ -2,6 +2,12 @@ global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
+# Phase 2 alert rules (clock skew, opstream lag). The rules directory is mounted into the
+# prometheus container; the file is harmless in Phase 1 monolith runs because the metrics
+# it queries are zero (no node-exporter / oplog consumer running).
+rule_files:
+  - /etc/prometheus/alerts/clock-skew.rules.yml
+
 remote_write:
   # Enable long-term storage by running:
   # docker compose --profile longterm up -d mimir
@@ -45,6 +51,44 @@ scrape_configs:
     scrape_interval: 5s
     scrape_timeout: 3s
 
+  # Phase 2 Swarm — per-VM node-exporter scraped via the libvirt-bridge IPs.
+  # In Phase 1 these targets simply DOWN; the alert rules degrade gracefully.
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - '192.168.122.10:9100'
+          - '192.168.122.11:9100'
+          - '192.168.122.12:9100'
+          - '192.168.122.13:9100'
+          - '192.168.122.14:9100'
+          - '192.168.122.15:9100'
+        labels:
+          version: candidate
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'redis_exporter'
+    static_configs:
+      - targets:
+          - 'redis-exporter-c1:9121'
+          - 'redis-exporter-c2:9121'
+          - 'redis-exporter-c3:9121'
+        labels:
+          version: candidate
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Phase 2 gateways (two replicas behind Swarm overlay DNS).
+  - job_name: 'pixelbattle-gateways'
+    static_configs:
+      - targets:
+          - 'gateway-1:8080'
+          - 'gateway-2:8080'
+        labels:
+          version: candidate
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
   - job_name: 'blackbox-http'
     metrics_path: /probe
     params:
@@ -53,6 +97,8 @@ scrape_configs:
       - targets:
           - http://caddy/healthz
           - http://caddy/init_canvas
+          # Phase 2 §11.3: snapshot init path (plan §9 blackbox contract)
+          - http://caddy/api/canvas.png
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

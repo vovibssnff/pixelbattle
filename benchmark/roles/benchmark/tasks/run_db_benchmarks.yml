@@ -72,6 +72,7 @@
   ansible.builtin.set_fact:
     benchmark_effective_db_env:
       REDIS_ADDR: "{{ benchmark_target_host }}:6379"
+      REDIS_CLUSTER_ADDRS: "{{ benchmark_redis_cluster_addrs | default(benchmark_target_host ~ ':6379') }}"
       POSTGRES_HOST: "{{ benchmark_target_host }}"
       POSTGRES_PORT: "5432"
       MONGO_URI: "mongodb://root:root@{{ benchmark_target_host }}:27017/?directConnection=true"
@@ -142,6 +143,12 @@
       -ruw-duration={{ benchmark_ruw_duration_sec }}
       -ruw-readers={{ benchmark_ruw_readers }}
       -metrics-port={{ benchmark_metrics_port }}
+      {% if benchmark_redis_cluster | default(false) | bool %}-redis-cluster{% endif %}
+      -shards={{ benchmark_shards | default(1) }}
+      -concurrent-same-coord-duration={{ benchmark_concurrent_same_coord_sec | default(0) }}
+      -oplog-lag-duration={{ benchmark_oplog_lag_sec | default(0) }}
+      -oplog-lag-rate={{ benchmark_oplog_lag_rate | default(500) }}
+      -topology-label={{ benchmark_topology_label | default('') | quote }}
     chdir: "{{ benchmark_project_root }}/pb_backend"
   environment: "{{ benchmark_effective_db_env }}"
   register: benchmark_db_runs
@@ -175,6 +182,12 @@
       -ruw-duration={{ benchmark_ruw_duration_sec }}
       -ruw-readers={{ benchmark_ruw_readers }}
       -metrics-port={{ benchmark_metrics_port }}
+      {% if benchmark_redis_cluster | default(false) | bool %}-redis-cluster{% endif %}
+      -shards={{ benchmark_shards | default(1) }}
+      -concurrent-same-coord-duration={{ benchmark_concurrent_same_coord_sec | default(0) }}
+      -oplog-lag-duration={{ benchmark_oplog_lag_sec | default(0) }}
+      -oplog-lag-rate={{ benchmark_oplog_lag_rate | default(500) }}
+      -topology-label={{ benchmark_topology_label | default('') | quote }}
   register: benchmark_db_runs
   loop: "{{ benchmark_storage_types }}"
   loop_control:

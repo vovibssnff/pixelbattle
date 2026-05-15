@@ -121,6 +121,30 @@ job "backend-test"
 )
 ok "backend-test"
 
+# --- buf-lint (Phase 2 gRPC proto) ---
+job "buf-lint"
+ensure_buf() {
+  local desired_ver="1.50.0"
+  if command -v buf >/dev/null 2>&1; then
+    if buf --version 2>/dev/null | rg -q "^${desired_ver}$"; then
+      return 0
+    fi
+  fi
+  local gopath_bin
+  gopath_bin="$(go env GOPATH)/bin"
+  if [ ! -x "$gopath_bin/buf" ]; then
+    GOBIN="$gopath_bin" go install github.com/bufbuild/buf/cmd/buf@v${desired_ver}
+  fi
+  export PATH="$gopath_bin:$PATH"
+}
+ensure_buf
+(
+  cd pb_backend
+  buf lint
+  buf format -d --exit-code
+)
+ok "buf-lint"
+
 # --- backend-lint ---
 job "backend-lint"
 ensure_golangci_lint

@@ -24,6 +24,7 @@ export default class RUMCollector {
     this.frameDeltas = [];
     this.wsRenderLatencies = [];
     this.errors = [];
+    this.optimisticCorrections = [];
     this.webVitals = { lcp: 0, inp: 0, ttfb: 0 };
     this.lastFrameTs = 0;
     this.rafId = null;
@@ -63,6 +64,12 @@ export default class RUMCollector {
     if (delta >= 0 && delta < 30000) {
       this.wsRenderLatencies.push(delta);
     }
+  }
+
+  /** Plan §11.1 — flushed in RUM beacon as optimistic_corrections for Prometheus. */
+  recordOptimisticCorrection(reason) {
+    if (!this.enabled || !reason) return;
+    this.optimisticCorrections.push({ reason: String(reason) });
   }
 
   async loadSampleRate() {
@@ -141,11 +148,13 @@ export default class RUMCollector {
       ttfb_ms: Number((this.webVitals.ttfb || 0).toFixed(2)),
       ws_render_lat_ms_p95: Number(quantile(this.wsRenderLatencies, 0.95).toFixed(2)),
       errors: this.errors.slice(0, 20),
+      optimistic_corrections: this.optimisticCorrections.slice(0, 50),
     };
 
     this.frameDeltas = [];
     this.wsRenderLatencies = [];
     this.errors = [];
+    this.optimisticCorrections = [];
 
     try {
       await fetch(this.endpoint, {

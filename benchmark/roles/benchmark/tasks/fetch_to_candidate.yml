@@ -1,0 +1,11 @@
+---
+# Phase 2 candidate run — same archive/fetch/unpack flow as fetch_to_baseline.yml but
+# rooted at results/candidate/<run-id>/. We delegate to fetch_to_baseline.yml so the two
+# stay in lock-step on Prometheus snapshot queries and artefact layout.
+
+- name: "fetch_to_candidate: force phase=candidate"
+  ansible.builtin.set_fact:
+    benchmark_phase: candidate
+
+- name: "fetch_to_candidate: delegate to the shared fetch implementation"
+  ansible.builtin.include_tasks: fetch_to_baseline.yml

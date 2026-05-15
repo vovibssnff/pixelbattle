@@ -12,6 +12,7 @@ func TestSerializePixelIncludesServerRecvMsInJSON(t *testing.T) {
 	p := &domain.Pixel{
 		X: 0, Y: 0, Color: []uint{1, 2, 3},
 		ServerRecvMs: 1700000000123,
+		ClientSeq:    99,
 	}
 	data, err := utils.SerializePixel(p)
 	if err != nil {
@@ -19,6 +20,9 @@ func TestSerializePixelIncludesServerRecvMsInJSON(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte(`"server_recv_ms":1700000000123`)) {
 		t.Fatalf("expected server_recv_ms in JSON, got %s", data)
+	}
+	if !bytes.Contains(data, []byte(`"client_seq":99`)) {
+		t.Fatalf("expected client_seq in JSON, got %s", data)
 	}
 }
 

@@ -43,10 +43,120 @@
       "id": 2,
       "options": {
         "mode": "markdown",
-        "content": "## Volkov Labs Business Forms\n\nConfigure POST actions targeting `/api/admin/*` with HTTP header `X-Admin-Token` matching **`ADMIN_API_TOKEN`** (see `pb_backend/app.env.example`).\n\nInfinity datasource points at the backend; add the same header under the datasource or per-panel **Custom HTTP Headers**.\n\nDashboard variable `phase2` is reserved for Phase 2 (canvas resize)."
+        "content": "## Runtime admin\n\nSet dashboard variables **`api_origin`** (browser-reachable API base URL, e.g. `https://your-host` — same origin as Grafana in production avoids CORS) and **`X-Admin-Token`** to match **`ADMIN_API_TOKEN`** in `pb_backend/app.env.example`.\n\n**Canvas resize (Phase 2, ADR-003):** expand-only `POST /api/admin/canvas/resize` with JSON `{\"width\":<int>,\"height\":<int>}`. On success, `canvas_dimensions` updates and WebSocket clients get `{\"event\":\"RESIZE\",...}`.\n\nUse the **Canvas resize** panel below (Volkov Labs Business Forms)."
       },
       "title": "Operator notes",
       "type": "text"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 17},
+      "id": 3,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {
+          "body": "Expand canvas to the given width×height? New cells are filled white; shrink is rejected.",
+          "cancel": "Cancel",
+          "columns": {
+            "include": ["name", "oldValue", "newValue"],
+            "name": "Label",
+            "newValue": "New Value",
+            "oldValue": "Old Value"
+          },
+          "confirm": "Resize",
+          "elementDisplayMode": "modified",
+          "title": "Confirm canvas resize"
+        },
+        "elementValueChanged": "",
+        "elements": [
+          {
+            "hidden": false,
+            "id": "width",
+            "labelWidth": 12,
+            "min": 1,
+            "section": "",
+            "title": "Width (px)",
+            "tooltip": "Must be ≥ current width (expand-only).",
+            "type": "number",
+            "unit": "",
+            "value": null
+          },
+          {
+            "hidden": false,
+            "id": "height",
+            "labelWidth": 12,
+            "min": 1,
+            "section": "",
+            "title": "Height (px)",
+            "tooltip": "Must be ≥ current height (expand-only).",
+            "type": "number",
+            "unit": "",
+            "value": null
+          }
+        ],
+        "initial": {
+          "code": "",
+          "contentType": "application/json",
+          "getPayload": "return {\n rawSql: '',\n format: 'table',\n};",
+          "highlight": false,
+          "highlightColor": "red",
+          "method": "-",
+          "payload": {}
+        },
+        "layout": {
+          "orientation": "horizontal",
+          "padding": 10,
+          "sectionVariant": "default",
+          "variant": "single"
+        },
+        "reset": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "process",
+          "text": "Reset",
+          "variant": "hidden"
+        },
+        "resetAction": {
+          "code": "",
+          "confirm": false,
+          "getPayload": "return {\n rawSql: '',\n format: 'table',\n};",
+          "mode": "initial",
+          "payload": {}
+        },
+        "saveDefault": {
+          "icon": "save",
+          "text": "Save Default",
+          "variant": "hidden"
+        },
+        "submit": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "cloud-upload",
+          "orientation": "center",
+          "size": "md",
+          "text": "Resize canvas",
+          "variant": "primary"
+        },
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) {\n  context.grafana.notifySuccess(['Resize', 'Canvas expanded; clients receive RESIZE.']);\n} else if (r) {\n  context.grafana.notifyError(['Resize', 'HTTP ' + r.status]);\n}",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const wEl = context.panel.elements.find((e) => e.id === 'width');\nconst hEl = context.panel.elements.find((e) => e.id === 'height');\nconst w = Number(wEl?.value);\nconst h = Number(hEl?.value);\nif (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) {\n  context.grafana.notifyError(['Resize', 'Enter positive width and height.']);\n  throw new Error('validation');\n}\nreturn { width: Math.floor(w), height: Math.floor(h) };",
+          "header": [
+            {"name": "X-Admin-Token", "value": "${admin_token}"}
+          ],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "${api_origin}/api/admin/canvas/resize"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Canvas resize (expand-only)",
+      "type": "volkovlabs-form-panel"
     }
   ],
   "refresh": "30s",
@@ -64,11 +174,20 @@
         "type": "textbox"
       },
       {
-        "current": {"selected": true, "text": "0", "value": "0"},
+        "current": {"selected": false, "text": "", "value": ""},
+        "hide": 0,
+        "label": "api_origin",
+        "name": "api_origin",
+        "options": [{"selected": true, "text": "", "value": ""}],
+        "query": "https://your-api-host",
+        "type": "textbox"
+      },
+      {
+        "current": {"selected": true, "text": "1", "value": "1"},
         "hide": 2,
-        "label": "phase2",
+        "label": "phase2 (legacy)",
         "name": "phase2",
-        "query": "0",
+        "query": "1",
         "skipUrlSync": true,
         "type": "constant"
       }

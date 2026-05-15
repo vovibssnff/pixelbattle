@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+// Pixelbattle inter-gateway mesh contract (plan §p2-grpc-mesh, ADR-004).
+//
+// Each gateway speaks two roles in the mesh:
+//   - server: exposes BroadcastPixel / BroadcastControl so peers can fan out
+//             new pixels and admin events to this gateway's WebSocket clients.
+//   - client: forwards every locally-accepted pixel and admin event to every
+//             peer listed in GATEWAY_PEERS env (one TCP/HTTP2 conn per peer).
+//
+// The Redis Streams op-log (XREADGROUP) is the durability path; gRPC is the
+// low-latency path. Both deliver to the same WS hub; the hub must dedupe by
+// (gateway_origin, client_seq) so a client never sees its own pixel twice
+// from local + cross-gateway fan-out.
+
+package pixelbattle.gateway.v1;
+
+option go_package = "pb_backend/internal/adapters/grpc/gen/pixelbattle/gateway/v1;gatewayv1";
+
+service GatewayService {
+  // Fan out a single pixel placement to the receiving gateway's WS clients.
+  rpc BroadcastPixel(BroadcastPixelRequest) returns (BroadcastPixelResponse) {}
+
+  // Fan out an admin / control event (RESIZE, FREEZE, BAN-broadcast, etc.).
+  rpc BroadcastControl(BroadcastControlRequest) returns (BroadcastControlResponse) {}
+
+  // Lightweight liveness probe for peer health checks.
+  rpc Ping(PingRequest) returns (PingResponse) {}
+}
+
+message BroadcastPixelRequest {
+  // Origin gateway instance_id (e.g. "gw-1"). Receivers use this to dedupe.
+  string origin_instance = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 r = 4;
+  uint32 g = 5;
+  uint32 b = 6;
+  // Client sequence number echoed by optimistic UI; 0 if not provided.
+  uint32 client_seq = 7;
+  // Server receive timestamp in unix ms (echoed to clients for e2e_pixel_latency_seconds).
+  int64 server_recv_ms = 8;
+  // Stable opaque writer id (anonymised before fan-out).
+  string writer = 9;
+  // Redis Streams id ("<ms>-<seq>") used as the canonical LWW timestamp.
+  string stream_id = 10;
+}
+
+message BroadcastControlRequest {
+  string origin_instance = 1;
+  // event ∈ {RESIZE, FREEZE, UNFREEZE, ADMIN_RELOAD}; opaque payload is JSON.
+  string event = 2;
+  bytes payload = 3;
+}
+
+message BroadcastPixelResponse {
+  // Recipients on this gateway's local WS hub (used for gateway_fanout_recipients).
+  uint32 recipients = 1;
+}
+
+message BroadcastControlResponse {
+  // Recipients on this gateway's local WS hub (used for gateway_fanout_recipients).
+  uint32 recipients = 1;
+}
+
+message PingRequest {
+  string origin_instance = 1;
+}
+
+message PingResponse {
+  string instance_id = 1;
+  // unix ms on the answering gateway (used by callers to spot clock skew).
+  int64 server_ms = 2;
+}

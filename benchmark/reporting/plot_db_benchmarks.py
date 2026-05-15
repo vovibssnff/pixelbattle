@@ -30,6 +30,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 
+plt.rcParams["font.family"] = "DejaVu Sans"
+
 STORAGE_ORDER = ["redis", "postgres", "sqlite"]
 
 # Use linear latency axis when max/min ratio stays below this (same order of magnitude band).
@@ -66,7 +68,7 @@ def _apply_smart_latency_axis(ax: plt.Axes, values_ms: List[float]) -> None:
     numeric labels at 1–2–5–10 style positions.
     """
     vals = [float(v) for v in values_ms if np.isfinite(v) and v > 0]
-    ax.set_ylabel("P95 latency (ms)")
+    ax.set_ylabel("Задержка P95 (мс)")
     if not vals:
         ax.set_ylim(0, 1)
         _plain_scalar_y_axis(ax)
@@ -118,15 +120,15 @@ class BarPhase:
 
 # Order must match RunAllBenchmarks in benchmark.go (lines 132–154).
 BAR_PHASES: Tuple[BarPhase, ...] = (
-    BarPhase(1, "sequential_write", "Phase 1 — Sequential write (fills canvas)", ("sequential_write",)),
-    BarPhase(2, "heatmap_load", "Phase 2 — HeatMap load (post-fill)", ("heatmap_load",)),
-    BarPhase(3, "concurrent_write", "Phase 3 — Concurrent write", ("concurrent_write",)),
-    BarPhase(4, "full_canvas_read", "Phase 4 — Full canvas read", ("full_canvas_read",)),
-    BarPhase(5, "mixed_workload", "Phase 5 — Mixed workload", ("mixed_workload",)),
+    BarPhase(1, "sequential_write", "Последовательная запись", ("sequential_write",)),
+    BarPhase(2, "heatmap_load", "Загрузка тепловой карты", ("heatmap_load",)),
+    BarPhase(3, "concurrent_write", "Параллельная запись", ("concurrent_write",)),
+    BarPhase(4, "full_canvas_read", "Полное чтение полотна", ("full_canvas_read",)),
+    BarPhase(5, "mixed_workload", "Смешанная нагрузка", ("mixed_workload",)),
     BarPhase(
         6,
         "read_under_write",
-        "Phase 6 — Read under write",
+        "Чтение при записи",
         ("read_under_write_writes", "read_under_write_reads"),
     ),
 )
@@ -165,8 +167,19 @@ def index_by_scenario(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     return {r.get("scenario", ""): r for r in rows}
 
 
+_SCENARIO_RU: Dict[str, str] = {
+    "sequential_write": "Послед. запись",
+    "heatmap_load": "Загр. тепл. карты",
+    "concurrent_write": "Паралл. запись",
+    "full_canvas_read": "Полное чтение",
+    "mixed_workload": "Смешанная нагр.",
+    "read_under_write_writes": "Запись",
+    "read_under_write_reads": "Чтение",
+}
+
+
 def _scenario_xtick_labels(scenarios: List[str]) -> List[str]:
-    return [s.replace("_", " ").title() for s in scenarios]
+    return [_SCENARIO_RU.get(s, s.replace("_", " ")) for s in scenarios]
 
 
 def _bar_grouped(
@@ -223,6 +236,12 @@ def _save_fig(fig: plt.Figure, path: Path, *, hspace: float = 0.45) -> None:
     fig.savefig(path, dpi=200, bbox_inches="tight", pad_inches=0.4)
 
 
+def _save_single(fig: plt.Figure, path: Path) -> None:
+    fig.savefig(path, dpi=200, bbox_inches="tight", pad_inches=0.3)
+    plt.close(fig)
+    print(f"Saved: {path}")
+
+
 def plot_bar_phases(
     results: Dict[str, List[Dict[str, Any]]], out_dir: Path
 ) -> None:
@@ -233,102 +252,47 @@ def plot_bar_phases(
 
     for phase in BAR_PHASES:
         scenarios = list(phase.scenarios)
+        title = phase_display_title(phase)
+        base = f"db_phase{phase.num:02d}_{phase.slug}"
 
-        # Phase 6: writes vs reads throughput differ by ~4–5 orders of magnitude; use two
-        # side-by-side throughput panels so read bars are not crushed on one Y scale.
         if phase.num == 6:
-            fig = plt.figure(figsize=(10, 9.5))
-            gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1], hspace=0.5, wspace=0.32)
-            fig.suptitle(phase_display_title(phase), fontsize=11, fontweight="medium", y=0.995)
-            ax_wtp = fig.add_subplot(gs[0, 0])
-            ax_rtp = fig.add_subplot(gs[0, 1])
-            ax_wlat = fig.add_subplot(gs[1, :])
-            ax_rlat = fig.add_subplot(gs[2, :])
+            for sc_key, sc_label in [
+                ("read_under_write_writes", "запись"),
+                ("read_under_write_reads", "чтение"),
+            ]:
+                suffix = "writes" if "writes" in sc_key else "reads"
 
-            _bar_grouped(
-                ax_wtp,
-                ["read_under_write_writes"],
-                results,
-                storages,
-                "throughput_ops_per_sec",
-                "Writes throughput",
-                "Throughput (ops/sec)",
-                show_xlabels=False,
-            )
-            _plain_throughput_axis(ax_wtp)
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.set_title(f"{title}: пропускная способность ({sc_label})")
+                _bar_grouped(ax, [sc_key], results, storages,
+                             "throughput_ops_per_sec", None,
+                             "Пропускная способность (опер./с)", show_xlabels=False)
+                _plain_throughput_axis(ax)
+                _save_single(fig, out_dir / f"{base}_tp_{suffix}.png")
 
-            _bar_grouped(
-                ax_rtp,
-                ["read_under_write_reads"],
-                results,
-                storages,
-                "throughput_ops_per_sec",
-                "Reads throughput",
-                "Throughput (ops/sec)",
-                show_xlabels=False,
-            )
-            _plain_throughput_axis(ax_rtp)
-
-            h1 = _bar_grouped(
-                ax_wlat,
-                ["read_under_write_writes"],
-                results,
-                storages,
-                "latency_p95_ms",
-                "P95 latency — writes",
-                "P95 latency (ms)",
-                show_xlabels=False,
-            )
-            _apply_smart_latency_axis(ax_wlat, h1)
-
-            h2 = _bar_grouped(
-                ax_rlat,
-                ["read_under_write_reads"],
-                results,
-                storages,
-                "latency_p95_ms",
-                "P95 latency — reads",
-                "P95 latency (ms)",
-                show_xlabels=False,
-            )
-            _apply_smart_latency_axis(ax_rlat, h2)
-            fig.subplots_adjust(left=0.1, right=0.97, top=0.90, bottom=0.06)
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.set_title(f"{title}: задержка P95 ({sc_label})")
+                h = _bar_grouped(ax, [sc_key], results, storages,
+                                 "latency_p95_ms", None,
+                                 "Задержка P95 (мс)", show_xlabels=False)
+                _apply_smart_latency_axis(ax, h)
+                _save_single(fig, out_dir / f"{base}_lat_{suffix}.png")
         else:
-            fig, axes = plt.subplots(2, 1, figsize=(10, 7), height_ratios=[1, 1])
-            fig.suptitle(phase_display_title(phase), fontsize=11, fontweight="medium", y=0.995)
-            _bar_grouped(
-                axes[0],
-                scenarios,
-                results,
-                storages,
-                "throughput_ops_per_sec",
-                "Throughput",
-                "Throughput (ops/sec)",
-                show_xlabels=False,
-            )
-            _plain_throughput_axis(axes[0])
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.set_title(f"{title}: пропускная способность")
+            _bar_grouped(ax, scenarios, results, storages,
+                         "throughput_ops_per_sec", None,
+                         "Пропускная способность (опер./с)", show_xlabels=True)
+            _plain_throughput_axis(ax)
+            _save_single(fig, out_dir / f"{base}_tp.png")
 
-            lat_vals = _bar_grouped(
-                axes[1],
-                scenarios,
-                results,
-                storages,
-                "latency_p95_ms",
-                "P95 latency",
-                "P95 latency (ms)",
-                show_xlabels=True,
-            )
-            _apply_smart_latency_axis(axes[1], lat_vals)
-
-        name = f"db_phase{phase.num:02d}_{phase.slug}.png"
-        p = out_dir / name
-        hspace = 0.45
-        if phase.num != 6:
-            _save_fig(fig, p, hspace=hspace)
-        else:
-            fig.savefig(p, dpi=200, bbox_inches="tight", pad_inches=0.4)
-        plt.close(fig)
-        print(f"Saved: {p}")
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.set_title(f"{title}: задержка P95")
+            lat_vals = _bar_grouped(ax, scenarios, results, storages,
+                                    "latency_p95_ms", None,
+                                    "Задержка P95 (мс)", show_xlabels=True)
+            _apply_smart_latency_axis(ax, lat_vals)
+            _save_single(fig, out_dir / f"{base}_lat.png")
 
 
 def collect_sustained(
@@ -372,7 +336,7 @@ def plot_phase7_sustained(results: Dict[str, List[Dict[str, Any]]], out_dir: Pat
         print("No sustained_throughput_* rows; skipping Phase 7 plots.")
         return
 
-    title_base = strip_phase_prefix("Phase 7 — Sustained throughput")
+    title_base = "Удержание целевой скорости записи"
 
     fig, ax = plt.subplots(figsize=(8, 5))
     for st in STORAGE_ORDER:
@@ -382,17 +346,15 @@ def plot_phase7_sustained(results: Dict[str, List[Dict[str, Any]]], out_dir: Pat
         ys = [p[1] for p in series[st]]
         ax.plot(xs, ys, marker="o", label=st)
     if rates:
-        ax.plot(rates, rates, "k--", alpha=0.4, label="ideal (target = achieved)")
-    ax.set_xlabel("Target rate (ops/sec)")
-    ax.set_ylabel("Achieved throughput (ops/sec)")
-    ax.set_title(f"{title_base} — achieved vs target")
+        ax.plot(rates, rates, "k--", alpha=0.4, label="идеал (цель = факт)")
+    ax.set_xlabel("Целевая скорость (опер./с)")
+    ax.set_ylabel("Достигнутая пропускная способность (опер./с)")
+    ax.set_title(f"{title_base}: факт и цель")
     ax.legend()
     ax.grid(True, alpha=0.3)
     _plain_throughput_axis(ax)
     p = out_dir / "db_phase07_sustained_throughput.png"
-    _save_fig(fig, p)
-    plt.close(fig)
-    print(f"Saved: {p}")
+    _save_single(fig, p)
 
     fig, ax = plt.subplots(figsize=(8, 5))
     all_p95: List[float] = []
@@ -403,16 +365,14 @@ def plot_phase7_sustained(results: Dict[str, List[Dict[str, Any]]], out_dir: Pat
         ys = [max(p[2], 1e-9) for p in series[st]]
         all_p95.extend(ys)
         ax.plot(xs, ys, marker="o", label=st)
-    ax.set_xlabel("Target rate (ops/sec)")
-    ax.set_ylabel("P95 latency (ms)")
-    ax.set_title(f"{title_base} — P95 latency vs target rate")
+    ax.set_xlabel("Целевая скорость (опер./с)")
+    ax.set_ylabel("Задержка P95 (мс)")
+    ax.set_title(f"{title_base}: задержка P95")
     ax.legend()
     ax.grid(True, alpha=0.3, which="both")
     _apply_smart_latency_axis(ax, all_p95)
     p = out_dir / "db_phase07_sustained_latency_p95.png"
-    _save_fig(fig, p)
-    plt.close(fig)
-    print(f"Saved: {p}")
+    _save_single(fig, p)
 
 
 def collect_history_rounds(
@@ -461,20 +421,21 @@ def plot_phase8_history(results: Dict[str, List[Dict[str, Any]]], out_dir: Path)
     if not storages:
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.8))
     kinds = ["write", "read", "heatmap"]
     titles = [
-        strip_phase_prefix("Phase 8 — History growth — write (throughput)"),
-        strip_phase_prefix("Phase 8 — History growth — read (P95 ms)"),
-        strip_phase_prefix("Phase 8 — History growth — heatmap (P95 ms)"),
+        "Рост истории: пропускная способность записи",
+        "Рост истории: задержка чтения P95",
+        "Рост истории: задержка тепловой карты P95",
     ]
     y_keys = ["throughput_ops_per_sec", "latency_p95_ms", "latency_p95_ms"]
     is_latency_flags = [False, True, True]
+    suffixes = ["write_tp", "read_lat", "heatmap_lat"]
 
     x = np.arange(len(rounds))
     width = min(0.22, 0.8 / max(len(storages), 1))
 
-    for ax, kind, title, yk, is_lat in zip(axes, kinds, titles, y_keys, is_latency_flags):
+    for kind, title, yk, is_lat, suffix in zip(kinds, titles, y_keys, is_latency_flags, suffixes):
+        fig, ax = plt.subplots(figsize=(8, 5))
         heights: List[float] = []
         for i, st in enumerate(storages):
             ys = []
@@ -486,20 +447,16 @@ def plot_phase8_history(results: Dict[str, List[Dict[str, Any]]], out_dir: Path)
             heights.extend(ys)
             ax.bar(x + (i - (len(storages) - 1) / 2) * width, ys, width, label=st)
         ax.set_xticks(x)
-        ax.set_xticklabels([f"round {r}" for r in rounds])
+        ax.set_xticklabels([f"раунд {r}" for r in rounds])
         ax.set_title(title)
         ax.grid(True, alpha=0.3, axis="y")
         if is_lat:
             _apply_smart_latency_axis(ax, heights)
         else:
-            ax.set_ylabel("Throughput (ops/sec)")
+            ax.set_ylabel("Пропускная способность (опер./с)")
             _plain_throughput_axis(ax)
         ax.legend(fontsize=8)
-
-    p = out_dir / "db_phase08_history_growth.png"
-    _save_fig(fig, p)
-    plt.close(fig)
-    print(f"Saved: {p}")
+        _save_single(fig, out_dir / f"db_phase08_{suffix}.png")
 
 
 def main() -> None:

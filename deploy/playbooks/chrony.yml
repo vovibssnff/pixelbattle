@@ -1,0 +1,54 @@
+---
+# Phase 2 — ensure chrony is installed, running, and aimed at well-known stratum-2 peers on
+# every Swarm VM. The kvm-provision playbook already runs `apt-get install -y chrony` from
+# cloud-init, but this play makes the policy reproducible (and stays a no-op if chrony is
+# already healthy). See adr/004-kvm-swarm-multi-vm.md.
+
+- name: Phase 2 — chrony policy on every Swarm VM
+  hosts: swarm_all
+  become: true
+  gather_facts: true
+  vars:
+    chrony_pool: "{{ chrony_pool_override | default('pool.ntp.org') }}"
+  tasks:
+    - name: Install chrony
+      ansible.builtin.package:
+        name: chrony
+        state: present
+
+    - name: Configure chrony.conf
+      ansible.builtin.copy:
+        dest: /etc/chrony/chrony.conf
+        mode: "0644"
+        content: |
+          # Managed by deploy/playbooks/chrony.yml (Phase 2 ADR-004).
+          pool {{ chrony_pool }} iburst maxsources 4
+          makestep 1.0 3
+          rtcsync
+          driftfile /var/lib/chrony/chrony.drift
+          logdir /var/log/chrony
+      notify: restart chrony
+
+    - name: Ensure chrony is started and enabled
+      ansible.builtin.service:
+        name: chrony
+        state: started
+        enabled: true
+
+    - name: Verify chrony is synchronised
+      ansible.builtin.command: chronyc tracking
+      register: chrony_tracking
+      changed_when: false
+      retries: 6
+      delay: 5
+      until: chrony_tracking.rc == 0
+
+    - name: Show chrony status
+      ansible.builtin.debug:
+        var: chrony_tracking.stdout_lines
+
+  handlers:
+    - name: restart chrony
+      ansible.builtin.service:
+        name: chrony
+        state: restarted

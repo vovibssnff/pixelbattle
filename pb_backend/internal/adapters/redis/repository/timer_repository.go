@@ -9,10 +9,10 @@ import (
 )
 
 type TimerRepository struct {
-	rdb *redis.Client
+	rdb redis.Cmdable
 }
 
-func NewTimerRepo(rdb *redis.Client) *TimerRepository {
+func NewTimerRepo(rdb redis.Cmdable) *TimerRepository {
 	return &TimerRepository{rdb: rdb}
 }
 

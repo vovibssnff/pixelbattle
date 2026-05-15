@@ -15,6 +15,9 @@ import (
 // a missing on-disk app.env leaves MONGO_URI etc. empty even when set in the environment.
 var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
+	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS",
+	"RATE_LIMIT_PIXEL_PER_SEC", "RATE_LIMIT_WS_CONN_PER_MIN",
+	"CANVAS_SNAPSHOT_INTERVAL_SEC", "CANVAS_SNAPSHOT_FILE",
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
@@ -25,6 +28,8 @@ var envKeysForViper = []string{
 	"ADMIN_IDS", "ADMIN_USERNAMES",
 	"ADMIN_API_TOKEN",
 	"PIXEL_COOLDOWN_SEC",
+	"GATEWAY_INSTANCE_ID", "GATEWAY_GRPC_PORT", "GATEWAY_PEERS",
+	"GATEWAY_OPSTREAM_GROUP", "GATEWAY_OPSTREAM_CONSUMER",
 }
 
 func mergeProcessEnvIntoViper() {
@@ -37,25 +42,29 @@ func mergeProcessEnvIntoViper() {
 
 // Config holds the application configuration values
 type Config struct {
-	RedisAddr        string `mapstructure:"REDIS_ADDR"`
-	RedisPsw         string `mapstructure:"REDIS_PSW"`
-	RedisHistory     int    `mapstructure:"REDIS_HISTORY"`
-	RedisTimer       int    `mapstructure:"REDIS_TIMER"`
-	RedisUsers       int    `mapstructure:"REDIS_USERS"`
-	RedisBanned      int    `mapstructure:"REDIS_BANNED"`
-	PostgresHost     string `mapstructure:"POSTGRES_HOST"`
-	PostgresPort     string `mapstructure:"POSTGRES_PORT"`
-	PostgresUser     string `mapstructure:"POSTGRES_USER"`
-	PostgresPassword string `mapstructure:"POSTGRES_PASSWORD"`
-	PostgresDB       string `mapstructure:"POSTGRES_DB"`
-	SQLitePath       string `mapstructure:"SQLITE_PATH"`
-	CanvasHeight     int    `mapstructure:"CANVAS_HEIGHT"`
-	CanvasWidth      int    `mapstructure:"CANVAS_WIDTH"`
-	MongoURI         string `mapstructure:"MONGO_URI"`
-	AdminIDs         []int  // No `mapstructure` tag to prevent automatic decoding
-	AdminUsernames   []string
-	APIVersion       string `mapstructure:"API_VERSION"`
-	ServiceToken     string `mapstructure:"SERVICE_TOKEN"`
+	RedisAddr    string `mapstructure:"REDIS_ADDR"`
+	RedisPsw     string `mapstructure:"REDIS_PSW"`
+	RedisHistory int    `mapstructure:"REDIS_HISTORY"`
+	RedisTimer   int    `mapstructure:"REDIS_TIMER"`
+	// RedisClusterAddrs: comma-separated host:port list for redis.NewClusterClient. When non-empty, canvas + timer use the cluster (DB index is ignored).
+	RedisClusterAddrs string `mapstructure:"REDIS_CLUSTER_ADDRS"`
+	// RedisCanvasHashTagKeys: use pixel:{y:x} keys (required for Redis Cluster; optional on standalone for migration drills).
+	RedisCanvasHashTagKeys bool   `mapstructure:"REDIS_CANVAS_HASHTAG_KEYS"`
+	RedisUsers             int    `mapstructure:"REDIS_USERS"`
+	RedisBanned            int    `mapstructure:"REDIS_BANNED"`
+	PostgresHost           string `mapstructure:"POSTGRES_HOST"`
+	PostgresPort           string `mapstructure:"POSTGRES_PORT"`
+	PostgresUser           string `mapstructure:"POSTGRES_USER"`
+	PostgresPassword       string `mapstructure:"POSTGRES_PASSWORD"`
+	PostgresDB             string `mapstructure:"POSTGRES_DB"`
+	SQLitePath             string `mapstructure:"SQLITE_PATH"`
+	CanvasHeight           int    `mapstructure:"CANVAS_HEIGHT"`
+	CanvasWidth            int    `mapstructure:"CANVAS_WIDTH"`
+	MongoURI               string `mapstructure:"MONGO_URI"`
+	AdminIDs               []int  // No `mapstructure` tag to prevent automatic decoding
+	AdminUsernames         []string
+	APIVersion             string `mapstructure:"API_VERSION"`
+	ServiceToken           string `mapstructure:"SERVICE_TOKEN"`
 
 	// SESSION_KEY: secret used to sign session cookies (32+ bytes recommended). If empty, a random key is generated per process start.
 	SessionKey string `mapstructure:"SESSION_KEY"`
@@ -69,6 +78,26 @@ type Config struct {
 	PixelCooldownSec int `mapstructure:"PIXEL_COOLDOWN_SEC"`
 	// ADMIN_API_TOKEN: static bearer for Grafana / automation (X-Admin-Token header). Empty = token auth disabled.
 	AdminAPIToken string `mapstructure:"ADMIN_API_TOKEN"`
+	// RateLimitPixelPerSec: max pixel WS messages per second per authenticated userid (non-admins). 0 disables. Default 5 when env unset.
+	RateLimitPixelPerSec int `mapstructure:"RATE_LIMIT_PIXEL_PER_SEC"`
+	// RateLimitWSConnPerMinPerIP: max new /ws handshakes per minute per client IP. 0 disables (recommended for k6 from one loader IP). Set in production (e.g. 50).
+	RateLimitWSConnPerMinPerIP int `mapstructure:"RATE_LIMIT_WS_CONN_PER_MIN"`
+	// CanvasSnapshotIntervalSec: period for background PNG snapshot (GET /api/canvas.png). Default 2 when unset or 0.
+	CanvasSnapshotIntervalSec int `mapstructure:"CANVAS_SNAPSHOT_INTERVAL_SEC"`
+	// CanvasSnapshotFile: optional path to write the latest PNG atomically (e.g. volume mount for static file server).
+	CanvasSnapshotFile string `mapstructure:"CANVAS_SNAPSHOT_FILE"`
+
+	// GatewayInstanceID identifies this gateway in the Phase 2 Swarm (e.g. "gw-1"). When empty,
+	// the binary runs in legacy/monolith mode and the gRPC server / op-log consumer stay disabled.
+	GatewayInstanceID string `mapstructure:"GATEWAY_INSTANCE_ID"`
+	// GatewayGRPCPort: TCP port for the gRPC mesh server (Phase 2). 0 disables the server.
+	GatewayGRPCPort int `mapstructure:"GATEWAY_GRPC_PORT"`
+	// GatewayPeers: comma-separated host:port peers for inter-gateway gRPC fan-out.
+	GatewayPeers string `mapstructure:"GATEWAY_PEERS"`
+	// GatewayOpStreamGroup: Redis Streams consumer group name for op-log XREADGROUP fan-out.
+	GatewayOpStreamGroup string `mapstructure:"GATEWAY_OPSTREAM_GROUP"`
+	// GatewayOpStreamConsumer: this gateway's consumer name within the group (defaults to GATEWAY_INSTANCE_ID).
+	GatewayOpStreamConsumer string `mapstructure:"GATEWAY_OPSTREAM_CONSUMER"`
 }
 
 // LoadConfig loads configuration from the specified file or environment variables
@@ -107,6 +136,17 @@ func LoadConfig(path string) (*Config, error) {
 		config.SessionSecure = viper.GetBool("SESSION_SECURE")
 	} else {
 		config.SessionSecure = true
+	}
+
+	if !viper.IsSet("RATE_LIMIT_PIXEL_PER_SEC") {
+		config.RateLimitPixelPerSec = 5
+	}
+	if !viper.IsSet("RATE_LIMIT_WS_CONN_PER_MIN") {
+		config.RateLimitWSConnPerMinPerIP = 0
+	}
+
+	if config.CanvasSnapshotIntervalSec <= 0 {
+		config.CanvasSnapshotIntervalSec = 2
 	}
 
 	// Manually parse ADMIN_IDS

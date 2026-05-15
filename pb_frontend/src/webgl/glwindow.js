@@ -130,6 +130,57 @@ export default class GLWindow {
         this.gl.uniform2f(this.u_cam, this.camPos.x, this.camPos.y);
     }
 
+    /**
+     * Expand backing texture (runtime admin resize, ADR-003). New area is white;
+     * existing lower-left copyW×copyH region is preserved.
+     */
+    expandTextureTo(newW, newH) {
+        const gl = this.gl;
+        const ow = this.texScale.x | 0;
+        const oh = this.texScale.y | 0;
+        const nw = Math.max(newW | 0, ow);
+        const nh = Math.max(newH | 0, oh);
+        if (nw <= ow && nh <= oh) {
+            return;
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.texFramebuffer);
+        const buf = new Uint8Array(ow * oh * 4);
+        gl.readPixels(0, 0, ow, oh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        gl.deleteTexture(this.tex);
+        this.tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        const full = new Uint8Array(nw * nh * 4);
+        for (let i = 0; i < full.length; i += 4) {
+            full[i] = 255;
+            full[i + 1] = 255;
+            full[i + 2] = 255;
+            full[i + 3] = 255;
+        }
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nw, nh, 0, gl.RGBA, gl.UNSIGNED_BYTE, full);
+        const copyW = Math.min(ow, nw);
+        const copyH = Math.min(oh, nh);
+        for (let row = 0; row < copyH; row++) {
+            const srcOff = row * ow * 4;
+            const rowBytes = buf.subarray(srcOff, srcOff + copyW * 4);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, row, copyW, 1, gl.RGBA, gl.UNSIGNED_BYTE, rowBytes);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.texFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0);
+        this.texScale = { x: nw, y: nh };
+        gl.useProgram(this.program);
+        gl.uniform2f(this.u_tex, this.texScale.x, this.texScale.y);
+        if (this.cvs.width > this.cvs.height) {
+            this.zoom = this.cvs.width / this.texScale.x;
+        } else {
+            this.zoom = this.cvs.height / this.texScale.y;
+        }
+        this.setZoom(this.zoom);
+    }
+
     setZoom(z) {
         if (z < 0.01) z = 0.01;
         if (z > 40) z = 40;

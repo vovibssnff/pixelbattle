@@ -3,7 +3,9 @@ networks:
     driver: bridge
 
 services:
+  # Single-node Redis (Phase 1 / default). Enable with COMPOSE_PROFILES=standalone (see .env.example).
   redis:
+    profiles: ["standalone"]
     image: redis:7.4.2
     restart: unless-stopped
     command: redis-server /etc/redis/redis.conf
@@ -19,7 +21,6 @@ services:
       - REDIS_PORT=6379
       - REDIS_DATABASES=16
     security_opt: ["no-new-privileges:true"]
-    # Phase 1 §7.0 budget: Redis = 4g of the VM 16g aggregate cap.
     deploy:
       resources:
         limits:
@@ -30,6 +31,97 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # Three masters, no replicas — enable with COMPOSE_PROFILES=redis-cluster (see .env.example).
+  redis-c1:
+    profiles: ["redis-cluster"]
+    image: redis:7.4.2
+    restart: unless-stopped
+    networks: [internal]
+    command:
+      [
+        "redis-server",
+        "--port", "6379",
+        "--cluster-enabled", "yes",
+        "--cluster-config-file", "nodes.conf",
+        "--cluster-node-timeout", "5000",
+        "--appendonly", "yes",
+        "--bind", "0.0.0.0",
+        "--protected-mode", "no",
+      ]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-c2:
+    profiles: ["redis-cluster"]
+    image: redis:7.4.2
+    restart: unless-stopped
+    networks: [internal]
+    command:
+      [
+        "redis-server",
+        "--port", "6379",
+        "--cluster-enabled", "yes",
+        "--cluster-config-file", "nodes.conf",
+        "--cluster-node-timeout", "5000",
+        "--appendonly", "yes",
+        "--bind", "0.0.0.0",
+        "--protected-mode", "no",
+      ]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-c3:
+    profiles: ["redis-cluster"]
+    image: redis:7.4.2
+    restart: unless-stopped
+    networks: [internal]
+    command:
+      [
+        "redis-server",
+        "--port", "6379",
+        "--cluster-enabled", "yes",
+        "--cluster-config-file", "nodes.conf",
+        "--cluster-node-timeout", "5000",
+        "--appendonly", "yes",
+        "--bind", "0.0.0.0",
+        "--protected-mode", "no",
+      ]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-cluster-init:
+    profiles: ["redis-cluster"]
+    image: redis:7.4.2
+    networks: [internal]
+    depends_on:
+      redis-c1: { condition: service_healthy }
+      redis-c2: { condition: service_healthy }
+      redis-c3: { condition: service_healthy }
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sleep 3 &&
+        (redis-cli --cluster create redis-c1:6379 redis-c2:6379 redis-c3:6379
+        --cluster-replicas 0 --cluster-yes) ||
+        redis-cli -h redis-c1 -p 6379 CLUSTER INFO | grep -q 'cluster_state:ok'
+    security_opt: ["no-new-privileges:true"]
 
   mongodb:
     # Must match featureCompatibilityVersion in ./mongodb/data (7.x cannot open 8.x data).
@@ -71,8 +163,14 @@ services:
     env_file:
       - ./pb_backend/app.env.docker
     depends_on:
-      redis: { condition: service_healthy }
-      mongodb: { condition: service_healthy }
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+        required: false
+      redis-cluster-init:
+        condition: service_completed_successfully
+        required: false
     read_only: true
     tmpfs: ["/tmp"]
     cap_drop: ["ALL"]
@@ -122,6 +220,7 @@ services:
     user: "0:0"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
       - ./monitoring/prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

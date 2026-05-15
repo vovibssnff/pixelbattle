@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,20 +22,36 @@ type RestHandlers struct {
 	canvasService  domain.CanvasService
 	userService    domain.UserService
 	timerService   domain.TimerService
+	snapshotter    *service.CanvasSnapshotter
+	wsHub          WSResizeNotifier
 	// adminAPIToken: when non-empty, requests with matching X-Admin-Token may call admin APIs without a session.
 	adminAPIToken string
 }
 
 func NewRestHandlers(sessionService domain.SessionService, vkAuthProvider vk.VKAuthProvider, canvasService domain.CanvasService,
-	userService domain.UserService, timerService domain.TimerService, adminAPIToken string) *RestHandlers {
+	userService domain.UserService, timerService domain.TimerService, adminAPIToken string, snapshotter *service.CanvasSnapshotter, wsHub WSResizeNotifier) *RestHandlers {
 	return &RestHandlers{
 		sessionService: sessionService,
 		canvasService:  canvasService,
 		userService:    userService,
 		vkAuthProvider: vkAuthProvider,
 		timerService:   timerService,
+		snapshotter:    snapshotter,
+		wsHub:          wsHub,
 		adminAPIToken:  strings.TrimSpace(adminAPIToken),
 	}
+}
+
+func (h *RestHandlers) effectiveCanvasDims(ctx context.Context, fbW, fbH uint) (uint, uint) {
+	w, he, err := h.canvasService.CanvasDimensions(ctx)
+	if err != nil {
+		logrus.Debugf("canvas dimensions: %v", err)
+		return fbW, fbH
+	}
+	if w == 0 || he == 0 {
+		return fbW, fbH
+	}
+	return w, he
 }
 
 // HandleVKLogin is the VK OAuth callback (GET with query payload).
@@ -267,7 +284,8 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	img := h.canvasService.CreateImage(height, width)
+	cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
+	img := h.canvasService.CreateImage(ch, cw)
 	if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
 		logrus.Error(err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -283,6 +301,73 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-store")
+	if h.userService.IsEffectiveAdmin(r.Context(), h.sessionService.GetUserID(session)) {
+		w.Header().Set("Is-God", "true")
+	}
+	if _, err := w.Write(b); err != nil {
+		logrus.Error(err)
+		return
+	}
+	service.ObserveCanvasInitDuration(start)
+}
+
+// HandleCanvasPNG serves a cached PNG from the snapshotter when available (plan §11.3),
+// with ETag / 304 and X-Snapshot-Ms for WS replay_after_ms; falls back to a live render.
+func (h *RestHandlers) HandleCanvasPNG(w http.ResponseWriter, r *http.Request, height, width uint) {
+	start := time.Now()
+	session, _ := h.sessionService.GetSession(r)
+	if !h.sessionService.IsAuthenticated(session) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	var b []byte
+	var etag string
+	var unixMs int64
+
+	if h.snapshotter != nil {
+		if png, et, ms, ok := h.snapshotter.Get(); ok && len(png) > 0 {
+			b, etag, unixMs = png, et, ms
+		}
+	}
+
+	if len(b) == 0 {
+		cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
+		img := h.canvasService.CreateImage(ch, cw)
+		if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
+			logrus.Error(err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		var err error
+		b, err = utils.GetImageBytes(img)
+		if err != nil {
+			logrus.Error(err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		unixMs = time.Now().UnixMilli()
+		etag = ""
+	}
+
+	if etag != "" {
+		if inm := r.Header.Get("If-None-Match"); inm != "" && inm == etag {
+			w.Header().Set("ETag", etag)
+			w.Header().Set("X-Snapshot-Ms", strconv.FormatInt(unixMs, 10))
+			w.Header().Set("Cache-Control", "public, max-age=2")
+			w.WriteHeader(http.StatusNotModified)
+			service.ObserveCanvasInitDuration(start)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=2")
+	w.Header().Set("X-Snapshot-Ms", strconv.FormatInt(unixMs, 10))
+	if etag != "" {
+		w.Header().Set("ETag", etag)
+	}
 	if h.userService.IsEffectiveAdmin(r.Context(), h.sessionService.GetUserID(session)) {
 		w.Header().Set("Is-God", "true")
 	}

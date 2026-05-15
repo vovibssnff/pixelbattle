@@ -112,6 +112,8 @@ export default {
       savedPixels: [],
       isGod: null,
       rum: null,
+      clientSeq: 0,
+      pendingOptimistic: Object.create(null),
     }
   },
   watch: {
@@ -173,9 +175,10 @@ export default {
     this.$data.color = new Uint8Array([0, 0, 0]);
     this.$data.palette = ["#000000", "#FFFFFF", "#FF0000", "#00FF00"];
     if (process.env.NODE_ENV === 'production') {
-      this.initConnection("/init_canvas");
-      this.connectToWebSocket("/ws");
-      this.initEventListeners();
+      this.initConnection("/api/canvas.png").then((snapshotMs) => {
+        this.connectToWebSocket("/ws", snapshotMs);
+        this.initEventListeners();
+      });
     } else {
       this.loaded = true;
       this.ws = {}
@@ -249,7 +252,7 @@ export default {
     initConnection(endpoint) {
       this.$data.place.loadingp.style.color = "white"
       this.$data.place.loadingp.innerHTML = "loading canvas"
-      fetch(endpoint)
+      return fetch(endpoint, { cache: "no-store" })
 			.then(async resp => {
 				let buf = await this.$data.place.downloadProgress(resp);
 				await this.$data.place.setImage(buf);
@@ -257,9 +260,13 @@ export default {
         this.$data.place.loadingp.innerHTML = "";
         this.$data.place.uiwrapper.setAttribute("hide", true);
         this.$data.isGod = resp.headers.get("Is-God");
+        const raw = resp.headers.get("X-Snapshot-Ms");
+        const ms = raw ? parseInt(raw, 10) : 0;
+        return Number.isFinite(ms) ? ms : 0;
 			})
       .catch(() => {
         this.$router.push('/login');
+        return 0;
       });
     },
     initEventListeners() {
@@ -285,24 +292,69 @@ export default {
         this.val_y = this.pos.y;
       } catch { /* outside canvas */ }
     },
-    send(x, y, color) {
+    colorsMatch(a, b) {
+      return (
+        Array.isArray(a) &&
+        Array.isArray(b) &&
+        a.length >= 3 &&
+        b.length >= 3 &&
+        Number(a[0]) === Number(b[0]) &&
+        Number(a[1]) === Number(b[1]) &&
+        Number(a[2]) === Number(b[2])
+      );
+    },
+    applyOptimisticAndSend(x, y, color) {
+      const xn = Math.floor(x);
+      const yn = Math.floor(y);
+      this.clientSeq = (this.clientSeq || 0) + 1;
+      const seq = this.clientSeq >>> 0;
+      const key = `${xn},${yn}`;
+      const c = [color[0], color[1], color[2]];
+      this.pendingOptimistic[key] = { seq, color: c };
+      this.place.setPixel(xn, yn, new Uint8Array(c));
+      this.send(xn, yn, c, seq);
+    },
+    send(x, y, color, seq) {
+      const xn = Math.floor(x);
+      const yn = Math.floor(y);
+      const seq32 = seq >>> 0;
+      if (
+        this.ws &&
+        this.ws.readyState === WebSocket.OPEN &&
+        this.ws.protocol === 'pixelbattle.v2'
+      ) {
+        const buf = new ArrayBuffer(20);
+        const v = new DataView(buf);
+        const u8 = new Uint8Array(buf);
+        u8[0] = 1;
+        v.setUint16(1, xn, true);
+        v.setUint16(3, yn, true);
+        u8[5] = color[0];
+        u8[6] = color[1];
+        u8[7] = color[2];
+        v.setUint32(8, seq32, true);
+        v.setBigInt64(12, BigInt(Date.now()), true);
+        this.ws.send(buf);
+        return;
+      }
       const pixel = {
-          x: Math.floor(x),
-          y: Math.floor(y),
-          color: [color[0], color[1], color[2]],
-          client_sent_ms: Date.now(),
-        };
-        this.ws.send(JSON.stringify(pixel));
+        x: xn,
+        y: yn,
+        color: [color[0], color[1], color[2]],
+        client_sent_ms: Date.now(),
+        client_seq: seq32,
+      };
+      this.ws.send(JSON.stringify(pixel));
     },
     sendPixel(x, y, color) {
       // console.log(this.isGod);
       if (this.isGod=="true") {
-        this.send(x, y, color);
+        this.applyOptimisticAndSend(x, y, color);
         return;
       }
       if (!this.timerRunning) {
         this.timerRunning = true;
-        this.send(x, y, color);
+        this.applyOptimisticAndSend(x, y, color);
         
         this.seconds = 1;
         this.timerValue.style.opacity = 1;
@@ -334,10 +386,13 @@ export default {
         }, 1000);
       }
     },
-    connectToWebSocket(endpoint) {
+    connectToWebSocket(endpoint, replayAfterMs) {
       const url = new URL(endpoint, location.href);
       url.protocol = 'wss';
-      this.ws = new WebSocket(url);
+      if (replayAfterMs != null && replayAfterMs > 0) {
+        url.searchParams.set('replay_after_ms', String(replayAfterMs));
+      }
+      this.ws = new WebSocket(url, ['pixelbattle.v2', 'pixelbattle.v1']);
       this.ws.addEventListener('message', (event) => {this.handleNewPixel(event)});
     },
     /** Backend JSON uses x, y, color (Go json tags); tolerate legacy X, Y, Color. */
@@ -354,24 +409,103 @@ export default {
         new Uint8Array([Number(c[0]), Number(c[1]), Number(c[2])]),
       );
     },
-    handleNewPixel(event) {
-      let pixel;
-      try {
-        pixel = JSON.parse(event.data);
-      } catch {
-        this.rum?.errors?.push('ws_non_json');
-        /* non-JSON websocket message */
-        return;
-      }
+    reconcileAndApplyPixel(pixel) {
       const serverRecvMs = pixel.server_recv_ms ?? pixel.serverRecvMs;
       if (serverRecvMs) {
         this.rum?.recordWSRenderLatency(serverRecvMs);
       }
       if (!this.loaded) {
         this.savedPixels.push(pixel);
-      } else {
-        this.applyRemotePixel(pixel);
+        return;
       }
+      const x = pixel.x ?? pixel.X;
+      const y = pixel.y ?? pixel.Y;
+      const seq = pixel.client_seq ?? pixel.clientSeq ?? 0;
+      const c = pixel.color ?? pixel.Color;
+      if (x == null || y == null || !Array.isArray(c) || c.length < 3) {
+        return;
+      }
+      const key = `${x},${y}`;
+      const pend = this.pendingOptimistic[key];
+      const nc = [Number(c[0]), Number(c[1]), Number(c[2])];
+
+      if (pend && seq === pend.seq) {
+        if (this.colorsMatch(nc, pend.color)) {
+          delete this.pendingOptimistic[key];
+          return;
+        }
+        this.rum?.recordOptimisticCorrection('color_mismatch');
+        delete this.pendingOptimistic[key];
+        this.place.setPixel(x, y, new Uint8Array(nc));
+        this.glWindow.draw();
+        return;
+      }
+      if (pend && (seq === 0 || seq !== pend.seq)) {
+        if (!this.colorsMatch(nc, pend.color)) {
+          this.rum?.recordOptimisticCorrection(
+            seq === 0 ? 'superseded_no_seq' : 'superseded',
+          );
+        }
+        delete this.pendingOptimistic[key];
+      }
+      this.applyRemotePixel(pixel);
+    },
+    applyBinaryPixelV2(u8) {
+      if (u8[0] !== 1 || (u8.length !== 20 && u8.length !== 16)) {
+        this.rum?.errors?.push('ws_bad_binary');
+        return;
+      }
+      const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      const x = v.getUint16(1, true);
+      const y = v.getUint16(3, true);
+      let clientSeq = 0;
+      let serverRecvMs;
+      if (u8.length === 20) {
+        clientSeq = v.getUint32(8, true);
+        serverRecvMs = Number(v.getBigInt64(12, true));
+      } else {
+        serverRecvMs = Number(v.getBigInt64(8, true));
+      }
+      const pixel = {
+        x,
+        y,
+        color: [u8[5], u8[6], u8[7]],
+        server_recv_ms: serverRecvMs,
+        client_seq: clientSeq,
+      };
+      this.reconcileAndApplyPixel(pixel);
+    },
+    handleNewPixel(event) {
+      const d = event.data;
+      if (d instanceof ArrayBuffer) {
+        this.applyBinaryPixelV2(new Uint8Array(d));
+        return;
+      }
+      if (typeof Blob !== 'undefined' && d instanceof Blob) {
+        d.arrayBuffer().then((buf) => this.applyBinaryPixelV2(new Uint8Array(buf)));
+        return;
+      }
+      if (typeof d !== 'string') {
+        return;
+      }
+      let pixel;
+      try {
+        pixel = JSON.parse(d);
+      } catch {
+        this.rum?.errors?.push('ws_non_json');
+        return;
+      }
+      if (pixel && pixel.event === 'RESIZE') {
+        const nw = Number(pixel.width);
+        const nh = Number(pixel.height);
+        if (Number.isFinite(nw) && Number.isFinite(nh) && this.glWindow && this.glWindow.expandTextureTo) {
+          this.pendingOptimistic = Object.create(null);
+          this.glWindow.expandTextureTo(nw, nh);
+          this.glWindow.draw();
+        }
+        return;
+      }
+      this.reconcileAndApplyPixel(pixel);
     },
     renderSavedPIxels() {
       for (const pixel of this.savedPixels) {

@@ -1,0 +1,83 @@
+---
+# Build pixelbattle/backend:phase2 on every node that needs it, then verify.
+#
+# Strategy: rsync the pb_backend/ source from the Ansible controller (this host)
+# to each target VM, then run `docker build` there. This avoids:
+#   - a registry (not available in the lab)
+#   - docker save | scp of a ~600 MB tarball (slow)
+#   - per-host go toolchain (Go is only needed in the builder stage; Docker handles it)
+#
+# Usage (from repo root):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/build-images.yml \
+#       --vault-password-file deploy/.vault_pass
+#
+# Idempotent: skips rsync+build if the image already exists with the expected
+# content digest (compared via a hash of the local source tree).
+
+- name: Phase 2 — build backend image on gateway nodes
+  hosts: swarm_backend_workers
+  gather_facts: false
+  vars:
+    backend_src: "{{ playbook_dir }}/../../pb_backend"
+    backend_dst: "/home/ubuntu/pb_backend"
+    image_tag: "pixelbattle/backend:phase2"
+
+  tasks:
+    - name: Compute local source checksum (Dockerfile + go.mod + all .go files)
+      ansible.builtin.shell: |
+        set -o pipefail
+        find {{ backend_src }} \
+          \( -name "*.go" -o -name "Dockerfile" -o -name "go.mod" -o -name "go.sum" \) \
+          -not -path "*/vendor/*" -not -path "*/.git/*" \
+          | sort | xargs sha256sum | sha256sum | awk '{print $1}'
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      connection: local
+      register: src_hash
+      changed_when: false
+      run_once: false
+
+    - name: Read last-built hash on remote (if present)
+      ansible.builtin.command: cat /home/ubuntu/.backend_build_hash
+      register: remote_hash
+      changed_when: false
+      failed_when: false
+
+    - name: Sync backend source to VM (only if hash changed)
+      ansible.posix.synchronize:
+        src: "{{ backend_src }}/"
+        dest: "{{ backend_dst }}/"
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=vendor"
+          - "--exclude=*.test"
+          - "--delete"
+        checksum: true
+      when: src_hash.stdout != remote_hash.stdout
+
+    - name: Build backend image (only if hash changed)
+      ansible.builtin.command: docker build -t {{ image_tag }} {{ backend_dst }}/
+      when: src_hash.stdout != remote_hash.stdout
+      register: build_result
+      changed_when: true
+      # Go mod download + compile can take ~4 min on a 1-vCPU VM; set a generous timeout
+      async: 600
+      poll: 15
+
+    - name: Persist source hash so re-runs skip unchanged builds
+      ansible.builtin.copy:
+        dest: /home/ubuntu/.backend_build_hash
+        content: "{{ src_hash.stdout }}"
+        mode: "0644"
+      when: src_hash.stdout != remote_hash.stdout
+
+    - name: Verify image exists
+      ansible.builtin.command: docker images {{ image_tag }} --format "{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }} {{ '{{' }}.Size{{ '}}' }}"
+      register: image_check
+      changed_when: false
+      failed_when: image_check.stdout | length == 0
+
+    - name: Show image size
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ image_check.stdout }}"

@@ -357,6 +357,59 @@
       ],
       "title": "Scrape Targets Up/Down",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 76},
+      "id": 500,
+      "title": "Live probe stack (blackbox-exporter)",
+      "type": "row",
+      "description": "Plan §13.1.6 merge gate: synthetic HTTP + WS handshake probes for the externally-facing endpoints."
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]},
+          "unit": "short",
+          "mappings": [{"options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}, "type": "value"}]
+        }
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 77},
+      "id": 501,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {"expr": "probe_success{job=~\"blackbox-.*\"}", "legendFormat": "{{instance}}", "refId": "A"}
+      ],
+      "title": "Probe success per target",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}
+      },
+      "gridPos": {"h": 6, "w": 9, "x": 6, "y": 77},
+      "id": 502,
+      "targets": [
+        {"expr": "probe_duration_seconds{job=~\"blackbox-.*\"}", "legendFormat": "{{job}} {{instance}}", "refId": "A"}
+      ],
+      "title": "Probe duration (HTTP + WS handshake)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {"lineWidth": 1, "fillOpacity": 15}, "unit": "short"}
+      },
+      "gridPos": {"h": 6, "w": 9, "x": 15, "y": 77},
+      "id": 503,
+      "targets": [
+        {"expr": "probe_http_status_code{job=\"blackbox-http\"}", "legendFormat": "{{instance}}", "refId": "A"}
+      ],
+      "title": "HTTP status code per probed endpoint",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",

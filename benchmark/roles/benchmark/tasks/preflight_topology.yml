@@ -43,7 +43,9 @@
   block:
     - name: "preflight (loaders): ps top-5 by RSS"
       ansible.builtin.shell:
-        cmd: "set -o pipefail && ps -eo rss,pid,comm --no-headers | sort -nr | head -5"
+        cmd: |
+          set -o pipefail
+          ps -eo rss,pid,comm --no-headers | sort -nr | awk 'NR<=5'
         executable: /bin/bash
       register: benchmark_loader_top_rss
       changed_when: false
@@ -54,6 +56,47 @@
           Top-5 RSS on this loader: {{ benchmark_loader_top_rss.stdout_lines }}.
           Plan §7.0 wants no stray > 1 GB process when k6 starts; trim before re-running
           if a heavy app is still running.
+  tags: [preflight]
+
+# ---------------------------------------------------------------------------
+# Phase 2 candidate: Caddy entrypoint reachable from loader (TLS + SNI lab host).
+# ---------------------------------------------------------------------------
+
+- name: "preflight (loaders): Phase 2 — Caddy /healthz (TLS + SNI hostname)"
+  when:
+    - "'loaders' in group_names"
+    - benchmark_phase | default('baseline') == 'candidate'
+    - benchmark_remote_host | default('') | length > 0
+  block:
+    # Caddy auto-HTTPS redirects http://<ip>/* to https://<ip>/*, which breaks SNI (cert is for pixelbattle.local).
+    # k6 uses pixelbattle.local — same URL the operator must have in /etc/hosts → manager IP.
+    - name: "preflight (loaders): GET Caddy /healthz over HTTPS"
+      ansible.builtin.uri:
+        url: "https://{{ benchmark_k6_wss_host | default('pixelbattle.local') }}/healthz"
+        validate_certs: false
+        status_code: 200
+        timeout: 15
+      register: benchmark_caddy_health
+      retries: 12
+      delay: 5
+      until: benchmark_caddy_health.status == 200
+
+    - name: "preflight (loaders): Phase 2 — GET /api/config (must not be 404 through Caddy)"
+      ansible.builtin.uri:
+        url: "https://{{ benchmark_k6_wss_host | default('pixelbattle.local') }}/api/config"
+        validate_certs: false
+        status_code: 200
+        timeout: 15
+      register: benchmark_api_config
+      retries: 6
+      delay: 5
+      until: benchmark_api_config.status == 200
+
+    - name: "preflight (loaders): optional /etc/hosts hint for pixelbattle.local"
+      ansible.builtin.debug:
+        msg: >-
+          If this task fails, add to /etc/hosts: {{ benchmark_remote_host }} {{ benchmark_k6_wss_host | default('pixelbattle.local') }}
+          (see context/phase2-runbook.md).
   tags: [preflight]
 
 # ---------------------------------------------------------------------------

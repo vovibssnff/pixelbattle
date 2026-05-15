@@ -9,7 +9,7 @@ import (
 	"pb_backend/cmd/benchmark/reporter"
 	"pb_backend/internal/adapters/postgres"
 	postgres_repo "pb_backend/internal/adapters/postgres/repository"
-	"pb_backend/internal/adapters/redis"
+	redis_adapter "pb_backend/internal/adapters/redis"
 	redis_repo "pb_backend/internal/adapters/redis/repository"
 	sqlite_adapter "pb_backend/internal/adapters/sqlite"
 	sqlite_repo "pb_backend/internal/adapters/sqlite/repository"
@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,6 +41,11 @@ func main() {
 		redisAddrsStr     = flag.String("redis-addrs", "", "Comma-separated Redis cluster addrs (default: REDIS_ADDR)")
 		shards            = flag.Int("shards", 1, "Synthetic shard count for per-shard labels")
 		zipfianSkew       = flag.Float64("zipfian-skew", 1.1, "Zipfian skew parameter (>=1.01)")
+		// Phase 2 only — concurrent-same-coord (CRDT LWW path) and oplog_lag scenarios.
+		concurrentSameCoordSec = flag.Int("concurrent-same-coord-duration", 0, "Run concurrent_same_coord scenario for N seconds (0 = skip)")
+		opLogLagSec            = flag.Int("oplog-lag-duration", 0, "Run oplog_lag scenario for N seconds (0 = skip)")
+		opLogLagRate           = flag.Int("oplog-lag-rate", 500, "Producer ops/s for oplog_lag scenario")
+		topologyLabel          = flag.String("topology-label", "", "Free-form label embedded in every BenchmarkResult.Topology (e.g. cluster-3shards)")
 	)
 	flag.Parse()
 
@@ -66,14 +72,15 @@ func main() {
 	switch *storageType {
 	case "redis":
 		storageName = "redis"
+		hashTagKeys := config.RedisCanvasHashTagKeys
 		if *redisCluster {
-			addrs := parseAddrs(*redisAddrsStr, config.RedisAddr)
-			redisClient := redis.NewRedisClusterConnection(addrs, config.RedisPsw)
-			repo = redis_repo.NewCanvasRepository(redisClient)
+			addrs := parseAddrs(*redisAddrsStr, config.RedisClusterAddrs, config.RedisAddr)
+			redisClient := redis_adapter.NewRedisClusterConnection(addrs, config.RedisPsw)
+			repo = redis_repo.NewCanvasRepository(redisClient, true)
 			storageName = "redis_cluster"
 		} else {
-			redisClient := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
-			repo = redis_repo.NewCanvasRepository(redisClient)
+			redisClient := redis_adapter.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
+			repo = redis_repo.NewCanvasRepository(redisClient, hashTagKeys)
 		}
 
 	case "postgres":
@@ -138,6 +145,22 @@ func main() {
 	benchmarker := benchmark.NewBenchmarker(repo, storageName, uint(*canvasHeight), uint(*canvasWidth), cfg)
 	results := benchmarker.RunAllBenchmarks()
 
+	// Phase 2 extra scenarios (skipped on Phase 1 monolith runs when durations are 0).
+	if *concurrentSameCoordSec > 0 {
+		logrus.Info("=== Phase 9: Concurrent same-coord (CRDT LWW) ===")
+		results = append(results, benchmarker.ConcurrentSameCoord(*concurrentWriters, time.Duration(*concurrentSameCoordSec)*time.Second))
+	}
+	if *opLogLagSec > 0 && *storageType == "redis" {
+		logrus.Info("=== Phase 10: Op-log lag ===")
+		rdb := buildRedisCmdableForOpLogLag(*redisCluster, *redisAddrsStr, config)
+		results = append(results, benchmarker.OpLogLag(*opLogLagRate, time.Duration(*opLogLagSec)*time.Second, rdb, config.RedisCanvasHashTagKeys))
+	}
+	if label := strings.TrimSpace(*topologyLabel); label != "" {
+		for i := range results {
+			results[i].Topology = label
+		}
+	}
+
 	report := reporter.GenerateReport(results, storageName)
 	fmt.Println("\n" + report)
 
@@ -165,10 +188,20 @@ func parseRates(s string) []int {
 	return rates
 }
 
-func parseAddrs(flagValue, fallback string) []string {
-	raw := flagValue
-	if strings.TrimSpace(raw) == "" {
-		raw = fallback
+// buildRedisCmdableForOpLogLag returns a Cmdable for the OpLogLag sampler. Reuses the same
+// addresses the storage-type=redis branch used so the bench connects to the same shards.
+func buildRedisCmdableForOpLogLag(cluster bool, addrsStr string, cfg *utils.Config) redis.Cmdable {
+	if cluster {
+		addrs := parseAddrs(addrsStr, cfg.RedisClusterAddrs, cfg.RedisAddr)
+		return redis_adapter.NewRedisClusterConnection(addrs, cfg.RedisPsw)
+	}
+	return redis_adapter.NewRedisConnection(cfg.RedisAddr, cfg.RedisPsw, cfg.RedisHistory)
+}
+
+func parseAddrs(flagValue, configClusterAddrs, singleAddr string) []string {
+	raw := strings.TrimSpace(flagValue)
+	if raw == "" {
+		raw = strings.TrimSpace(configClusterAddrs)
 	}
 	addrs := make([]string, 0)
 	for _, p := range strings.Split(raw, ",") {
@@ -176,6 +209,9 @@ func parseAddrs(flagValue, fallback string) []string {
 		if p != "" {
 			addrs = append(addrs, p)
 		}
+	}
+	if len(addrs) == 0 && strings.TrimSpace(singleAddr) != "" {
+		addrs = append(addrs, strings.TrimSpace(singleAddr))
 	}
 	if len(addrs) == 0 {
 		addrs = append(addrs, "localhost:6379")

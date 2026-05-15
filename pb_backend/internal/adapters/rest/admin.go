@@ -242,10 +242,56 @@ func (h *RestHandlers) HandleAdminFreeze(w http.ResponseWriter, r *http.Request)
 	h.writeAdminJSON(w, http.StatusOK, true, "freeze toggled")
 }
 
-// HandleAdminResize POST /api/admin/canvas/resize — Phase 2 only.
+type adminResizeBody struct {
+	Width  uint `json:"width"`
+	Height uint `json:"height"`
+}
+
+// HandleAdminResize POST /api/admin/canvas/resize — expand-only; see ADR-003.
 func (h *RestHandlers) HandleAdminResize(w http.ResponseWriter, r *http.Request) {
-	service.IncrementAdminAction("resize", "error")
-	h.writeAdminJSON(w, http.StatusNotImplemented, false, "canvas resize is Phase 2")
+	if r.Method != http.MethodPost {
+		service.IncrementAdminAction("resize", "error")
+		h.writeAdminJSON(w, http.StatusMethodNotAllowed, false, "method not allowed")
+		return
+	}
+	if !h.authorizeAdmin(w, r) {
+		service.IncrementAdminAction("resize", "forbidden")
+		return
+	}
+	var body adminResizeBody
+	data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		service.IncrementAdminAction("resize", "error")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, "read body")
+		return
+	}
+	if err := json.Unmarshal(data, &body); err != nil || body.Width == 0 || body.Height == 0 {
+		service.IncrementAdminAction("resize", "error")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid width/height")
+		return
+	}
+	if err := h.canvasService.ExpandCanvas(r.Context(), body.Width, body.Height); err != nil {
+		logrus.Error(err)
+		service.IncrementAdminAction("resize", "error")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, err.Error())
+		return
+	}
+	service.SetCanvasDimensionsGauge(body.Width, body.Height)
+	payload, err := json.Marshal(map[string]any{
+		"event":  "RESIZE",
+		"width":  body.Width,
+		"height": body.Height,
+	})
+	if err != nil {
+		service.IncrementAdminAction("resize", "error")
+		h.writeAdminJSON(w, http.StatusInternalServerError, false, "marshal")
+		return
+	}
+	if h.wsHub != nil {
+		h.wsHub.NotifyCanvasResize(body.Width, body.Height, payload)
+	}
+	service.IncrementAdminAction("resize", "ok")
+	h.writeAdminJSON(w, http.StatusOK, true, "resized")
 }
 
 // HandleAdminUsers GET /api/admin/users

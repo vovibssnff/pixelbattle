@@ -6,7 +6,7 @@ import { loginTestUser } from './helpers/auth';
 test('long session browser health', async ({ page, baseURL }, testInfo) => {
   await loginTestUser(page, baseURL!);
 
-  await page.goto('/main', { waitUntil: 'networkidle' });
+  await page.goto('/main', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport-canvas', { state: 'attached', timeout: 60_000 });
 
   const samples: Array<{ ts: number; heapMb: number; fpsApprox: number }> = [];
