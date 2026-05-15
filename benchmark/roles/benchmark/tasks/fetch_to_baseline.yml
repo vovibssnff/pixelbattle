@@ -232,9 +232,9 @@
     timeout: 15
   register: benchmark_probe_snapshot_results
   loop:
-    - { name: "probe_success",          query: 'probe_success{job=~"blackbox-.*"}' }
-    - { name: "probe_duration_seconds", query: 'probe_duration_seconds{job=~"blackbox-.*"}' }
-    - { name: "probe_http_status_code", query: 'probe_http_status_code{job="blackbox-http"}' }
+    - {name: "probe_success", query: 'probe_success{job=~"blackbox-.*"}'}
+    - {name: "probe_duration_seconds", query: 'probe_duration_seconds{job=~"blackbox-.*"}'}
+    - {name: "probe_http_status_code", query: 'probe_http_status_code{job="blackbox-http"}'}
   loop_control:
     label: "{{ item.name }}"
   failed_when: false

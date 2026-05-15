@@ -68,7 +68,7 @@
       until: |
         (groups['swarm_workers'] | difference(node_ls.stdout_lines)) | length == 0
 
-    - name: Label each node role={{ "{{" }}swarm_role{{ "}}" }}
+    - name: Label each Swarm node with role
       ansible.builtin.command: >-
         docker node update --label-add role={{ hostvars[item].swarm_role }}
         --label-add node_ip={{ hostvars[item].ansible_host }}
@@ -99,6 +99,12 @@
   hosts: swarm_all
   become: true
   gather_facts: false
+  handlers:
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+      listen: pixelbattle-sysctl-changed
+      changed_when: true
+
   tasks:
     - name: Install high-connection sysctl drop-in
       ansible.builtin.copy:
@@ -109,8 +115,7 @@
           fs.file-max = 1048576
           net.core.somaxconn = 65535
       register: sysctl_dropin
+      notify: pixelbattle-sysctl-changed
 
-    - name: Apply sysctl settings
-      ansible.builtin.command: sysctl --system
-      when: sysctl_dropin.changed | bool
-      changed_when: true
+    - name: Flush handlers so sysctl applies before play ends
+      ansible.builtin.meta: flush_handlers

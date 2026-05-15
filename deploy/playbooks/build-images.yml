@@ -25,10 +25,13 @@
   tasks:
     - name: Compute local source checksum (Dockerfile + go.mod + all .go files)
       ansible.builtin.shell: |
+        set -o pipefail
         find {{ backend_src }} \
           \( -name "*.go" -o -name "Dockerfile" -o -name "go.mod" -o -name "go.sum" \) \
           -not -path "*/vendor/*" -not -path "*/.git/*" \
           | sort | xargs sha256sum | sha256sum | awk '{print $1}'
+      args:
+        executable: /bin/bash
       delegate_to: localhost
       connection: local
       register: src_hash

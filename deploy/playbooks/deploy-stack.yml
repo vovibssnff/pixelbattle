@@ -51,8 +51,11 @@
       loop: "{{ config_sources }}"
 
     - name: Compute content hash for each config
-      ansible.builtin.shell: >-
+      ansible.builtin.shell: |
+        set -o pipefail
         sha256sum {{ deploy_dir }}/configs/{{ item.key }} | awk '{print substr($1,1,8)}'
+      args:
+        executable: /bin/bash
       loop: "{{ config_sources }}"
       register: hash_results
       changed_when: false
@@ -101,6 +104,7 @@
     # Python script is simpler than multi-step regex for YAML block replacement.
     - name: Rewrite configs block to use external versioned names
       ansible.builtin.shell: |
+        set -o pipefail
         python3 - << 'PYEOF'
         import re, sys
 
@@ -127,6 +131,8 @@
             f.write(patched)
         print("patched ok")
         PYEOF
+      args:
+        executable: /bin/bash
       register: patch_result
       changed_when: true
 
@@ -159,12 +165,14 @@
     # ------------------------------------------------------------------ #
     - name: Wait for all tasks to be Running
       ansible.builtin.shell: |
+        set -o pipefail
         desired=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' -q | wc -l)
         running=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' \
-                  --format '{{ "{{" }}.CurrentState{{ "}}" }}' \
-                  | grep -c '^Running' || true)
+                  --format '{{ "{{" }}.CurrentState{{ "}}" }}' | awk '/^Running/{c++} END{print c+0}')
         echo "running=$running desired=$desired"
         [ "$running" -eq "$desired" ] && [ "$desired" -gt "0" ]
+      args:
+        executable: /bin/bash
       register: converge_check
       retries: 36
       delay: 10

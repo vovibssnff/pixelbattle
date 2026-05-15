@@ -2,9 +2,9 @@ package repository
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -71,8 +71,9 @@ func slot(key string) int {
 }
 
 func crc16(s string) int {
-	h := sha1.Sum([]byte(s))
-	return int(h[0])<<8 | int(h[1])
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return int(h.Sum32() & 0xffff)
 }
 
 // TestWritePixelOpLogWithGatewayOriginEmitsFanout: after a successful Lua write the

@@ -43,8 +43,9 @@
   block:
     - name: "preflight (loaders): ps top-5 by RSS"
       ansible.builtin.shell:
-        # head closes the pipe early → SIGPIPE (rc=141); that is expected, not an error
-        cmd: "ps -eo rss,pid,comm --no-headers | sort -nr | head -5 || true"
+        cmd: |
+          set -o pipefail
+          ps -eo rss,pid,comm --no-headers | sort -nr | awk 'NR<=5'
         executable: /bin/bash
       register: benchmark_loader_top_rss
       changed_when: false
@@ -69,16 +70,16 @@
   block:
     # Caddy auto-HTTPS redirects http://<ip>/* to https://<ip>/*, which breaks SNI (cert is for pixelbattle.local).
     # k6 uses pixelbattle.local — same URL the operator must have in /etc/hosts → manager IP.
-    - name: "preflight (loaders): GET https://{{ benchmark_k6_wss_host | default('pixelbattle.local') }}/healthz"
+    - name: "preflight (loaders): GET Caddy /healthz over HTTPS"
       ansible.builtin.uri:
         url: "https://{{ benchmark_k6_wss_host | default('pixelbattle.local') }}/healthz"
         validate_certs: false
         status_code: 200
         timeout: 15
-      register: bench_caddy_health
+      register: benchmark_caddy_health
       retries: 12
       delay: 5
-      until: bench_caddy_health.status == 200
+      until: benchmark_caddy_health.status == 200
 
     - name: "preflight (loaders): Phase 2 — GET /api/config (must not be 404 through Caddy)"
       ansible.builtin.uri:
@@ -86,10 +87,10 @@
         validate_certs: false
         status_code: 200
         timeout: 15
-      register: bench_api_config
+      register: benchmark_api_config
       retries: 6
       delay: 5
-      until: bench_api_config.status == 200
+      until: benchmark_api_config.status == 200
 
     - name: "preflight (loaders): optional /etc/hosts hint for pixelbattle.local"
       ansible.builtin.debug:

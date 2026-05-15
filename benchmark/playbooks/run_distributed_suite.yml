@@ -83,10 +83,13 @@
     benchmark_phase: candidate
   tasks:
     - name: "redis: cluster_state ok"
-      ansible.builtin.shell: >-
-        docker run --rm --network host redis:7.4.2
-        redis-cli -h {{ groups['swarm_redis_workers'] | map('extract', hostvars, 'ansible_host') | list | first }} -p 6379
-        cluster info | grep cluster_state
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker run --rm --network host redis:7.4.2 \
+          redis-cli -h {{ groups['swarm_redis_workers'] | map('extract', hostvars, 'ansible_host') | list | first }} -p 6379 \
+          cluster info | grep cluster_state
+      args:
+        executable: /bin/bash
       register: cluster_state_out
       changed_when: false
       failed_when: "'cluster_state:ok' not in cluster_state_out.stdout"

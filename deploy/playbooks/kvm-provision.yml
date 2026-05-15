@@ -41,12 +41,12 @@
     kvm_ssh_pubkey: "{{ lookup('env', 'KVM_SSH_PUBKEY') }}"
     swarm_default_user: ubuntu
     kvm_vms:
-      - { name: vm-manager,    ip: 192.168.122.10, vcpus: 2, mem_mb: 6144, role: manager }
-      - { name: vm-backend-1,  ip: 192.168.122.11, vcpus: 3, mem_mb: 5120, role: backend }
-      - { name: vm-backend-2,  ip: 192.168.122.12, vcpus: 3, mem_mb: 5120, role: backend }
-      - { name: vm-redis-1,    ip: 192.168.122.13, vcpus: 1, mem_mb: 2048, role: redis }
-      - { name: vm-redis-2,    ip: 192.168.122.14, vcpus: 1, mem_mb: 2048, role: redis }
-      - { name: vm-redis-3,    ip: 192.168.122.15, vcpus: 1, mem_mb: 2048, role: redis }
+      - {name: vm-manager, ip: 192.168.122.10, vcpus: 2, mem_mb: 6144, role: manager}
+      - {name: vm-backend-1, ip: 192.168.122.11, vcpus: 3, mem_mb: 5120, role: backend}
+      - {name: vm-backend-2, ip: 192.168.122.12, vcpus: 3, mem_mb: 5120, role: backend}
+      - {name: vm-redis-1, ip: 192.168.122.13, vcpus: 1, mem_mb: 2048, role: redis}
+      - {name: vm-redis-2, ip: 192.168.122.14, vcpus: 1, mem_mb: 2048, role: redis}
+      - {name: vm-redis-3, ip: 192.168.122.15, vcpus: 1, mem_mb: 2048, role: redis}
 
   tasks:
     - name: Verify required SSH public key is provided

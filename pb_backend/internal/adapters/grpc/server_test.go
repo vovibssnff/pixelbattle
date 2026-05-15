@@ -51,12 +51,12 @@ func (h *captureHub) controlCount() int64 { return atomic.LoadInt64(&h.controls)
 // newBufServer spins up the GatewayService over a bufconn listener and returns the live
 // client + a stop func. Reuses the production grpc.NewServer wiring so interceptors and
 // metrics paths are exercised.
-func newBufServer(t *testing.T, instance string, hub WSHub) (gatewayv1.GatewayServiceClient, func()) {
+func newBufServer(t *testing.T, hub WSHub) (gatewayv1.GatewayServiceClient, func()) {
 	t.Helper()
 	ensureMetrics()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
-	gatewayv1.RegisterGatewayServiceServer(srv, &gatewaySvc{instance: instance, hub: hub})
+	gatewayv1.RegisterGatewayServiceServer(srv, &gatewaySvc{instance: testInstanceID, hub: hub})
 	go func() {
 		_ = srv.Serve(lis)
 	}()
@@ -78,7 +78,7 @@ func newBufServer(t *testing.T, instance string, hub WSHub) (gatewayv1.GatewaySe
 
 func TestBroadcastPixelFromPeerHitsLocalHub(t *testing.T) {
 	hub := &captureHub{}
-	cli, stop := newBufServer(t, testInstanceID, hub)
+	cli, stop := newBufServer(t, hub)
 	defer stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -107,7 +107,7 @@ func TestBroadcastPixelFromPeerHitsLocalHub(t *testing.T) {
 
 func TestBroadcastPixelOwnOriginIsDropped(t *testing.T) {
 	hub := &captureHub{}
-	cli, stop := newBufServer(t, testInstanceID, hub)
+	cli, stop := newBufServer(t, hub)
 	defer stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -129,7 +129,7 @@ func TestBroadcastPixelOwnOriginIsDropped(t *testing.T) {
 
 func TestBroadcastControlFromPeerHitsLocalHub(t *testing.T) {
 	hub := &captureHub{}
-	cli, stop := newBufServer(t, testInstanceID, hub)
+	cli, stop := newBufServer(t, hub)
 	defer stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -153,7 +153,7 @@ func TestBroadcastControlFromPeerHitsLocalHub(t *testing.T) {
 
 func TestPingReturnsInstanceID(t *testing.T) {
 	hub := &captureHub{}
-	cli, stop := newBufServer(t, testInstanceID, hub)
+	cli, stop := newBufServer(t, hub)
 	defer stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -201,7 +201,8 @@ func TestPeerPoolFanOutReachesAllPeers(t *testing.T) {
 func newTCPServer(t *testing.T, instance string, hub WSHub) (*Server, string) {
 	t.Helper()
 	ensureMetrics()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen tcp: %v", err)
 	}

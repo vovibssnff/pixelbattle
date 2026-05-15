@@ -1,8 +1,12 @@
 package grpc
 
-import "net"
+import (
+	"context"
+	"net"
+)
 
 // listen is split out so tests can stub it with bufconn.Listen.
 func listen(addr string) (net.Listener, error) {
-	return net.Listen("tcp", addr)
+	var lc net.ListenConfig
+	return lc.Listen(context.Background(), "tcp", addr)
 }

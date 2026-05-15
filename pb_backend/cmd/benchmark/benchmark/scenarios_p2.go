@@ -48,9 +48,9 @@ func (b *Benchmarker) ConcurrentSameCoord(concurrency int, duration time.Duratio
 	var ops int64
 	x, y := uint(0), uint(0)
 
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		wg.Add(1)
-		go func(id int) {
+		go func() {
 			defer wg.Done()
 			for {
 				select {
@@ -66,7 +66,7 @@ func (b *Benchmarker) ConcurrentSameCoord(concurrency int, duration time.Duratio
 				observePromShard(b.storageType, scenario, b.syntheticShardID(x, y), latMs, err != nil)
 				atomic.AddInt64(&ops, 1)
 			}
-		}(i)
+		}()
 	}
 	wg.Wait()
 	r := b.buildResult(scenario, lc, atomic.LoadInt64(&ops))
