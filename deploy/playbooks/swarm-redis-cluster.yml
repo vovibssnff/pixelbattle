@@ -1,0 +1,184 @@
+---
+# Bootstrap a 3-master Redis Cluster across the three KVM redis VMs once the
+# stack is deployed. Uses the libvirt bridge IPs (192.168.122.13/14/15) as the
+# cluster announce-ip so cross-VM slot redirects resolve correctly. See ADR-004.
+#
+# Requires: redis-c1/c2/c3 services have `mode: host` ports published on 6379/16379
+# (see deploy/stack.yml).
+#
+# Usage (from repo root, after deploy-stack.yml):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/swarm-redis-cluster.yml \
+#       --vault-password-file deploy/.vault_pass
+
+- name: Phase 2 — wait for all Redis nodes to accept connections
+  hosts: swarm_redis_workers
+  gather_facts: false
+  tasks:
+    - name: Wait for port 6379 on {{ inventory_hostname }}
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6379
+        timeout: 120
+        delay: 2
+
+    - name: Verify PING from redis VM itself
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-{{ redis_shard_id }} -q | head -1)
+        [ -n "$cid" ] && docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" ping' || echo "no container"
+      args:
+        executable: /bin/bash
+      register: redis_ping
+      retries: 12
+      delay: 5
+      until: "'PONG' in redis_ping.stdout"
+      changed_when: false
+
+- name: Phase 2 — bootstrap the Redis cluster (run from vm-redis-1)
+  hosts: vm-redis-1
+  gather_facts: false
+  vars:
+    redis_ips: "{{ groups['swarm_redis_workers'] | map('extract', hostvars, 'ansible_host') | list }}"
+  tasks:
+    - name: Check if cluster already formed
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep -c 'cluster_state:ok' || true
+      args:
+        executable: /bin/bash
+      register: cluster_ok
+      changed_when: false
+      failed_when: false
+
+    - name: Check if cluster nodes have slot assignments (for --cluster fix path)
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep 'cluster_slots_assigned' | awk -F: '{print $2}' | tr -d ' \r' || echo 0
+      args:
+        executable: /bin/bash
+      register: cluster_slots
+      changed_when: false
+      failed_when: false
+      when: (cluster_ok.stdout | int) == 0
+
+    - name: Try to repair existing cluster with --cluster fix (preserves data)
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" --cluster fix \
+            {{ redis_ips[0] }}:6379 \
+            --cluster-fix-with-unreachable-masters' 2>&1 || true
+      args:
+        executable: /bin/bash
+      when:
+        - (cluster_ok.stdout | int) == 0
+        - (cluster_slots.stdout | default('0') | int) > 0
+      register: cluster_fix
+      changed_when: true
+
+    - name: Re-check cluster state after fix attempt
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep -c 'cluster_state:ok' || true
+      args:
+        executable: /bin/bash
+      register: cluster_ok_after_fix
+      changed_when: false
+      failed_when: false
+      when: cluster_fix is not skipped
+
+    - name: Form the 3-master cluster (no replicas) — only if fix and check both failed
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" --cluster create \
+            {{ redis_ips[0] }}:6379 \
+            {{ redis_ips[1] }}:6379 \
+            {{ redis_ips[2] }}:6379 \
+            --cluster-replicas 0 --cluster-yes'
+      args:
+        executable: /bin/bash
+      when: >-
+        (cluster_ok.stdout | int) == 0 and
+        (cluster_slots.stdout | default('0') | int) == 0 or
+        (cluster_fix is not skipped and (cluster_ok_after_fix.stdout | default('0') | int) == 0)
+      register: cluster_create
+      changed_when: "'OK' in (cluster_create.stdout | default(''))"
+
+    - name: Show cluster create output
+      ansible.builtin.debug:
+        var: cluster_create.stdout_lines
+      when: cluster_create is not skipped and cluster_create is changed
+
+    - name: Final cluster info
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info'
+      args:
+        executable: /bin/bash
+      register: cluster_info
+      changed_when: false
+
+    - name: Show cluster info
+      ansible.builtin.debug:
+        var: cluster_info.stdout_lines
+
+- name: Phase 2 — kick gateway services now that Redis cluster is ready
+  hosts: swarm_manager
+  gather_facts: false
+  tasks:
+    - name: Force-update gateways so Swarm resets the restart counter
+      ansible.builtin.command: docker service update --force pixelbattle_{{ item }}
+      loop:
+        - gateway-1
+        - gateway-2
+      changed_when: true
+
+    - name: Wait for gateway-1 to be Running (up to 3 min)
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker service ps pixelbattle_gateway-1 --filter 'desired-state=running' \
+          --format '{{ "{{" }}.CurrentState{{ "}}" }}' | grep -c '^Running' || true
+      args:
+        executable: /bin/bash
+      register: gw1_state
+      retries: 18
+      delay: 10
+      until: gw1_state.stdout | int > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for gateway-2 to be Running (up to 3 min)
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker service ps pixelbattle_gateway-2 --filter 'desired-state=running' \
+          --format '{{ "{{" }}.CurrentState{{ "}}" }}' | grep -c '^Running' || true
+      args:
+        executable: /bin/bash
+      register: gw2_state
+      retries: 18
+      delay: 10
+      until: gw2_state.stdout | int > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Final stack health
+      ansible.builtin.command: >-
+        docker stack services pixelbattle
+        --format "table {{ '{{' }}.Name{{ '}}' }}\t{{ '{{' }}.Replicas{{ '}}' }}"
+      register: svc_health
+      changed_when: false
+
+    - name: Show stack health
+      ansible.builtin.debug:
+        var: svc_health.stdout_lines

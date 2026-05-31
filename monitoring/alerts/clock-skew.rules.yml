@@ -1,0 +1,37 @@
+# Phase 2 clock-skew alerts (plan §3, ADR-004). Scraped via node-exporter on every Swarm VM.
+# Thresholds picked to fail the §13.2 merge gate the moment clocks drift past the LWW window.
+groups:
+  - name: pixelbattle-clock-skew
+    interval: 30s
+    rules:
+      - alert: ClockSkewWarning
+        expr: abs(node_timex_offset_seconds) > 0.02
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Clock offset > 20 ms on {{ $labels.instance }}"
+          description: |
+            node_timex_offset_seconds is currently {{ $value | printf "%.3f" }} s on {{ $labels.instance }}.
+            CRDT LWW resolution may pick the wrong winner if this rises further.
+
+      - alert: ClockSkewCritical
+        expr: abs(node_timex_offset_seconds) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Clock offset > 50 ms on {{ $labels.instance }} (blocks Phase 2 merge gate)"
+          description: |
+            node_timex_offset_seconds is currently {{ $value | printf "%.3f" }} s on {{ $labels.instance }}.
+            Phase 2 §13.2 merge gate requires |offset| ≤ 50 ms. Restart chrony or replace the NTP peer.
+
+      - alert: ChronyUnsynchronised
+        expr: node_timex_sync_status == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "chrony reports unsynchronised on {{ $labels.instance }}"
+          description: |
+            node_timex_sync_status has been 0 for 5 minutes. Check `chronyc tracking` on the host.

@@ -1,0 +1,26 @@
+---
+firewall_admin_allowed_cidrs: "{{ admin_allowed_cidrs | default(['127.0.0.1/32']) }}"
+firewall_cluster_allowed_ips: "{{ swarm_node_allowed_ips | default(groups['swarm_all'] | map('extract', hostvars, 'ansible_host') | list) }}"
+
+firewall_public_tcp_ports_manager:
+  - 80
+  - 443
+
+firewall_admin_tcp_ports:
+  - 22
+
+firewall_cluster_tcp_ports:
+  - 2377
+  - 7946
+  - 6379
+  - 16379
+  - 8081
+  - 9000
+  - 9090
+  - 27017
+  - 3000
+  - 9100
+
+firewall_cluster_udp_ports:
+  - 7946
+  - 4789

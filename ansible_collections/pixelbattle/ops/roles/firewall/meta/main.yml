@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: PixelBattle maintainers
+  description: Strict public-IP firewall policy for PixelBattle Swarm nodes.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

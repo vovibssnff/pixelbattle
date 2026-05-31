@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: "pixelbattle-team"
+  description: "Deploy pixelbattle (docker compose stack with Caddy, MongoDB, Redis, Prometheus, Grafana)"
+  license: "MIT"
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+
+dependencies: []

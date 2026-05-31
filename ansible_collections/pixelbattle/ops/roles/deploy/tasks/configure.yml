@@ -1,0 +1,27 @@
+---
+- name: Render docker-compose root .env (compose substitutions)
+  ansible.builtin.template:
+    src: env.root.j2
+    dest: "{{ deploy_project_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Render backend container env file (pb_backend/app.env.docker)
+  ansible.builtin.template:
+    src: app.env.docker.j2
+    dest: "{{ deploy_project_dir }}/pb_backend/app.env.docker"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Render Caddy TLS include
+  ansible.builtin.template:
+    src: tls.inc.j2
+    dest: "{{ deploy_project_dir }}/caddy/tls.inc"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload caddy config

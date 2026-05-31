@@ -1,0 +1,105 @@
+---
+# Wipe all keys and Redis persistence files on every Redis Cluster master, then
+# force-restart gateways so they re-run EnsureCanvasInitialized (white canvas).
+#
+# Use when the canvas has stale/partial data, runaway probe keys, or after lab
+# experiments. Destructive: all pixel/timer/op-log data in Redis is lost.
+#
+# Usage (from repo root):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/flush-redis.yml \
+#     --vault-password-file deploy/.vault_pass
+#
+# After this, re-run swarm-redis-cluster.yml only if cluster_state is not ok
+# (FLUSHALL does not remove cluster topology).
+
+- name: Phase 2 — FLUSHALL + remove RDB/AOF on each Redis shard
+  hosts: swarm_redis_workers
+  gather_facts: false
+  tasks:
+    - name: Flush Redis data and persistence files (shard {{ redis_shard_id }})
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-{{ redis_shard_id }} -q | head -1)
+        if [ -z "$cid" ]; then
+          echo "no redis container for {{ redis_shard_id }}" >&2
+          exit 1
+        fi
+        docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" FLUSHALL'
+        docker exec "$cid" sh -c 'rm -f /data/dump.rdb /data/appendonly.aof 2>/dev/null; rm -rf /data/appendonlydir/* 2>/dev/null; true'
+        docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" ping'
+      args:
+        executable: /bin/bash
+      register: flush_out
+      changed_when: true
+
+    - name: Show flush result
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ flush_out.stdout_lines | default(flush_out.stdout) }}"
+
+- name: Phase 2 — restart gateways to rebuild canvas in Redis
+  hosts: swarm_manager
+  gather_facts: false
+  tasks:
+    - name: Force-update gateways
+      ansible.builtin.command: docker service update --force pixelbattle_{{ item }}
+      loop:
+        - gateway-1
+        - gateway-2
+      changed_when: true
+
+    - name: Wait for gateway-1 Running
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker service ps pixelbattle_gateway-1 --filter 'desired-state=running' \
+          --format '{{ "{{" }}.CurrentState{{ "}}" }}' | grep -c '^Running' || true
+      args:
+        executable: /bin/bash
+      register: gw1_state
+      retries: 18
+      delay: 10
+      until: gw1_state.stdout | int > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for gateway-2 Running
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker service ps pixelbattle_gateway-2 --filter 'desired-state=running' \
+          --format '{{ "{{" }}.CurrentState{{ "}}" }}' | grep -c '^Running' || true
+      args:
+        executable: /bin/bash
+      register: gw2_state
+      retries: 18
+      delay: 10
+      until: gw2_state.stdout | int > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Stack health after flush
+      ansible.builtin.command: >-
+        docker stack services pixelbattle
+        --format "table {{ '{{' }}.Name{{ '}}' }}\t{{ '{{' }}.Replicas{{ '}}' }}"
+      register: svc_health
+      changed_when: false
+
+    - name: Show stack health
+      ansible.builtin.debug:
+        var: svc_health.stdout_lines
+
+- name: Phase 2 — verify Redis cluster still healthy
+  hosts: vm-redis-1
+  gather_facts: false
+  tasks:
+    - name: Cluster info
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1)
+        docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | head -8
+      args:
+        executable: /bin/bash
+      register: cluster_info
+      changed_when: false
+
+    - name: Show cluster info
+      ansible.builtin.debug:
+        var: cluster_info.stdout_lines

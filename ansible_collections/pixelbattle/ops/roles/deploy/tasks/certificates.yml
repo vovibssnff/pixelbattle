@@ -1,0 +1,33 @@
+---
+- name: Ensure self-signed cert directory exists
+  ansible.builtin.file:
+    path: "{{ selfsigned_cert_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Check whether self-signed certificate already exists
+  ansible.builtin.stat:
+    path: "{{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.crt"
+  register: deploy_cert_stat
+
+- name: Generate self-signed certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes
+      -days {{ selfsigned_cert_days }}
+      -newkey rsa:2048
+      -keyout {{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.key
+      -out    {{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.crt
+      -subj "/C={{ selfsigned_cert_country }}/ST={{ selfsigned_cert_state }}/L={{ selfsigned_cert_city }}/O={{ selfsigned_cert_org }}/CN={{ caddy_domain }}"
+    creates: "{{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.crt"
+  when: not deploy_cert_stat.stat.exists or selfsigned_cert_force_regenerate
+
+- name: Lock down private key permissions
+  ansible.builtin.file:
+    path: "{{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.key"
+    mode: "0600"
+
+- name: Set certificate permissions
+  ansible.builtin.file:
+    path: "{{ selfsigned_cert_dir }}/{{ selfsigned_cert_name }}.crt"
+    mode: "0644"

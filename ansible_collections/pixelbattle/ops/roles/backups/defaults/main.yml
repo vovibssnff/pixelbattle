@@ -1,0 +1,6 @@
+---
+backups_dir: /var/backups/pixelbattle
+backups_retention_days: 14
+backups_hour: "3"
+backups_minute: "20"
+backups_stack_name: pixelbattle

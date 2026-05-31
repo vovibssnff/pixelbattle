@@ -1,0 +1,59 @@
+---
+- name: Pull base images
+  ansible.builtin.command:
+    cmd: docker compose pull --ignore-pull-failures
+    chdir: "{{ deploy_project_dir }}"
+  changed_when: false
+  retries: "{{ deploy_compose_retries }}"
+  delay: "{{ deploy_compose_retry_delay }}"
+  register: deploy_pull_result
+  until: deploy_pull_result.rc == 0
+
+- name: Build and (re)deploy stack
+  ansible.builtin.command:
+    cmd: docker compose up -d --build --remove-orphans
+    chdir: "{{ deploy_project_dir }}"
+  register: deploy_compose_result
+  retries: "{{ deploy_compose_retries }}"
+  delay: "{{ deploy_compose_retry_delay }}"
+  until: deploy_compose_result.rc == 0
+  changed_when: >-
+    'Started' in deploy_compose_result.stderr
+    or 'Creating' in deploy_compose_result.stderr
+    or 'Recreated' in deploy_compose_result.stderr
+    or 'Built' in deploy_compose_result.stderr
+
+- name: Wait for backend container to report healthy
+  ansible.builtin.command:
+    cmd: docker inspect --format='{{ "{{" }}.State.Health.Status{{ "}}" }}' pixelbattle-backend-1
+  register: deploy_backend_health
+  retries: "{{ deploy_health_retries }}"
+  delay: "{{ deploy_health_delay }}"
+  until: deploy_backend_health.stdout == "healthy"
+  changed_when: false
+
+# Hitting https://{{ caddy_domain }}/ via normal DNS often fails on the server itself
+# (pixelbattle.local etc. may not resolve). --resolve pins name→127.0.0.1 so TLS SNI
+# and Host still match the Caddy site block; -k skips trust for tls internal.
+- name: Wait for Caddy to serve over HTTPS
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -sS
+      - --connect-timeout
+      - "5"
+      - --max-time
+      - "15"
+      - --resolve
+      - "{{ caddy_domain }}:443:127.0.0.1"
+      - -k
+      - -o
+      - "/dev/null"
+      - -w
+      - "%{http_code}"
+      - "https://{{ caddy_domain }}/"
+  register: deploy_caddy_check
+  retries: "{{ deploy_health_retries }}"
+  delay: "{{ deploy_health_delay }}"
+  until: deploy_caddy_check.rc == 0 and (deploy_caddy_check.stdout | trim) in ['200', '301', '302', '308']
+  changed_when: false

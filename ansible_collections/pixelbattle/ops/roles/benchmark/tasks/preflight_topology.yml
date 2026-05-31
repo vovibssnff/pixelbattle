@@ -1,0 +1,188 @@
+---
+# Phase 1 §7.0 preflight: enforce the laptop-as-loader / VM-as-target topology and the
+# 16 GB resource cap on both sides. Runs as part of run_monolith_suite.yml against
+# `loaders` and `targets` separately; the same task file is safe on either side because
+# every block is gated by inventory_hostname / group membership.
+
+- name: "preflight: announce side"
+  ansible.builtin.debug:
+    msg:
+      - "Phase 1 topology preflight on {{ inventory_hostname }}"
+      - "Group memberships: {{ group_names | join(', ') }}"
+      - "benchmark_target_host: {{ benchmark_target_host | default('localhost') }}"
+      - "benchmark_use_systemd_scope: {{ benchmark_use_systemd_scope | default(false) }}"
+      - "benchmark_loader_memory_max: {{ benchmark_loader_memory_max | default('unset') }}"
+  tags: [preflight]
+
+# ---------------------------------------------------------------------------
+# Loaders side: laptop sanity checks.
+# ---------------------------------------------------------------------------
+
+- name: "preflight (loaders): assert systemd-run is on PATH when scope is enabled"
+  when:
+    - "'loaders' in group_names"
+    - benchmark_use_systemd_scope | default(false) | bool
+  block:
+    - name: "preflight (loaders): which systemd-run"
+      ansible.builtin.command: which systemd-run
+      register: benchmark_systemd_run_check
+      changed_when: false
+      failed_when: false
+
+    - name: "preflight (loaders): fail if systemd-run is missing"
+      ansible.builtin.fail:
+        msg: >-
+          benchmark_use_systemd_scope=true but `systemd-run` is not on PATH.
+          Install systemd or pass -e benchmark_use_systemd_scope=false to fall back to
+          a Docker `--memory={{ benchmark_loader_memory_max | default('16G') }}` wrapper.
+      when: benchmark_systemd_run_check.rc != 0
+  tags: [preflight]
+
+- name: "preflight (loaders): collect top-5 RSS processes (warning only)"
+  when: "'loaders' in group_names"
+  block:
+    - name: "preflight (loaders): ps top-5 by RSS"
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && ps -eo rss,pid,comm --no-headers | sort -nr | head -5"
+        executable: /bin/bash
+      register: benchmark_loader_top_rss
+      changed_when: false
+
+    - name: "preflight (loaders): warn if any non-system process exceeds 1 GB RSS"
+      ansible.builtin.debug:
+        msg: >-
+          Top-5 RSS on this loader: {{ benchmark_loader_top_rss.stdout_lines }}.
+          Plan §7.0 wants no stray > 1 GB process when k6 starts; trim before re-running
+          if a heavy app is still running.
+  tags: [preflight]
+
+# ---------------------------------------------------------------------------
+# Targets side: VM compose memory cap snapshot.
+# ---------------------------------------------------------------------------
+
+- name: "preflight (targets): docker is reachable on the SUT"
+  when: "'targets' in group_names"
+  block:
+    - name: "preflight (targets): docker info"
+      ansible.builtin.command: docker info --format '{{ "{{" }}.MemTotal{{ "}}" }}'
+      register: benchmark_target_docker_info
+      changed_when: false
+      failed_when: false
+
+    - name: "preflight (targets): fail if docker is unreachable"
+      ansible.builtin.fail:
+        msg: "docker is not reachable on {{ inventory_hostname }} — start docker.service or fix permissions."
+      when: benchmark_target_docker_info.rc != 0
+
+    - name: "preflight (targets): docker stats memory snapshot"
+      ansible.builtin.shell: >-
+        docker stats --no-stream
+        --format '{{ "{{" }}.Name{{ "}}" }}\t{{ "{{" }}.MemUsage{{ "}}" }}\t{{ "{{" }}.MemPerc{{ "}}" }}'
+      register: benchmark_target_docker_stats
+      changed_when: false
+      failed_when: false
+
+    - name: "preflight (targets): record stats snapshot for the run"
+      ansible.builtin.copy:
+        dest: "{{ benchmark_results_root }}/preflight_docker_stats_{{ ansible_date_time.epoch }}.txt"
+        mode: "0644"
+        content: |
+          docker stats snapshot (preflight)
+          =================================
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+
+          {{ benchmark_target_docker_stats.stdout | default('docker stats unavailable') }}
+
+    - name: "preflight (targets): inspect compose mem_limit per service"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ benchmark_project_root }}
+        docker compose config --format json \
+          | python3 -c '
+        import json, sys
+        cfg = json.load(sys.stdin)
+        services = cfg.get("services", {})
+        rows = []
+        total = 0
+        for name, spec in sorted(services.items()):
+            limit = spec.get("mem_limit") or (
+                spec.get("deploy", {}).get("resources", {}).get("limits", {}).get("memory")
+            )
+            if isinstance(limit, int):
+                bytes_ = limit
+            elif isinstance(limit, str) and limit:
+                s = limit.strip().lower()
+                mult = 1
+                if s.endswith("g"):
+                    mult = 1024 ** 3
+                    s = s[:-1]
+                elif s.endswith("m"):
+                    mult = 1024 ** 2
+                    s = s[:-1]
+                elif s.endswith("k"):
+                    mult = 1024
+                    s = s[:-1]
+                try:
+                    bytes_ = int(float(s) * mult)
+                except ValueError:
+                    bytes_ = 0
+            else:
+                bytes_ = 0
+            rows.append((name, limit or "UNSET", bytes_))
+            total += bytes_
+        for name, limit, bytes_ in rows:
+            print(f"{name}\t{limit}\t{bytes_}")
+        print(f"__TOTAL__\t{total}\t{total}")
+        '
+      args:
+        executable: /bin/bash
+      # docker compose may read a root-owned .env under the project root; non-root users get
+      # permission denied and emit nothing to stdout. Run the inspect as root when needed.
+      become: true
+      register: benchmark_target_compose_caps
+      changed_when: false
+
+    - name: "preflight (targets): parse compose caps total"
+      ansible.builtin.set_fact:
+        # Selecting `stdout_lines` with string tests varies across Ansible versions; parse from raw stdout.
+        benchmark_target_compose_total_bytes: >-
+          {{
+            (benchmark_target_compose_caps.stdout
+             | regex_findall("(?m)^__TOTAL__\t(\\d+)\t")
+             | first | default('0'))
+            | int
+          }}
+        benchmark_target_compose_unset: >-
+          {{
+            benchmark_target_compose_caps.stdout_lines
+            | select('search', '\tUNSET\t')
+            | list
+          }}
+
+    - name: "preflight (targets): fail if any service is missing a memory cap"
+      ansible.builtin.fail:
+        msg: >-
+          Compose service(s) without a memory cap detected:
+          {{ benchmark_target_compose_unset | join(' / ') }}.
+          Plan §7.0 requires every service to declare deploy.resources.limits.memory
+          (or mem_limit) so the aggregate stays under 16 GB.
+      when: benchmark_target_compose_unset | length > 0
+
+    - name: "preflight (targets): fail if aggregate cap exceeds 16 GB"
+      ansible.builtin.fail:
+        msg: >-
+          Aggregate compose mem_limit is
+          {{ (benchmark_target_compose_total_bytes | int / (1024 ** 3)) | round(2) }} GiB.
+          Phase 1 budget allows at most 16 GiB so the bench sidecar (1 GB) fits at runtime.
+      when: (benchmark_target_compose_total_bytes | int) > (16 * 1024 * 1024 * 1024)
+
+    - name: "preflight (targets): cap snapshot summary"
+      ansible.builtin.debug:
+        msg:
+          - "Compose memory caps (per service):"
+          - "{{ benchmark_target_compose_caps.stdout_lines | reject('search', '^__TOTAL__') | list }}"
+          - >-
+            Aggregate: {{ (benchmark_target_compose_total_bytes | int / (1024 ** 3)) | round(2) }} GiB
+            (cap 16 GiB).
+  tags: [preflight]

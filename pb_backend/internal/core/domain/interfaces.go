@@ -22,6 +22,7 @@ type UserRepository interface {
 	RevokeAdminRole(ctx context.Context, userid string) error
 	IsDynamicAdmin(ctx context.Context, userid string) bool
 	ListUserIDs(ctx context.Context, limit int) ([]string, error)
+	ListAdminUsers(ctx context.Context, limit int) ([]AdminUserInfo, error)
 }
 
 type UserService interface {
@@ -40,6 +41,7 @@ type UserService interface {
 	GrantAdminRole(ctx context.Context, userid string) error
 	RevokeAdminRole(ctx context.Context, userid string) error
 	ListUserIDs(ctx context.Context, limit int) ([]string, error)
+	ListAdminUsers(ctx context.Context, limit int) ([]AdminUserInfo, error)
 	BanUser(ctx context.Context, userid string) error
 	UnbanUser(ctx context.Context, userid string) error
 }
@@ -48,16 +50,27 @@ type CanvasRepository interface {
 	WritePixel(ctx context.Context, x, y uint, pixelData []byte) error
 	CheckInitialized(ctx context.Context) bool
 	GetCanvas(ctx context.Context) (map[string][]string, error)
+	GetLatestPixel(ctx context.Context, x, y uint) (RedisPixel, error)
 	LoadHeatMap(ctx context.Context) (map[string]int64, error)
+	// GetCanvasDimensions returns persisted logical size (0,0 if unknown). See ADR-003.
+	GetCanvasDimensions(ctx context.Context) (width, height uint, err error)
+	SetCanvasDimensions(ctx context.Context, width, height uint) error
 }
 
 type CanvasService interface {
 	WritePixel(ctx context.Context, p *Pixel) error
 	InitializeCanvas(ctx context.Context, height uint, width uint) error
+	EnsureCanvasInitialized(ctx context.Context, height uint, width uint) error
 	IsCanvasInitialized(ctx context.Context) bool
 	GetCanvas(ctx context.Context, img *Image) error
+	GetPixelInfo(ctx context.Context, x, y uint) (PixelInfo, error)
+	GetPixelInfoCache(ctx context.Context) ([]PixelInfo, error)
 	GetHeatMap(ctx context.Context) ([]HeatMapUnit, error)
 	CreateImage(h, w uint) *Image
+	// CanvasDimensions returns stored size or infers from canvas keys (ADR-003).
+	CanvasDimensions(ctx context.Context) (width, height uint, err error)
+	// ExpandCanvas grows the canvas (new cells white); shrink rejected.
+	ExpandCanvas(ctx context.Context, width, height uint) error
 }
 
 type TimerRepository interface {
@@ -69,7 +82,8 @@ type TimerService interface {
 	SetTimer(ctx context.Context, userid string) error
 	CheckTime(ctx context.Context, userid string) (int64, error)
 	// SetCooldownSeconds updates the Redis TTL used for the per-user placement timer (runtime admin).
-	SetCooldownSeconds(sec int) error
+	SetCooldownSeconds(ctx context.Context, sec int) error
+	CooldownSeconds(ctx context.Context) (int, error)
 }
 
 type SessionService interface {

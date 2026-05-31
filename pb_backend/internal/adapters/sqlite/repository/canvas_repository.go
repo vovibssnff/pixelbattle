@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"pb_backend/internal/core/domain"
+	"pb_backend/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -78,6 +79,25 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 	return result, nil
 }
 
+func (r *CanvasRepository) GetLatestPixel(ctx context.Context, x, y uint) (domain.RedisPixel, error) {
+	query := `
+		SELECT pixel_data
+		FROM pixel_history
+		WHERE x = ? AND y = ?
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	var pixelData []byte
+	if err := r.db.QueryRowContext(ctx, query, x, y).Scan(&pixelData); err != nil {
+		return domain.RedisPixel{}, err
+	}
+	var pixel domain.RedisPixel
+	if err := utils.DeserializeRedisPixel(pixelData, &pixel); err != nil {
+		return domain.RedisPixel{}, err
+	}
+	return pixel, nil
+}
+
 // LoadHeatMap counts history length per coordinate
 func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, error) {
 	query := `
@@ -110,6 +130,18 @@ func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, e
 	}
 
 	return result, nil
+}
+
+// GetCanvasDimensions returns (0,0) so service infers from GetCanvas (no meta table).
+func (r *CanvasRepository) GetCanvasDimensions(ctx context.Context) (uint, uint, error) {
+	_, _ = ctx, r
+	return 0, 0, nil
+}
+
+// SetCanvasDimensions is a no-op for SQLite (extent is implicit in data).
+func (r *CanvasRepository) SetCanvasDimensions(ctx context.Context, width, height uint) error {
+	_, _, _, _ = ctx, r, width, height
+	return nil
 }
 
 // Ensure CanvasRepository implements domain.CanvasRepository interface

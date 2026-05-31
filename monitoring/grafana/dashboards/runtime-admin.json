@@ -43,10 +43,379 @@
       "id": 2,
       "options": {
         "mode": "markdown",
-        "content": "## Volkov Labs Business Forms\n\nConfigure POST actions targeting `/api/admin/*` with HTTP header `X-Admin-Token` matching **`ADMIN_API_TOKEN`** (see `pb_backend/app.env.example`).\n\nInfinity datasource points at the backend; add the same header under the datasource or per-panel **Custom HTTP Headers**.\n\nDashboard variable `phase2` is reserved for Phase 2 (canvas resize)."
+        "content": "## Runtime admin\n\nSet dashboard variable **`Admin API Token`** to match the Swarm `admin_api_token` secret / backend `ADMIN_API_TOKEN`. Production actions call same-origin `/api/admin/*` through Caddy; the users table is queried server-side from Grafana over the internal overlay network.\n\nUse explicit action panels below for moderation. Every write has a confirmation dialog and is counted by `admin_action_total`.\n\nCanvas resize is expand-only. On success, `canvas_dimensions` updates and WebSocket clients get `{\"event\":\"RESIZE\",...}`."
       },
       "title": "Operator notes",
       "type": "text"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "infinity"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 17},
+      "id": 4,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "targets": [
+        {
+          "columns": [
+            {"selector": "id", "text": "userid", "type": "string"},
+            {"selector": "name", "text": "name", "type": "string"},
+            {"selector": "surname", "text": "surname", "type": "string"},
+            {"selector": "faculty", "text": "faculty", "type": "string"},
+            {"selector": "total_pixels_placed", "text": "total pixels", "type": "number"},
+            {"selector": "active_pixels", "text": "active pixels", "type": "number"},
+            {"selector": "banned", "text": "banned", "type": "boolean"},
+            {"selector": "admin", "text": "admin", "type": "boolean"}
+          ],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "infinity"},
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "users",
+          "source": "url",
+          "type": "json",
+          "url": "http://gateway-1:8080/api/admin/users",
+          "url_options": {
+            "headers": [{"key": "X-Admin-Token", "value": "${admin_api_token}"}],
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Users (admin view)",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 27},
+      "id": 5,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Ban this user from WebSocket access and pixel placement?", "cancel": "Cancel", "confirm": "Ban", "elementDisplayMode": "modified", "title": "Confirm ban"},
+        "elements": [{"hidden": false, "id": "userid", "labelWidth": 12, "title": "User ID", "type": "string", "value": ""}],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Ban user", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Ban', 'User banned.']);\nelse if (r) context.grafana.notifyError(['Ban', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const el = context.panel.elements.find((e) => e.id === 'userid');\nconst userid = String(el?.value || '').trim();\nif (!userid) { context.grafana.notifyError(['Ban', 'Enter userid.']); throw new Error('validation'); }\nreturn { userid };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/users/ban"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Ban user",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 27},
+      "id": 6,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Remove this user's ban?", "cancel": "Cancel", "confirm": "Unban", "elementDisplayMode": "modified", "title": "Confirm unban"},
+        "elements": [{"hidden": false, "id": "userid", "labelWidth": 12, "title": "User ID", "type": "string", "value": ""}],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Unban user", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Unban', 'User unbanned.']);\nelse if (r) context.grafana.notifyError(['Unban', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const el = context.panel.elements.find((e) => e.id === 'userid');\nconst userid = String(el?.value || '').trim();\nif (!userid) { context.grafana.notifyError(['Unban', 'Enter userid.']); throw new Error('validation'); }\nreturn { userid };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/users/unban"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Unban user",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 27},
+      "id": 7,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Grant runtime admin rights to this user?", "cancel": "Cancel", "confirm": "Grant", "elementDisplayMode": "modified", "title": "Confirm admin grant"},
+        "elements": [{"hidden": false, "id": "userid", "labelWidth": 12, "title": "User ID", "type": "string", "value": ""}],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Grant admin", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Grant admin', 'Admin rights granted.']);\nelse if (r) context.grafana.notifyError(['Grant admin', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const el = context.panel.elements.find((e) => e.id === 'userid');\nconst userid = String(el?.value || '').trim();\nif (!userid) { context.grafana.notifyError(['Grant admin', 'Enter userid.']); throw new Error('validation'); }\nreturn { userid };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/users/grant_admin"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Grant admin",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 27},
+      "id": 8,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Revoke runtime admin rights from this user?", "cancel": "Cancel", "confirm": "Revoke", "elementDisplayMode": "modified", "title": "Confirm admin revoke"},
+        "elements": [{"hidden": false, "id": "userid", "labelWidth": 12, "title": "User ID", "type": "string", "value": ""}],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Revoke admin", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Revoke admin', 'Admin rights revoked.']);\nelse if (r) context.grafana.notifyError(['Revoke admin', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const el = context.panel.elements.find((e) => e.id === 'userid');\nconst userid = String(el?.value || '').trim();\nif (!userid) { context.grafana.notifyError(['Revoke admin', 'Enter userid.']); throw new Error('validation'); }\nreturn { userid };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/users/revoke_admin"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Revoke admin",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 35},
+      "id": 9,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Update pixel cooldown seconds?", "cancel": "Cancel", "confirm": "Set timer", "elementDisplayMode": "modified", "title": "Confirm timer change"},
+        "elements": [{"hidden": false, "id": "seconds", "labelWidth": 12, "min": 0, "title": "Seconds", "type": "number", "value": null}],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Set timer", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Timer', 'Cooldown updated.']);\nelse if (r) context.grafana.notifyError(['Timer', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const el = context.panel.elements.find((e) => e.id === 'seconds');\nconst seconds = Number(el?.value);\nif (!Number.isFinite(seconds) || seconds < 0) { context.grafana.notifyError(['Timer', 'Enter 0 or positive seconds.']); throw new Error('validation'); }\nreturn { seconds: Math.floor(seconds) };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/timer/set"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Set pixel cooldown",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 35},
+      "id": 10,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Freeze canvas and reject new pixel placements?", "cancel": "Cancel", "confirm": "Freeze", "elementDisplayMode": "modified", "title": "Confirm freeze"},
+        "elements": [],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Freeze canvas", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Freeze', 'Canvas frozen.']);\nelse if (r) context.grafana.notifyError(['Freeze', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "return { frozen: true };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/canvas/freeze"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Freeze canvas",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 35},
+      "id": 11,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {"body": "Unfreeze canvas and accept placements again?", "cancel": "Cancel", "confirm": "Unfreeze", "elementDisplayMode": "modified", "title": "Confirm unfreeze"},
+        "elements": [],
+        "initial": {"code": "", "contentType": "application/json", "getPayload": "return { rawSql: '', format: 'table' };", "highlight": false, "method": "-", "payload": {}},
+        "layout": {"orientation": "vertical", "padding": 10, "sectionVariant": "default", "variant": "single"},
+        "reset": {"variant": "hidden"},
+        "saveDefault": {"variant": "hidden"},
+        "submit": {"orientation": "center", "size": "md", "text": "Unfreeze canvas", "variant": "primary"},
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) context.grafana.notifySuccess(['Unfreeze', 'Canvas accepting placements.']);\nelse if (r) context.grafana.notifyError(['Unfreeze', 'HTTP ' + r.status]);",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "return { frozen: false };",
+          "header": [{"name": "X-Admin-Token", "value": "${admin_api_token}"}],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/canvas/freeze"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Unfreeze canvas",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 43},
+      "id": 3,
+      "options": {
+        "buttonGroup": {"orientation": "center", "size": "md"},
+        "confirmModal": {
+          "body": "Expand canvas to the given width×height? New cells are filled white; shrink is rejected.",
+          "cancel": "Cancel",
+          "columns": {
+            "include": ["name", "oldValue", "newValue"],
+            "name": "Label",
+            "newValue": "New Value",
+            "oldValue": "Old Value"
+          },
+          "confirm": "Resize",
+          "elementDisplayMode": "modified",
+          "title": "Confirm canvas resize"
+        },
+        "elementValueChanged": "",
+        "elements": [
+          {
+            "hidden": false,
+            "id": "width",
+            "labelWidth": 12,
+            "min": 1,
+            "section": "",
+            "title": "Width (px)",
+            "tooltip": "Must be ≥ current width (expand-only).",
+            "type": "number",
+            "unit": "",
+            "value": null
+          },
+          {
+            "hidden": false,
+            "id": "height",
+            "labelWidth": 12,
+            "min": 1,
+            "section": "",
+            "title": "Height (px)",
+            "tooltip": "Must be ≥ current height (expand-only).",
+            "type": "number",
+            "unit": "",
+            "value": null
+          }
+        ],
+        "initial": {
+          "code": "",
+          "contentType": "application/json",
+          "getPayload": "return {\n rawSql: '',\n format: 'table',\n};",
+          "highlight": false,
+          "highlightColor": "red",
+          "method": "-",
+          "payload": {}
+        },
+        "layout": {
+          "orientation": "horizontal",
+          "padding": 10,
+          "sectionVariant": "default",
+          "variant": "single"
+        },
+        "reset": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "process",
+          "text": "Reset",
+          "variant": "hidden"
+        },
+        "resetAction": {
+          "code": "",
+          "confirm": false,
+          "getPayload": "return {\n rawSql: '',\n format: 'table',\n};",
+          "mode": "initial",
+          "payload": {}
+        },
+        "saveDefault": {
+          "icon": "save",
+          "text": "Save Default",
+          "variant": "hidden"
+        },
+        "submit": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "cloud-upload",
+          "orientation": "center",
+          "size": "md",
+          "text": "Resize canvas",
+          "variant": "primary"
+        },
+        "sync": false,
+        "update": {
+          "code": "const r = context.panel.response;\nif (r && r.ok) {\n  context.grafana.notifySuccess(['Resize', 'Canvas expanded; clients receive RESIZE.']);\n} else if (r) {\n  context.grafana.notifyError(['Resize', 'HTTP ' + r.status]);\n}",
+          "confirm": true,
+          "contentType": "application/json",
+          "getPayload": "const wEl = context.panel.elements.find((e) => e.id === 'width');\nconst hEl = context.panel.elements.find((e) => e.id === 'height');\nconst w = Number(wEl?.value);\nconst h = Number(hEl?.value);\nif (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) {\n  context.grafana.notifyError(['Resize', 'Enter positive width and height.']);\n  throw new Error('validation');\n}\nreturn { width: Math.floor(w), height: Math.floor(h) };",
+          "header": [
+            {"name": "X-Admin-Token", "value": "${admin_api_token}"}
+          ],
+          "method": "POST",
+          "payload": {},
+          "payloadMode": "custom",
+          "url": "/api/admin/canvas/resize"
+        },
+        "updateEnabled": "auto"
+      },
+      "targets": [{"refId": "A"}],
+      "title": "Canvas resize (expand-only)",
+      "type": "volkovlabs-form-panel"
     }
   ],
   "refresh": "30s",
@@ -57,18 +426,19 @@
       {
         "current": {"selected": false, "text": "", "value": ""},
         "hide": 0,
-        "label": "X-Admin-Token",
-        "name": "admin_token",
+        "label": "Admin API Token",
+        "name": "admin_api_token",
         "options": [{"selected": true, "text": "", "value": ""}],
         "query": "",
+        "skipUrlSync": true,
         "type": "textbox"
       },
       {
-        "current": {"selected": true, "text": "0", "value": "0"},
+        "current": {"selected": true, "text": "1", "value": "1"},
         "hide": 2,
-        "label": "phase2",
+        "label": "phase2 (legacy)",
         "name": "phase2",
-        "query": "0",
+        "query": "1",
         "skipUrlSync": true,
         "type": "constant"
       }

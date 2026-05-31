@@ -1,0 +1,173 @@
+---
+# Build pixelbattle/backend:phase2 and pixelbattle/frontend:phase2 on nodes that need them, then verify.
+#
+# Strategy: rsync the pb_backend/ source from the Ansible controller (this host)
+# to each target VM, then run `docker build` there. This avoids:
+#   - a registry (not available in the lab)
+#   - docker save | scp of a ~600 MB tarball (slow)
+#   - per-host go toolchain (Go is only needed in the builder stage; Docker handles it)
+#
+# Usage (from repo root):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/build-images.yml \
+#       --vault-password-file deploy/.vault_pass
+#
+# Idempotent: skips rsync+build if the image already exists with the expected
+# content digest (compared via a hash of the local source tree).
+
+- name: Phase 2 — build backend image on gateway nodes
+  hosts: swarm_backend_workers
+  gather_facts: false
+  vars:
+    backend_src: "{{ playbook_dir }}/../../pb_backend"
+    backend_dst: "/home/ubuntu/pb_backend"
+    pixelbattle_image_tag_suffix: "{{ lookup('pipe', 'git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S') }}"
+    image_tag: "pixelbattle/backend:phase2-{{ pixelbattle_image_tag_suffix }}"
+
+  tasks:
+    - name: Compute local source checksum (Dockerfile + go.mod + all .go files)
+      ansible.builtin.shell: |
+        set -o pipefail
+        find {{ backend_src }} \
+          \( -name "*.go" -o -name "Dockerfile" -o -name "go.mod" -o -name "go.sum" \) \
+          -not -path "*/vendor/*" -not -path "*/.git/*" \
+          | sort | xargs sha256sum | sha256sum | awk '{print $1}'
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      connection: local
+      register: src_hash
+      changed_when: false
+      run_once: false
+
+    - name: Read last-built hash on remote (if present)
+      ansible.builtin.command: cat /home/ubuntu/.backend_build_hash
+      register: remote_hash
+      changed_when: false
+      failed_when: false
+
+    - name: Create backend source directory
+      ansible.builtin.file:
+        path: "{{ backend_dst }}"
+        state: directory
+        mode: "0755"
+      when: src_hash.stdout != remote_hash.stdout
+
+    - name: Copy backend source to VM (only if hash changed)
+      ansible.builtin.copy:
+        src: "{{ backend_src }}/"
+        dest: "{{ backend_dst }}/"
+        mode: preserve
+      when: src_hash.stdout != remote_hash.stdout
+
+    - name: Build backend image (only if hash changed)
+      ansible.builtin.command: docker build -t {{ image_tag }} {{ backend_dst }}/
+      when: src_hash.stdout != remote_hash.stdout
+      register: build_result
+      changed_when: true
+      # Go mod download + compile can take ~4 min on a 1-vCPU VM; set a generous timeout
+      async: 600
+      poll: 15
+
+    - name: Persist source hash so re-runs skip unchanged builds
+      ansible.builtin.copy:
+        dest: /home/ubuntu/.backend_build_hash
+        content: "{{ src_hash.stdout }}"
+        mode: "0644"
+      when: src_hash.stdout != remote_hash.stdout
+
+    - name: Verify image exists
+      ansible.builtin.command: docker images {{ image_tag }} --format "{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }} {{ '{{' }}.Size{{ '}}' }}"
+      register: image_check
+      changed_when: false
+      failed_when: image_check.stdout | length == 0
+
+    - name: Show image size
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ image_check.stdout }}"
+
+- name: Phase 2 — build frontend image on Swarm manager
+  hosts: swarm_manager
+  gather_facts: false
+  vars:
+    frontend_src: "{{ playbook_dir }}/../../pb_frontend"
+    frontend_dst: "/home/ubuntu/pb_frontend"
+    pixelbattle_image_tag_suffix: "{{ lookup('pipe', 'git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S') }}"
+    image_tag: "pixelbattle/frontend:phase2-{{ pixelbattle_image_tag_suffix }}"
+
+  tasks:
+    - name: Compute local frontend source checksum
+      ansible.builtin.shell: |
+        set -o pipefail
+        find {{ frontend_src }} \
+          \( -name "*.js" -o -name "*.vue" -o -name "*.json" -o -name "Dockerfile" -o -name "*.css" -o -name "*.html" \) \
+          -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" \
+          | sort | xargs sha256sum | sha256sum | awk '{print $1}'
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      connection: local
+      register: frontend_src_hash
+      changed_when: false
+
+    - name: Read last-built frontend hash on remote (if present)
+      ansible.builtin.command: cat /home/ubuntu/.frontend_build_hash
+      register: frontend_remote_hash
+      changed_when: false
+      failed_when: false
+
+    - name: Create frontend source directory
+      ansible.builtin.file:
+        path: "{{ frontend_dst }}"
+        state: directory
+        mode: "0755"
+      when: frontend_src_hash.stdout != frontend_remote_hash.stdout
+
+    # Stage on the controller first (same excludes as the hash task). Copying the full
+    # tree including node_modules/ over SSH is slow and looks like a hang.
+    - name: Stage frontend sources on controller (exclude node_modules, dist, .git)
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -a
+          - --delete
+          - --exclude=.git
+          - --exclude=node_modules
+          - --exclude=dist
+          - "{{ frontend_src }}/"
+          - "{{ playbook_dir }}/.frontend-upload-staging/"
+      delegate_to: localhost
+      connection: local
+      changed_when: true
+      when: frontend_src_hash.stdout != frontend_remote_hash.stdout
+
+    - name: Copy frontend source to VM (only if hash changed)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/.frontend-upload-staging/"
+        dest: "{{ frontend_dst }}/"
+        mode: preserve
+      when: frontend_src_hash.stdout != frontend_remote_hash.stdout
+
+    - name: Build frontend image (only if hash changed)
+      ansible.builtin.command: docker build -t {{ image_tag }} {{ frontend_dst }}/
+      when: frontend_src_hash.stdout != frontend_remote_hash.stdout
+      register: frontend_build_result
+      changed_when: true
+      async: 900
+      poll: 15
+
+    - name: Persist frontend source hash so re-runs skip unchanged builds
+      ansible.builtin.copy:
+        dest: /home/ubuntu/.frontend_build_hash
+        content: "{{ frontend_src_hash.stdout }}"
+        mode: "0644"
+      when: frontend_src_hash.stdout != frontend_remote_hash.stdout
+
+    - name: Verify frontend image exists
+      ansible.builtin.command: docker images {{ image_tag }} --format "{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }} {{ '{{' }}.Size{{ '}}' }}"
+      register: frontend_image_check
+      changed_when: false
+      failed_when: frontend_image_check.stdout | length == 0
+
+    - name: Show frontend image size
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ frontend_image_check.stdout }}"

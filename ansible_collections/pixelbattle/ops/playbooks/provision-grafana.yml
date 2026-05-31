@@ -1,0 +1,151 @@
+---
+# Inject Grafana provisioning files (datasources + dashboards) into the running
+# Grafana container using `docker cp`. No volume mounts or image rebuilds needed.
+#
+# Usage (from repo root):
+#   ansible-playbook -i deploy/inventory.yml deploy/playbooks/provision-grafana.yml \
+#       --vault-password-file deploy/.vault_pass
+#
+# Idempotent: safe to re-run; Grafana's provisioning watcher picks up changes
+# within updateIntervalSeconds (10 s) automatically after the files are written.
+
+- name: Phase 2 — provision Grafana dashboards + datasources
+  hosts: swarm_manager
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+  vars:
+    caddy_domain: "{{ vault_caddy_domain | default('pixelbattle.local') }}"
+    pixelbattle_repo_root: "{{ lookup('env', 'PIXELBATTLE_REPO_ROOT') | default(playbook_dir + '/../../../..', true) }}"
+    grafana_admin_user: "{{ vault_grafana_admin_user | default('admin') }}"
+    grafana_admin_password: "{{ vault_grafana_admin_password }}"
+    grafana_src: "{{ pixelbattle_repo_root }}/monitoring/grafana"
+    grafana_stage: "/home/{{ ansible_user }}/grafana-provision"
+    grafana_container_provisioning: /etc/grafana/provisioning
+    grafana_container_dashboards: /etc/grafana/dashboards
+
+  tasks:
+    # ------------------------------------------------------------------ #
+    # 1. Find the running Grafana container                                #
+    # ------------------------------------------------------------------ #
+    - name: Get Grafana container ID
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker ps --filter label=com.docker.swarm.service.name=pixelbattle_grafana \
+          -q | head -1
+      args:
+        executable: /bin/bash
+      register: grafana_cid
+      changed_when: false
+      failed_when: grafana_cid.stdout | length == 0
+
+    - name: Show container ID
+      ansible.builtin.debug:
+        msg: "Grafana container: {{ grafana_cid.stdout }}"
+
+    # ------------------------------------------------------------------ #
+    # 2. Stage all files on the manager                                    #
+    # ------------------------------------------------------------------ #
+    - name: Create staging directories on manager
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ grafana_stage }}/provisioning/datasources"
+        - "{{ grafana_stage }}/provisioning/dashboards"
+        - "{{ grafana_stage }}/dashboards"
+
+    - name: Upload datasource provisioning files
+      ansible.builtin.copy:
+        src: "{{ grafana_src }}/provisioning/datasources/"
+        dest: "{{ grafana_stage }}/provisioning/datasources/"
+        mode: "0644"
+
+    - name: Upload dashboard provisioning config
+      ansible.builtin.copy:
+        src: "{{ grafana_src }}/provisioning/dashboards/"
+        dest: "{{ grafana_stage }}/provisioning/dashboards/"
+        mode: "0644"
+
+    - name: Upload dashboard JSON files
+      ansible.builtin.copy:
+        src: "{{ grafana_src }}/dashboards/"
+        dest: "{{ grafana_stage }}/dashboards/"
+        mode: "0644"
+
+    # ------------------------------------------------------------------ #
+    # 3. Ensure target directories exist inside the container              #
+    # ------------------------------------------------------------------ #
+    - name: Create provisioning dirs inside container
+      ansible.builtin.command: >-
+        docker exec -u 0 {{ grafana_cid.stdout }}
+        mkdir -p
+        /etc/grafana/provisioning/datasources
+        /etc/grafana/provisioning/dashboards
+        /etc/grafana/dashboards
+      changed_when: false
+
+    # ------------------------------------------------------------------ #
+    # 4. Copy files into the container                                     #
+    # ------------------------------------------------------------------ #
+    - name: Copy datasource provisioning into container
+      ansible.builtin.command: >-
+        docker cp {{ grafana_stage }}/provisioning/datasources/.
+        {{ grafana_cid.stdout }}:/etc/grafana/provisioning/datasources/
+      changed_when: true
+
+    - name: Copy dashboard provisioning config into container
+      ansible.builtin.command: >-
+        docker cp {{ grafana_stage }}/provisioning/dashboards/.
+        {{ grafana_cid.stdout }}:/etc/grafana/provisioning/dashboards/
+      changed_when: true
+
+    - name: Copy dashboard JSON files into container
+      ansible.builtin.command: >-
+        docker cp {{ grafana_stage }}/dashboards/.
+        {{ grafana_cid.stdout }}:/var/lib/grafana/dashboards/
+      changed_when: true
+
+    # ------------------------------------------------------------------ #
+    # 5. Reload Grafana provisioning (no restart needed)                   #
+    # ------------------------------------------------------------------ #
+    - name: Trigger Grafana provisioning reload via API
+      ansible.builtin.uri:
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/admin/provisioning/dashboards/reload"
+        validate_certs: false
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        status_code: [200, 204]
+      register: reload_result
+      failed_when: false
+
+    - name: Also reload datasources
+      ansible.builtin.uri:
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/admin/provisioning/datasources/reload"
+        validate_certs: false
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        status_code: [200, 204]
+      register: reload_ds_result
+      failed_when: false
+
+    - name: Verify dashboards are visible
+      ansible.builtin.uri:
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/search?type=dash-db"
+        validate_certs: false
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+      register: dash_list
+      failed_when: false
+
+    - name: Show imported dashboards
+      ansible.builtin.debug:
+        msg: >-
+          {{ dash_list.json | default([]) | map(attribute='title') | list }}

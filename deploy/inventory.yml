@@ -1,7 +1,18 @@
 ---
 
+# Phase 1 (single-VM monolith) and Phase 2 (KVM micro-VM Swarm) inventory.
+# See adr/004-kvm-swarm-multi-vm.md for the topology decision.
+
 all:
+  vars:
+    swarm_advertise_addr: "{{ vault_swarm_manager_ip | default('192.168.122.10') }}"
+    swarm_subnet: "{{ vault_swarm_subnet | default('192.168.122.0/24') }}"
+    swarm_default_user: "{{ vault_deploy_user | default('ubuntu') }}"
+    swarm_default_ssh_key: "{{ vault_ssh_key_path | default('~/.ssh/id_ed25519') }}"
+    swarm_default_python: /usr/bin/python3
+
   children:
+    # Phase 1 single-VM target (used by run_monolith_suite.yml; do not remove for backward compatibility).
     pixelbattle_servers:
       hosts:
         pixelbattle_vm:
@@ -13,8 +24,80 @@ all:
           ansible_ssh_common_args: "{{ vault_ssh_common_args | default('') }}"
           ansible_python_interpreter: /usr/bin/python3
 
-    local:
+    # Phase 2 KVM Swarm topology (created by deploy/playbooks/kvm-provision.yml on the host).
+    # Connection vars are set at the swarm_all group level — do NOT set ansible_user per-host
+    # or per sub-group here, as vault_deploy_user (vovi) would override the ubuntu cloud-init user.
+    swarm_manager:
+      hosts:
+        vm-manager:
+          ansible_host: "{{ vault_swarm_manager_ip | default('192.168.122.10') }}"
+          swarm_role: manager
+          vm_cpu: 2
+          vm_mem_mb: 6144
+          benchmark_results_root: /home/ubuntu/pixelbattle-benchmark-results
+          benchmark_project_root: /home/ubuntu/pixelbattle
+
+    swarm_backend_workers:
+      hosts:
+        vm-backend-1:
+          ansible_host: "{{ vault_swarm_backend_1_ip | default('192.168.122.11') }}"
+          swarm_role: backend
+          gateway_grpc_port: 9000
+          gateway_instance_id: gw-1
+          vm_cpu: 3
+          vm_mem_mb: 5120
+        vm-backend-2:
+          ansible_host: "{{ vault_swarm_backend_2_ip | default('192.168.122.12') }}"
+          swarm_role: backend
+          gateway_grpc_port: 9000
+          gateway_instance_id: gw-2
+          vm_cpu: 3
+          vm_mem_mb: 5120
+
+    swarm_redis_workers:
+      hosts:
+        vm-redis-1:
+          ansible_host: "{{ vault_swarm_redis_1_ip | default('192.168.122.13') }}"
+          swarm_role: redis
+          redis_shard_id: c1
+          vm_cpu: 1
+          vm_mem_mb: 2048
+        vm-redis-2:
+          ansible_host: "{{ vault_swarm_redis_2_ip | default('192.168.122.14') }}"
+          swarm_role: redis
+          redis_shard_id: c2
+          vm_cpu: 1
+          vm_mem_mb: 2048
+        vm-redis-3:
+          ansible_host: "{{ vault_swarm_redis_3_ip | default('192.168.122.15') }}"
+          swarm_role: redis
+          redis_shard_id: c3
+          vm_cpu: 1
+          vm_mem_mb: 2048
+
+    swarm_workers:
+      children:
+        swarm_backend_workers:
+        swarm_redis_workers:
+
+    swarm_all:
+      children:
+        swarm_manager:
+        swarm_workers:
+      vars:
+        ansible_user: "{{ vault_swarm_user | default('ubuntu') }}"
+        ansible_ssh_private_key_file: "{{ vault_swarm_ssh_key_path | default('~/.ssh/rsa') }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ansible_python_interpreter: /usr/bin/python3
+
+    loaders:
       hosts:
         localhost:
           ansible_connection: local
           ansible_become: false
+          benchmark_use_systemd_scope: true
+          benchmark_loader_memory_max: 16G
+
+    local:
+      children:
+        loaders: {}

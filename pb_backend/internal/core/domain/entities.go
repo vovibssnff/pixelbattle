@@ -46,6 +46,8 @@ type Pixel struct {
 	Faculty      string `json:"faculty"`
 	ClientSentMs int64  `json:"client_sent_ms,omitempty"`
 	ServerRecvMs int64  `json:"server_recv_ms,omitempty"`
+	// ClientSeq: monotonic id from placing client; echoed on broadcast for optimistic UI reconcile (plan §11.1).
+	ClientSeq uint32 `json:"client_seq,omitempty"`
 }
 
 // UnmarshalJSON accepts userid as string or number (WebSocket clients vary).
@@ -57,6 +59,7 @@ func (p *Pixel) UnmarshalJSON(data []byte) error {
 		Userid       json.RawMessage `json:"userid"`
 		Faculty      string          `json:"faculty"`
 		ClientSentMs int64           `json:"client_sent_ms"`
+		ClientSeq    uint32          `json:"client_seq"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -68,6 +71,7 @@ func (p *Pixel) UnmarshalJSON(data []byte) error {
 	p.X, p.Y, p.Color, p.Faculty = aux.X, aux.Y, aux.Color, aux.Faculty
 	p.Userid = uid
 	p.ClientSentMs = aux.ClientSentMs
+	p.ClientSeq = aux.ClientSeq
 	return nil
 }
 
@@ -116,6 +120,26 @@ type User struct {
 	AccessToken  string    `json:"-" bson:"access_token,omitempty"`
 	Faculty      string    `json:"faculty" bson:"faculty"`
 	Stats        UserStats `json:"-" bson:"stats"`
+}
+
+type AdminUserInfo struct {
+	ID                string `json:"id" bson:"_id"`
+	FirstName         string `json:"name" bson:"first_name"`
+	LastName          string `json:"surname" bson:"last_name"`
+	Faculty           string `json:"faculty" bson:"faculty"`
+	TotalPixelsPlaced int    `json:"total_pixels_placed" bson:"total_pixels_placed"`
+	ActivePixels      int    `json:"active_pixels" bson:"active_pixels"`
+	Banned            bool   `json:"banned"`
+	Admin             bool   `json:"admin"`
+}
+
+type PixelInfo struct {
+	X         uint   `json:"x"`
+	Y         uint   `json:"y"`
+	Color     []uint `json:"color"`
+	UserID    string `json:"userid"`
+	Faculty   string `json:"faculty"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type Image struct {

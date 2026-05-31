@@ -1,0 +1,15 @@
+---
+# Default: inventory group `local` — stack on this machine.
+#
+# Remote stack on a VM (typical): use inventory with `vms.benchmark_vm` and pass the VM IP so setup/k6/Prometheus
+# still run from the laptop, but the Go DB benchmark is delegated to the VM (Docker golang, --network host):
+#   ansible-playbook -i inventory.yml playbooks/full_benchmark_suite.yml -e benchmark_remote_host=192.168.122.71
+#
+# Entire suite on the VM only: -e target_hosts=benchmark_vm (leave benchmark_remote_host unset).
+#
+# Pull results from VM: ansible-playbook -i inventory.yml playbooks/sync_results_from_vm.yml
+- name: Full Benchmark Suite
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  roles:
+    - role: pixelbattle.ops.benchmark

@@ -2,20 +2,12 @@ global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
-remote_write:
-  # Enable long-term storage by running:
-  # docker compose --profile longterm up -d mimir
-  - url: 'http://mimir:9009/api/v1/push'
-
 scrape_configs:
-  - job_name: 'pixelbattle-backend'
+  - job_name: 'pixelbattle-gateway'
     static_configs:
-      - targets: ['backend:8080']
+      - targets: ['tasks.gateway-1:8080', 'tasks.gateway-2:8080']
         labels:
-          # Phase 1 monolith run: every series is tagged version=baseline so the
-          # comparison-dashboard.json `version` template can split baseline vs candidate.
-          # Phase 2 distributed run flips this to `candidate`.
-          version: baseline
+          version: candidate
     metrics_path: '/metrics'
     scrape_interval: 5s
 
@@ -23,27 +15,27 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'mongodb'
+  - job_name: 'redis-exporter'
     static_configs:
-      - targets: ['mongodb-exporter:9216']
+      - targets:
+          - 'tasks.redis-exporter-c1:9121'
+          - 'tasks.redis-exporter-c2:9121'
+          - 'tasks.redis-exporter-c3:9121'
+    scrape_interval: 10s
+
+  - job_name: 'node-exporter'
+    dns_sd_configs:
+      - names:
+          - 'tasks.node-exporter'
+        type: A
+        port: 9100
     scrape_interval: 10s
 
   - job_name: 'caddy'
     static_configs:
-      - targets: ['caddy:2019']
+      - targets: ['tasks.caddy:2019']
     metrics_path: '/metrics'
     scrape_interval: 10s
-
-  # Benchmark binary exposes :9091/metrics while running.
-  - job_name: 'benchmark'
-    static_configs:
-      - targets: ['host.docker.internal:9091']
-        labels:
-          # Phase 1 baseline label; flip with Phase 2 candidate run.
-          version: baseline
-    metrics_path: '/metrics'
-    scrape_interval: 5s
-    scrape_timeout: 3s
 
   - job_name: 'blackbox-http'
     metrics_path: /probe
@@ -51,15 +43,15 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - http://caddy/healthz
-          - http://caddy/init_canvas
+          - http://tasks.caddy/healthz
+          - http://tasks.caddy/init_canvas
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: blackbox-exporter:9115
+        replacement: tasks.blackbox-exporter:9115
 
   - job_name: 'blackbox-ws-handshake'
     metrics_path: /probe
@@ -67,11 +59,11 @@ scrape_configs:
       module: [ws_handshake]
     static_configs:
       - targets:
-          - caddy:80
+          - tasks.caddy:80
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: blackbox-exporter:9115
+        replacement: tasks.blackbox-exporter:9115

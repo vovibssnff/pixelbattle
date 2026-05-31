@@ -1,0 +1,22 @@
+---
+namespace: pixelbattle
+name: ops
+version: 0.1.0
+readme: README.md
+authors:
+  - PixelBattle maintainers
+description: Production deployment, operations, and benchmark automation for PixelBattle.
+license:
+  - MIT
+tags:
+  - pixelbattle
+  - docker
+  - swarm
+  - monitoring
+  - benchmark
+dependencies: {}
+repository: https://github.com/vovibssnff/pixelbattle
+build_ignore:
+  - .cache
+  - .venv
+  - tests/output

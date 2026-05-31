@@ -1,0 +1,7 @@
+---
+- name: Install production backups on nodes that host stateful services
+  hosts: swarm_manager:swarm_redis_workers
+  become: true
+  gather_facts: false
+  roles:
+    - role: pixelbattle.ops.backups
