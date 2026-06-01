@@ -152,6 +152,8 @@ jobs:
         run: ansible-galaxy collection build ansible_collections/pixelbattle/ops --output-path /tmp/ansible-collections
       - name: Lint ops collection
         run: ansible-lint ansible_collections/pixelbattle/ops -c .ansible-lint
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
       - name: Syntax check production playbooks
         run: |
           for playbook in \
@@ -170,6 +172,8 @@ jobs:
                 --syntax-check
             fi
           done
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
       - name: Ansible collection sanity
         run: |
           cd ansible_collections/pixelbattle/ops
@@ -191,6 +195,8 @@ jobs:
         run: ansible-galaxy collection install -r requirements.yml
       - name: Lint benchmark playbooks
         run: ansible-lint ansible_collections/pixelbattle/ops/playbooks/run_monolith_suite.yml ansible_collections/pixelbattle/ops/playbooks/run_distributed_suite.yml ansible_collections/pixelbattle/ops/roles/benchmark -c .ansible-lint
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
 
   backend-test:
     runs-on: ubuntu-latest
