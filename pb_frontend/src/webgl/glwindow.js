@@ -112,42 +112,6 @@ export default class GLWindow {
         this.gl.texSubImage2D(this.gl.TEXTURE_2D, 0, x, y, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, rgba);
     }
 
-    expandTextureTo(newWidth, newHeight) {
-        const gl = this.gl;
-        const oldW = this.texScale.x;
-        const oldH = this.texScale.y;
-        if (newWidth <= oldW && newHeight <= oldH) return;
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.texFramebuffer);
-        const oldPixels = new Uint8Array(oldW * oldH * 4);
-        gl.readPixels(0, 0, oldW, oldH, gl.RGBA, gl.UNSIGNED_BYTE, oldPixels);
-
-        const newTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, newTex);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-        const white = new Uint8Array(newWidth * newHeight * 4);
-        for (let i = 0; i < white.length; i += 4) {
-            white[i] = 255;
-            white[i + 1] = 255;
-            white[i + 2] = 255;
-            white[i + 3] = 255;
-        }
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, newWidth, newHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, white);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, oldW, oldH, gl.RGBA, gl.UNSIGNED_BYTE, oldPixels);
-
-        gl.deleteTexture(this.tex);
-        this.tex = newTex;
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0);
-
-        this.texScale = { x: newWidth, y: newHeight };
-        gl.uniform2f(this.u_tex, newWidth, newHeight);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
-
     getColor(pos) {
         let rgba = new Uint8Array(4);
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.texFramebuffer);

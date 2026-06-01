@@ -72,14 +72,13 @@ func main() {
 	switch *storageType {
 	case "redis":
 		storageName = "redis"
-		hashTagKeys := config.RedisCanvasHashTagKeys
 		if *redisCluster {
-			addrs := parseAddrs(*redisAddrsStr, config.RedisAddr)
-			redisClient := redis.NewRedisClusterConnection(addrs, config.RedisPsw)
-			repo = redis_repo.NewCanvasRepository(redisClient, true)
+			addrs := parseAddrs(*redisAddrsStr, config.RedisClusterAddrs, config.RedisAddr)
+			redisClient := redis_adapter.NewRedisClusterConnection(addrs, config.RedisPsw)
+			repo = redis_repo.NewCanvasRepository(redisClient, config.RedisCanvasHashTagKeys)
 			storageName = "redis_cluster"
 		} else {
-			redisClient := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
+			redisClient := redis_adapter.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
 			repo = redis_repo.NewCanvasRepository(redisClient, false)
 		}
 
