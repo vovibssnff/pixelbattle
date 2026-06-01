@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+{# Caddy TLS directives, imported by Caddyfile inside the {$CADDY_DOMAIN} site block. #}
+{% if caddy_tls_mode == 'internal' %}
+tls internal
+{% elif caddy_tls_mode == 'selfsigned' %}
+tls /etc/caddy/certs/{{ selfsigned_cert_name }}.crt /etc/caddy/certs/{{ selfsigned_cert_name }}.key
+{% elif caddy_tls_mode == 'acme' %}
+{# No directives: Caddy obtains a public cert via Let's Encrypt using ACME_EMAIL. #}
+{% else %}
+{# Unknown caddy_tls_mode={{ caddy_tls_mode }} — leaving Caddy defaults. #}
+{% endif %}

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -15,18 +16,18 @@ import (
 // a missing on-disk app.env leaves MONGO_URI etc. empty even when set in the environment.
 var envKeysForViper = []string{
 	"REDIS_ADDR", "REDIS_PSW", "REDIS_HISTORY", "REDIS_TIMER", "REDIS_USERS", "REDIS_BANNED",
-	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS",
+	"REDIS_CLUSTER_ADDRS", "REDIS_CANVAS_HASHTAG_KEYS", "REDIS_PSW_FILE",
 	"RATE_LIMIT_PIXEL_PER_SEC", "RATE_LIMIT_WS_CONN_PER_MIN",
 	"CANVAS_SNAPSHOT_INTERVAL_SEC", "CANVAS_SNAPSHOT_FILE",
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	"SQLITE_PATH",
 	"CANVAS_HEIGHT", "CANVAS_WIDTH",
-	"MONGO_URI",
+	"MONGO_URI", "MONGO_URI_FILE",
 	"API_VERSION", "SERVICE_TOKEN",
-	"SESSION_KEY", "LOG_LEVEL", "WS_ALLOW_ANONYMOUS",
+	"SESSION_KEY", "SESSION_KEY_FILE", "LOG_LEVEL", "WS_ALLOW_ANONYMOUS",
 	"SESSION_SECURE",
 	"ADMIN_IDS", "ADMIN_USERNAMES",
-	"ADMIN_API_TOKEN",
+	"ADMIN_API_TOKEN", "ADMIN_API_TOKEN_FILE",
 	"PIXEL_COOLDOWN_SEC",
 	"GATEWAY_INSTANCE_ID", "GATEWAY_GRPC_PORT", "GATEWAY_PEERS",
 	"GATEWAY_OPSTREAM_GROUP", "GATEWAY_OPSTREAM_CONSUMER",
@@ -44,6 +45,7 @@ func mergeProcessEnvIntoViper() {
 type Config struct {
 	RedisAddr    string `mapstructure:"REDIS_ADDR"`
 	RedisPsw     string `mapstructure:"REDIS_PSW"`
+	RedisPswFile string `mapstructure:"REDIS_PSW_FILE"`
 	RedisHistory int    `mapstructure:"REDIS_HISTORY"`
 	RedisTimer   int    `mapstructure:"REDIS_TIMER"`
 	// RedisClusterAddrs: comma-separated host:port list for redis.NewClusterClient. When non-empty, canvas + timer use the cluster (DB index is ignored).
@@ -61,23 +63,26 @@ type Config struct {
 	CanvasHeight           int    `mapstructure:"CANVAS_HEIGHT"`
 	CanvasWidth            int    `mapstructure:"CANVAS_WIDTH"`
 	MongoURI               string `mapstructure:"MONGO_URI"`
+	MongoURIFile           string `mapstructure:"MONGO_URI_FILE"`
 	AdminIDs               []int  // No `mapstructure` tag to prevent automatic decoding
 	AdminUsernames         []string
 	APIVersion             string `mapstructure:"API_VERSION"`
 	ServiceToken           string `mapstructure:"SERVICE_TOKEN"`
 
 	// SESSION_KEY: secret used to sign session cookies (32+ bytes recommended). If empty, a random key is generated per process start.
-	SessionKey string `mapstructure:"SESSION_KEY"`
+	SessionKey     string `mapstructure:"SESSION_KEY"`
+	SessionKeyFile string `mapstructure:"SESSION_KEY_FILE"`
 	// LOG_LEVEL: logrus level (debug, info, warn, error). Default: info.
 	LogLevel string `mapstructure:"LOG_LEVEL"`
 	// SessionSecure: set Secure flag on session cookie (use true behind HTTPS). Default: true if unset.
 	SessionSecure bool
 	// WSAllowAnonymous: when true, /ws accepts uid+faculty query params without a session (load tests only).
 	WSAllowAnonymous bool `mapstructure:"WS_ALLOW_ANONYMOUS"`
-	// PixelCooldownSec: minimum seconds between pixel placements per user (Redis TTL). Default 3 if unset/0.
+	// PixelCooldownSec: minimum seconds between pixel placements per user (Redis TTL). Default 3 if unset; 0 disables.
 	PixelCooldownSec int `mapstructure:"PIXEL_COOLDOWN_SEC"`
 	// ADMIN_API_TOKEN: static bearer for Grafana / automation (X-Admin-Token header). Empty = token auth disabled.
-	AdminAPIToken string `mapstructure:"ADMIN_API_TOKEN"`
+	AdminAPIToken     string `mapstructure:"ADMIN_API_TOKEN"`
+	AdminAPITokenFile string `mapstructure:"ADMIN_API_TOKEN_FILE"`
 	// RateLimitPixelPerSec: max pixel WS messages per second per authenticated userid (non-admins). 0 disables. Default 5 when env unset.
 	RateLimitPixelPerSec int `mapstructure:"RATE_LIMIT_PIXEL_PER_SEC"`
 	// RateLimitWSConnPerMinPerIP: max new /ws handshakes per minute per client IP. 0 disables (recommended for k6 from one loader IP). Set in production (e.g. 50).
@@ -124,8 +129,12 @@ func LoadConfig(path string) (*Config, error) {
 		config.LogLevel = "info"
 	}
 
-	if config.PixelCooldownSec <= 0 {
+	if !viper.IsSet("PIXEL_COOLDOWN_SEC") {
 		config.PixelCooldownSec = 3
+	}
+	if config.PixelCooldownSec < 0 {
+		log.Printf("Warning: PIXEL_COOLDOWN_SEC=%d raised to 0", config.PixelCooldownSec)
+		config.PixelCooldownSec = 0
 	}
 	if config.PixelCooldownSec > 3600 {
 		log.Printf("Warning: PIXEL_COOLDOWN_SEC=%d capped to 3600", config.PixelCooldownSec)
@@ -147,6 +156,35 @@ func LoadConfig(path string) (*Config, error) {
 
 	if config.CanvasSnapshotIntervalSec <= 0 {
 		config.CanvasSnapshotIntervalSec = 2
+	}
+
+	if strings.TrimSpace(config.AdminAPIToken) == "" && strings.TrimSpace(config.AdminAPITokenFile) != "" {
+		token, err := readSecretFile("ADMIN_API_TOKEN_FILE", config.AdminAPITokenFile)
+		if err != nil {
+			return nil, err
+		}
+		config.AdminAPIToken = token
+	}
+	if strings.TrimSpace(config.SessionKey) == "" && strings.TrimSpace(config.SessionKeyFile) != "" {
+		key, err := readSecretFile("SESSION_KEY_FILE", config.SessionKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		config.SessionKey = key
+	}
+	if strings.TrimSpace(config.RedisPsw) == "" && strings.TrimSpace(config.RedisPswFile) != "" {
+		password, err := readSecretFile("REDIS_PSW_FILE", config.RedisPswFile)
+		if err != nil {
+			return nil, err
+		}
+		config.RedisPsw = password
+	}
+	if strings.TrimSpace(config.MongoURI) == "" && strings.TrimSpace(config.MongoURIFile) != "" {
+		uri, err := readSecretFile("MONGO_URI_FILE", config.MongoURIFile)
+		if err != nil {
+			return nil, err
+		}
+		config.MongoURI = uri
 	}
 
 	// Manually parse ADMIN_IDS
@@ -176,4 +214,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func readSecretFile(label, path string) (string, error) {
+	b, err := os.ReadFile(strings.TrimSpace(path))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", label, err)
+	}
+	return strings.TrimSpace(string(b)), nil
 }

@@ -74,13 +74,13 @@ func main() {
 		storageName = "redis"
 		hashTagKeys := config.RedisCanvasHashTagKeys
 		if *redisCluster {
-			addrs := parseAddrs(*redisAddrsStr, config.RedisClusterAddrs, config.RedisAddr)
-			redisClient := redis_adapter.NewRedisClusterConnection(addrs, config.RedisPsw)
+			addrs := parseAddrs(*redisAddrsStr, config.RedisAddr)
+			redisClient := redis.NewRedisClusterConnection(addrs, config.RedisPsw)
 			repo = redis_repo.NewCanvasRepository(redisClient, true)
 			storageName = "redis_cluster"
 		} else {
-			redisClient := redis_adapter.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
-			repo = redis_repo.NewCanvasRepository(redisClient, hashTagKeys)
+			redisClient := redis.NewRedisConnection(config.RedisAddr, config.RedisPsw, config.RedisHistory)
+			repo = redis_repo.NewCanvasRepository(redisClient, false)
 		}
 
 	case "postgres":

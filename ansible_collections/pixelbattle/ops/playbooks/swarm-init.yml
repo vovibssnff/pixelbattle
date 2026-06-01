@@ -1,0 +1,87 @@
+---
+- name: Initialize Swarm manager
+  hosts: swarm_manager
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read manager Swarm state
+      ansible.builtin.command: docker info --format '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+      register: swarm_manager_state
+      changed_when: false
+      failed_when: false
+
+    - name: Initialize Docker Swarm
+      ansible.builtin.command: docker swarm init --advertise-addr {{ swarm_advertise_addr }}
+      register: swarm_init_result
+      changed_when: "'Swarm initialized' in (swarm_init_result.stdout | default(''))"
+      when: (swarm_manager_state.stdout | default('') | trim) != 'active'
+
+    - name: Capture worker join token
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: swarm_worker_token_result
+      changed_when: false
+
+    - name: Save worker join details
+      ansible.builtin.set_fact:
+        swarm_worker_token: "{{ swarm_worker_token_result.stdout }}"
+        swarm_manager_addr: "{{ swarm_advertise_addr }}"
+
+- name: Join Swarm workers
+  hosts: swarm_workers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read worker Swarm state
+      ansible.builtin.command: docker info --format '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+      register: swarm_worker_state
+      changed_when: false
+      failed_when: false
+
+    - name: Join worker to Docker Swarm
+      ansible.builtin.command: >-
+        docker swarm join
+        --token {{ hostvars[groups['swarm_manager'][0]].swarm_worker_token }}
+        {{ hostvars[groups['swarm_manager'][0]].swarm_manager_addr }}:2377
+      register: swarm_worker_join_result
+      changed_when: "'This node joined a swarm as a worker' in (swarm_worker_join_result.stdout | default(''))"
+      when: (swarm_worker_state.stdout | default('') | trim) != 'active'
+
+- name: Label Swarm nodes
+  hosts: swarm_manager
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait until all Swarm nodes are visible
+      ansible.builtin.command: docker node ls --format '{{ "{{" }}.Hostname{{ "}}" }}'
+      register: swarm_node_list
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: swarm_node_list.stdout_lines | length >= (groups['swarm_all'] | length)
+
+    - name: Apply Swarm node labels by advertised IP
+      ansible.builtin.shell: |
+        set -o pipefail
+        target_ip="{{ hostvars[item].ansible_host }}"
+        node_id=""
+        for id in $(docker node ls -q); do
+          addr=$(docker node inspect -f '{{ "{{" }}.Status.Addr{{ "}}" }}' "$id")
+          if [ "$addr" = "$target_ip" ]; then
+            node_id="$id"
+            break
+          fi
+        done
+        if [ -z "$node_id" ]; then
+          echo "no swarm node found for ${target_ip}" >&2
+          exit 1
+        fi
+        docker node update \
+          --label-add role={{ hostvars[item].swarm_role }} \
+          --label-add node_ip="${target_ip}" \
+          --label-add instance_id={{ hostvars[item].gateway_instance_id | default(hostvars[item].redis_shard_id | default(item)) }} \
+          "$node_id"
+      args:
+        executable: /bin/bash
+      loop: "{{ groups['swarm_all'] }}"
+      register: swarm_label_result
+      changed_when: swarm_label_result.rc == 0

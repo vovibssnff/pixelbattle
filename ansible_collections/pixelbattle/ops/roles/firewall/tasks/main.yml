@@ -1,0 +1,51 @@
+---
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  when: ansible_os_family | default('Debian') == 'Debian'
+
+- name: Deny inbound by default
+  ansible.builtin.command: ufw default deny incoming
+  register: firewall_ufw_default_incoming
+  changed_when: "'Default incoming policy changed' in firewall_ufw_default_incoming.stdout"
+
+- name: Allow outbound by default
+  ansible.builtin.command: ufw default allow outgoing
+  register: firewall_ufw_default_outgoing
+  changed_when: "'Default outgoing policy changed' in firewall_ufw_default_outgoing.stdout"
+
+- name: Allow routed traffic for Docker Swarm overlay
+  ansible.builtin.command: ufw default allow routed
+  register: firewall_ufw_default_routed
+  changed_when: "'Default routed policy changed' in firewall_ufw_default_routed.stdout"
+
+- name: Allow SSH from admin CIDRs
+  ansible.builtin.command: "ufw allow from {{ item.0 }} to any port {{ item.1 }} proto tcp"
+  register: firewall_ufw_admin_rule
+  changed_when: "'Rule added' in firewall_ufw_admin_rule.stdout or 'Rules updated' in firewall_ufw_admin_rule.stdout"
+  loop: "{{ firewall_admin_allowed_cidrs | product(firewall_admin_tcp_ports) | list }}"
+
+- name: Allow public Caddy ports on manager only
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  register: firewall_ufw_public_rule
+  changed_when: "'Rule added' in firewall_ufw_public_rule.stdout or 'Rules updated' in firewall_ufw_public_rule.stdout"
+  loop: "{{ firewall_public_tcp_ports_manager }}"
+  when: inventory_hostname in groups['swarm_manager']
+
+- name: Allow cluster TCP ports from known Swarm nodes
+  ansible.builtin.command: "ufw allow from {{ item.0 }} to any port {{ item.1 }} proto tcp"
+  register: firewall_ufw_cluster_tcp_rule
+  changed_when: "'Rule added' in firewall_ufw_cluster_tcp_rule.stdout or 'Rules updated' in firewall_ufw_cluster_tcp_rule.stdout"
+  loop: "{{ firewall_cluster_allowed_ips | product(firewall_cluster_tcp_ports) | list }}"
+
+- name: Allow cluster UDP ports from known Swarm nodes
+  ansible.builtin.command: "ufw allow from {{ item.0 }} to any port {{ item.1 }} proto udp"
+  register: firewall_ufw_cluster_udp_rule
+  changed_when: "'Rule added' in firewall_ufw_cluster_udp_rule.stdout or 'Rules updated' in firewall_ufw_cluster_udp_rule.stdout"
+  loop: "{{ firewall_cluster_allowed_ips | product(firewall_cluster_udp_ports) | list }}"
+
+- name: Enable UFW
+  ansible.builtin.command: ufw --force enable
+  register: firewall_ufw_enable
+  changed_when: "'Firewall is active and enabled' in firewall_ufw_enable.stdout"

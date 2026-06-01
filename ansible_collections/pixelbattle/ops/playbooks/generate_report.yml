@@ -1,0 +1,11 @@
+---
+# Run locally:  ansible-playbook playbooks/generate_report.yml
+# Run on a VM:  ansible-playbook playbooks/generate_report.yml -e target_hosts=benchmark_vm
+- name: Generate Comparison Report and Graphs
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Generate report
+      ansible.builtin.include_role:
+        name: pixelbattle.ops.benchmark
+        tasks_from: generate_report.yml

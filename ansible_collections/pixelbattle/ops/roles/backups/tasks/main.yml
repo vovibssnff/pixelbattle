@@ -1,0 +1,25 @@
+---
+- name: Create backup directory
+  ansible.builtin.file:
+    path: "{{ backups_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install backup script
+  ansible.builtin.template:
+    src: pixelbattle-backup.sh.j2
+    dest: /usr/local/sbin/pixelbattle-backup
+    owner: root
+    group: root
+    mode: "0700"
+  no_log: true
+
+- name: Schedule nightly PixelBattle backup
+  ansible.builtin.cron:
+    name: pixelbattle nightly backup
+    user: root
+    minute: "{{ backups_minute }}"
+    hour: "{{ backups_hour }}"
+    job: /usr/local/sbin/pixelbattle-backup

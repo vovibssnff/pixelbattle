@@ -198,6 +198,83 @@ func (r *UserRepository) ListUserIDs(ctx context.Context, limit int) ([]string, 
 	return out, cur.Err()
 }
 
+func (r *UserRepository) ListAdminUsers(ctx context.Context, limit int) ([]domain.AdminUserInfo, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+	start := time.Now()
+	opts := options.Find().
+		SetLimit(int64(limit)).
+		SetProjection(bson.M{
+			"_id":                       1,
+			"first_name":                1,
+			"last_name":                 1,
+			"faculty":                   1,
+			"stats.total_pixels_placed": 1,
+			"stats.active_pixels":       1,
+		}).
+		SetSort(bson.M{"_id": 1})
+	cur, err := r.users.Find(ctx, bson.M{}, opts)
+	metrics.ObserveDatabaseOperation("list_admin_users", "mongo", time.Since(start), err)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	banned, err := idSetFromCollection(ctx, r.banned)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := idSetFromCollection(ctx, r.adminGrants)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []domain.AdminUserInfo
+	for cur.Next(ctx) {
+		var doc struct {
+			ID        string           `bson:"_id"`
+			FirstName string           `bson:"first_name"`
+			LastName  string           `bson:"last_name"`
+			Faculty   string           `bson:"faculty"`
+			Stats     domain.UserStats `bson:"stats"`
+		}
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		out = append(out, domain.AdminUserInfo{
+			ID:                doc.ID,
+			FirstName:         doc.FirstName,
+			LastName:          doc.LastName,
+			Faculty:           doc.Faculty,
+			TotalPixelsPlaced: doc.Stats.TotalPixelsPlaced,
+			ActivePixels:      doc.Stats.ActivePixels,
+			Banned:            banned[doc.ID],
+			Admin:             grants[doc.ID],
+		})
+	}
+	return out, cur.Err()
+}
+
+func idSetFromCollection(ctx context.Context, coll *mongo.Collection) (map[string]bool, error) {
+	cur, err := coll.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	out := make(map[string]bool)
+	for cur.Next(ctx) {
+		var doc struct {
+			ID string `bson:"_id"`
+		}
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		out[doc.ID] = true
+	}
+	return out, cur.Err()
+}
+
 func (r *UserRepository) UpdateUserStats(ctx context.Context, usr domain.User, activeDiff, totalDiff int) error {
 	start := time.Now()
 	update := bson.M{

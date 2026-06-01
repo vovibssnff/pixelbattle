@@ -28,8 +28,8 @@ type sentinelPixel struct {
 	Probe     bool   `json:"probe"`
 }
 
-// NewAvailabilityProbe uses sentinelPixelListKey as the Redis list key for the bottom-right
-// canvas cell; it must match the key format used by CanvasRepository (legacy pixel:y:x or hashtag pixel:{y:x}).
+// NewAvailabilityProbe uses sentinelPixelListKey as a Redis list key outside the
+// canvas pixel namespace.
 func NewAvailabilityProbe(rdb redis.Cmdable, sentinelPixelListKey string, interval time.Duration) *AvailabilityProbe {
 	if sentinelPixelListKey == "" {
 		logrus.Fatal("availability_probe: sentinelPixelListKey is required")
@@ -90,6 +90,10 @@ func (p *AvailabilityProbe) measure() {
 	if err := p.rdb.RPush(ctx, p.coord, data).Err(); err != nil {
 		logrus.Debugf("availability_probe: write failed: %v", err)
 		return
+	}
+	// Cap probe list so RPush does not grow without bound (memory leak).
+	if err := p.rdb.LTrim(ctx, p.coord, -10, -1).Err(); err != nil {
+		logrus.Debugf("availability_probe: ltrim failed: %v", err)
 	}
 
 	result, err := p.rdb.LRange(ctx, p.coord, -1, -1).Result()

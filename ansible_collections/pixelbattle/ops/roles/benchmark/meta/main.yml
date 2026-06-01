@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: benchmark
+  author: pixelbattle
+  description: >
+    Orchestrates the full PixelBattle benchmark suite: database-level Go benchmarks,
+    k6 WebSocket load tests, result collection, and Markdown/graph reporting.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+        - noble
+
+dependencies: []

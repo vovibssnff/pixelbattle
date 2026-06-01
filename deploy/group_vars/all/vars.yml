@@ -19,12 +19,18 @@ deploy_compose_retry_delay: 45
 # internal     : Caddy issues an internal CA cert; works with no DNS (default).
 # acme         : Caddy gets a public cert from Let's Encrypt (needs DNS + ports 80/443 open).
 # selfsigned   : This playbook generates a self-signed PEM pair into ./certs/.
-caddy_tls_mode: "internal"
+caddy_tls_mode: "acme"
 
 # Public hostname for Caddy / ACME / self-signed CN.
 # For `internal` mode any hostname works (Caddy issues a cert for it).
 # For `acme` this MUST be a public DNS name pointing to the host.
-caddy_domain: "pixelbattle.local"
+caddy_domain: "{{ vault_caddy_domain | default('pixelbattle.local') }}"
+pixelbattle_domain: "{{ caddy_domain }}"
+
+# Minimum lengths for deploy-stack asserts. Use 16+ in production.
+grafana_admin_password_min_length: 16
+redis_password_min_length: 16
+mongo_password_min_length: 16
 
 # Required if caddy_tls_mode == "acme"; ignored otherwise.
 acme_email: "{{ vault_acme_email | default('') }}"
@@ -46,13 +52,20 @@ deploy_canvas_width: 500
 deploy_pixel_cooldown_sec: 3
 deploy_log_level: "info"
 deploy_session_secure: true
-# Required for k6 anonymous WebSocket load tests (uid+faculty query params).
-deploy_ws_allow_anonymous: true
+# Load tests may override this to true; production requires authenticated WebSockets.
+deploy_ws_allow_anonymous: false
+deploy_rate_limit_ws_conn_per_min: 50
 deploy_api_version: "5.131"
 deploy_admin_ids: ""
 deploy_admin_usernames: ""
 deploy_redis_history_db: 0
 deploy_redis_timer_db: 1
+
+# --- Production firewall defaults ---
+# Override these with your office/VPN IP ranges before running the firewall role.
+admin_allowed_cidrs: "{{ vault_admin_allowed_cidrs | default(['127.0.0.1/32']) }}"
+
+swarm_node_allowed_ips: "{{ groups['swarm_all'] | map('extract', hostvars, 'ansible_host') | list }}"
 
 # --- Runtime data dirs created on the host (compose bind-mounts) ---
 deploy_data_dirs:

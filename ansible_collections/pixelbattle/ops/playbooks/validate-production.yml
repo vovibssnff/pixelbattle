@@ -1,0 +1,102 @@
+---
+- name: Validate Swarm and application services
+  hosts: swarm_manager
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+  vars:
+    stack_name: pixelbattle
+    pixelbattle_domain: "{{ caddy_domain }}"
+  tasks:
+    - name: Verify all Swarm nodes are ready
+      ansible.builtin.command: docker node ls --format "{{ '{{' }}.Hostname{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
+      register: docker_nodes
+      changed_when: false
+      failed_when: "'Down' in docker_nodes.stdout or 'Unknown' in docker_nodes.stdout"
+
+    - name: Verify stack services converged
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' |
+        awk '{ split($2, r, "/"); if (r[1] != r[2]) { print; bad=1 } } END { exit bad }'
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Verify Redis cluster is healthy
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name={{ stack_name }}_redis-c1 -q | head -1)
+        docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' |
+        grep -q 'cluster_state:ok'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      delegate_to: "{{ groups['swarm_redis_workers'][0] }}"
+
+    - name: Verify MongoDB authenticated ping
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name={{ stack_name }}_mongodb -q | head -1)
+        docker exec "$cid" mongosh \
+          -u "{{ vault_mongo_root_username }}" \
+          -p "{{ vault_mongo_root_password }}" \
+          --authenticationDatabase admin \
+          --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q '^1'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Verify Caddy health endpoint over HTTPS
+      ansible.builtin.uri:
+        url: "https://{{ pixelbattle_domain }}/healthz"
+        status_code: 200
+        return_content: true
+      register: caddy_health
+      until: caddy_health.status == 200
+      retries: 6
+      delay: 10
+
+    - name: Verify Grafana is served under /panel/
+      ansible.builtin.uri:
+        url: "https://{{ pixelbattle_domain }}/panel/login"
+        status_code: 200
+
+- name: Validate public exposure from the controller
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    public_allowed_ports:
+      - 80
+      - 443
+    public_denied_ports:
+      - 2377
+      - 3000
+      - 6379
+      - 7946
+      - 8081
+      - 9000
+      - 9090
+      - 9100
+      - 27017
+      - 16379
+    public_targets: "{{ groups['swarm_all'] | map('extract', hostvars, 'ansible_host') | list }}"
+  tasks:
+    - name: Check public allowed ports on manager
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['swarm_manager'][0]].ansible_host }}"
+        port: "{{ item }}"
+        timeout: 5
+        state: started
+      loop: "{{ public_allowed_ports }}"
+
+    - name: Check private ports are not publicly reachable
+      ansible.builtin.wait_for:
+        host: "{{ item.0 }}"
+        port: "{{ item.1 }}"
+        timeout: 3
+        state: stopped
+      loop: "{{ public_targets | product(public_denied_ports) | list }}"
+      when: validate_external_ports | default(false) | bool

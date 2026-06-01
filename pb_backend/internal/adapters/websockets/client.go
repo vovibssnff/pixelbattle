@@ -128,16 +128,19 @@ func ServeWs(server *WsServer, w http.ResponseWriter, r *http.Request) {
 	var faculty string
 	var isAdm bool
 
+	anonUID := ""
 	if server.allowAnonymousWS {
-		q := r.URL.Query()
-		uidStr := q.Get("uid")
+		anonUID = r.URL.Query().Get("uid")
+	}
+
+	if anonUID != "" {
 		var ok bool
-		userid, ok = benchmarkUIDToCanonical(uidStr)
+		userid, ok = benchmarkUIDToCanonical(anonUID)
 		if !ok {
 			http.Error(w, "missing or invalid query: uid", http.StatusBadRequest)
 			return
 		}
-		faculty = q.Get("faculty")
+		faculty = r.URL.Query().Get("faculty")
 		if faculty == "" {
 			faculty = "KTU"
 		}
@@ -281,13 +284,21 @@ func (c *Client) readPump(ctx context.Context) {
 			continue
 		}
 
-		if c.isAdm {
-			c.server.broadcast <- &pixel
-		} else if c.userService.IsUserBanned(ctx, c.userid) {
+		if c.userService.IsUserBanned(ctx, c.userid) {
 			logrus.Info("Request from banned user: ", c.userid)
 			service.IncrementBannedRejected()
 			return
+		} else if c.isAdm {
+			c.server.broadcast <- &pixel
 		} else {
+			cooldown, err := c.timerService.CooldownSeconds(ctx)
+			if err != nil {
+				logrus.Error(err)
+			}
+			if cooldown <= 0 {
+				c.server.broadcast <- &pixel
+				continue
+			}
 			exists, err := c.timerService.CheckTime(ctx, c.userid)
 			if err != nil {
 				logrus.Error(err)

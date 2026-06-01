@@ -197,15 +197,26 @@ func (h *RestHandlers) HandleAdminTimerSet(w http.ResponseWriter, r *http.Reques
 		_ = r.ParseForm()
 		sec, _ = strconv.Atoi(strings.TrimSpace(r.FormValue("seconds")))
 	}
-	if sec <= 0 {
+	if sec < 0 {
 		service.IncrementAdminAction("set_timer", "error")
 		h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid seconds")
 		return
 	}
-	if err := h.timerService.SetCooldownSeconds(sec); err != nil {
+	if err := h.timerService.SetCooldownSeconds(r.Context(), sec); err != nil {
 		service.IncrementAdminAction("set_timer", "error")
 		h.writeAdminJSON(w, http.StatusBadRequest, false, err.Error())
 		return
+	}
+	if h.wsHub != nil {
+		payload, err := json.Marshal(map[string]any{
+			"event":   "COOLDOWN",
+			"seconds": sec,
+		})
+		if err != nil {
+			logrus.Warnf("admin timer: failed to encode cooldown notice: %v", err)
+		} else {
+			h.wsHub.NotifyPixelCooldown(sec, payload)
+		}
 	}
 	service.IncrementAdminAction("set_timer", "ok")
 	h.writeAdminJSON(w, http.StatusOK, true, "timer updated")
@@ -247,7 +258,7 @@ type adminResizeBody struct {
 	Height uint `json:"height"`
 }
 
-// HandleAdminResize POST /api/admin/canvas/resize — expand-only; see ADR-003.
+// HandleAdminResize POST /api/admin/canvas/resize — expand-only (ADR-003).
 func (h *RestHandlers) HandleAdminResize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		service.IncrementAdminAction("resize", "error")
@@ -258,40 +269,53 @@ func (h *RestHandlers) HandleAdminResize(w http.ResponseWriter, r *http.Request)
 		service.IncrementAdminAction("resize", "forbidden")
 		return
 	}
-	var body adminResizeBody
-	data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
+	var targetW, targetH uint
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		var b adminResizeBody
+		data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			service.IncrementAdminAction("resize", "error")
+			h.writeAdminJSON(w, http.StatusBadRequest, false, "read body")
+			return
+		}
+		if err := json.Unmarshal(data, &b); err != nil {
+			service.IncrementAdminAction("resize", "error")
+			h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid json")
+			return
+		}
+		targetW, targetH = b.Width, b.Height
+	} else {
+		_ = r.ParseForm()
+		wv, _ := strconv.ParseUint(strings.TrimSpace(r.FormValue("width")), 10, 64)
+		hv, _ := strconv.ParseUint(strings.TrimSpace(r.FormValue("height")), 10, 64)
+		targetW, targetH = uint(wv), uint(hv)
+	}
+	if targetW < 1 || targetH < 1 {
 		service.IncrementAdminAction("resize", "error")
-		h.writeAdminJSON(w, http.StatusBadRequest, false, "read body")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, "width and height must be positive")
 		return
 	}
-	if err := json.Unmarshal(data, &body); err != nil || body.Width == 0 || body.Height == 0 {
-		service.IncrementAdminAction("resize", "error")
-		h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid width/height")
-		return
-	}
-	if err := h.canvasService.ExpandCanvas(r.Context(), body.Width, body.Height); err != nil {
-		logrus.Error(err)
+	if err := h.canvasService.ExpandCanvas(r.Context(), targetW, targetH); err != nil {
 		service.IncrementAdminAction("resize", "error")
 		h.writeAdminJSON(w, http.StatusBadRequest, false, err.Error())
 		return
 	}
-	service.SetCanvasDimensionsGauge(body.Width, body.Height)
-	payload, err := json.Marshal(map[string]any{
-		"event":  "RESIZE",
-		"width":  body.Width,
-		"height": body.Height,
-	})
-	if err != nil {
-		service.IncrementAdminAction("resize", "error")
-		h.writeAdminJSON(w, http.StatusInternalServerError, false, "marshal")
-		return
-	}
+	service.SetCanvasDimensionsGauge(targetW, targetH)
 	if h.wsHub != nil {
-		h.wsHub.NotifyCanvasResize(body.Width, body.Height, payload)
+		payload, err := json.Marshal(map[string]any{
+			"event":  "RESIZE",
+			"width":  targetW,
+			"height": targetH,
+		})
+		if err != nil {
+			logrus.Warnf("admin resize: failed to encode RESIZE notice: %v", err)
+		} else {
+			h.wsHub.NotifyCanvasResize(targetW, targetH, payload)
+		}
 	}
 	service.IncrementAdminAction("resize", "ok")
-	h.writeAdminJSON(w, http.StatusOK, true, "resized")
+	h.writeAdminJSON(w, http.StatusOK, true, "canvas resized")
 }
 
 // HandleAdminUsers GET /api/admin/users
@@ -305,15 +329,80 @@ func (h *RestHandlers) HandleAdminUsers(w http.ResponseWriter, r *http.Request) 
 		service.IncrementAdminAction("list_users", "forbidden")
 		return
 	}
-	ids, err := h.userService.ListUserIDs(r.Context(), 500)
+	users, err := h.userService.ListAdminUsers(r.Context(), 500)
 	if err != nil {
 		logrus.Error(err)
 		service.IncrementAdminAction("list_users", "error")
 		h.writeAdminJSON(w, http.StatusInternalServerError, false, err.Error())
 		return
 	}
+	ids := make([]string, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
 	service.IncrementAdminAction("list_users", "ok")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "user_ids": ids})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "user_ids": ids, "users": users})
+}
+
+// HandleAdminPixelInfo GET /api/admin/pixels/info?x=<int>&y=<int>
+func (h *RestHandlers) HandleAdminPixelInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusMethodNotAllowed, false, "method not allowed")
+		return
+	}
+	if !h.authorizeAdmin(w, r) {
+		service.IncrementAdminAction("pixel_info", "forbidden")
+		return
+	}
+	x64, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("x")), 10, 32)
+	if err != nil {
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid x")
+		return
+	}
+	y64, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("y")), 10, 32)
+	if err != nil {
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusBadRequest, false, "invalid y")
+		return
+	}
+	info, err := h.canvasService.GetPixelInfo(r.Context(), uint(x64), uint(y64))
+	if err != nil {
+		logrus.Error(err)
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusNotFound, false, "pixel not found")
+		return
+	}
+	service.IncrementAdminAction("pixel_info", "ok")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "pixel": info})
+}
+
+// HandleAdminPixelInfoCache GET /api/admin/pixels/cache
+func (h *RestHandlers) HandleAdminPixelInfoCache(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusMethodNotAllowed, false, "method not allowed")
+		return
+	}
+	if !h.authorizeAdmin(w, r) {
+		service.IncrementAdminAction("pixel_info", "forbidden")
+		return
+	}
+	pixels, err := h.canvasService.GetPixelInfoCache(r.Context())
+	if err != nil {
+		logrus.Error(err)
+		service.IncrementAdminAction("pixel_info", "error")
+		h.writeAdminJSON(w, http.StatusInternalServerError, false, "pixel cache unavailable")
+		return
+	}
+	service.IncrementAdminAction("pixel_info", "ok")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "pixels": pixels})
 }

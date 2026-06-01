@@ -9,4 +9,5 @@ providers:
     updateIntervalSeconds: 10
     allowUiUpdates: true
     options:
-      path: /var/lib/grafana/dashboards
+      # Mounted via Swarm configs at /etc/grafana/dashboards (not under grafana_data).
+      path: /etc/grafana/dashboards

@@ -2,6 +2,7 @@ package websockets
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"pb_backend/internal/core/domain"
 	"pb_backend/internal/core/service"
@@ -16,6 +17,11 @@ import (
 type ResizeNotice struct {
 	Width, Height uint
 	Payload       []byte
+}
+
+type ControlNotice struct {
+	Event   string
+	Payload []byte
 }
 
 // PeerFanout is the cross-gateway hook (gRPC PeerPool) installed by main when running in
@@ -45,6 +51,7 @@ type WsServer struct {
 	register         chan *Client
 	unregister       chan *Client
 	resizeNotify     chan ResizeNotice
+	controlNotify    chan ControlNotice
 	peerPixel        chan fromPeer
 	peerControl      chan fromPeerControl
 	sessionService   domain.SessionService
@@ -77,6 +84,7 @@ func NewWebSocketServer(
 		register:         make(chan *Client),
 		unregister:       make(chan *Client),
 		resizeNotify:     make(chan ResizeNotice, 4),
+		controlNotify:    make(chan ControlNotice, 8),
 		peerPixel:        make(chan fromPeer, 256),
 		peerControl:      make(chan fromPeerControl, 16),
 		sessionService:   sessionService,
@@ -188,6 +196,12 @@ func (server *WsServer) Run() {
 			if pf := server.currentPeerFanout(); pf != nil {
 				go pf.FanOutControl(context.Background(), "RESIZE", append([]byte(nil), rn.Payload...))
 			}
+		case cn := <-server.controlNotify:
+			tp = "control"
+			server.broadcastControlLocalOnly(cn.Payload)
+			if pf := server.currentPeerFanout(); pf != nil {
+				go pf.FanOutControl(context.Background(), cn.Event, append([]byte(nil), cn.Payload...))
+			}
 		}
 		service.ObserveWebSocketMessageDuration(tp, start)
 	}
@@ -233,6 +247,37 @@ func (server *WsServer) broadcastControlLocalOnly(payload []byte) int {
 	return n
 }
 
+func (server *WsServer) broadcastPixelInfoToAdmins(pixel *domain.Pixel) {
+	if pixel == nil {
+		return
+	}
+	payload, err := json.Marshal(map[string]any{
+		"event": "PIXEL_INFO",
+		"pixel": domain.PixelInfo{
+			X:         pixel.X,
+			Y:         pixel.Y,
+			Color:     pixel.Color,
+			UserID:    pixel.Userid,
+			Faculty:   pixel.Faculty,
+			Timestamp: time.Now().Unix(),
+		},
+	})
+	if err != nil {
+		service.IncrementWSError("pixel_info_encode")
+		return
+	}
+	for client := range server.clients {
+		if !client.isAdm {
+			continue
+		}
+		select {
+		case client.control <- append([]byte(nil), payload...):
+		default:
+			service.IncrementWSError("control_buffer_full")
+		}
+	}
+}
+
 // NotifyCanvasResize updates in-memory WS bounds and broadcasts a JSON control message (ADR-003).
 func (s *WsServer) NotifyCanvasResize(width, height uint, payload []byte) {
 	if s == nil {
@@ -243,6 +288,18 @@ func (s *WsServer) NotifyCanvasResize(width, height uint, payload []byte) {
 	case s.resizeNotify <- msg:
 	default:
 		logrus.Warn("ws: resize notify channel full")
+	}
+}
+
+func (s *WsServer) NotifyPixelCooldown(seconds int, payload []byte) {
+	if s == nil {
+		return
+	}
+	msg := ControlNotice{Event: "COOLDOWN", Payload: append([]byte(nil), payload...)}
+	select {
+	case s.controlNotify <- msg:
+	default:
+		logrus.Warnf("ws: cooldown notify channel full (seconds=%d)", seconds)
 	}
 }
 
@@ -265,12 +322,14 @@ func (server *WsServer) setPixel(pixel *domain.Pixel) {
 		visibleStart = time.UnixMilli(pixel.ServerRecvMs)
 	}
 	if err := server.canvasService.WritePixel(context.Background(), pixel); err != nil {
+		logrus.Warnf("setPixel: WritePixel failed for (%d,%d) user=%s: %v", pixel.X, pixel.Y, pixel.Userid, err)
 		service.IncrementWSError("write_pixel")
 		return
 	}
 	service.IncrementPixelsPlaced(pixel.Faculty)
 	service.RecordHeatmapPixel(pixel.X, pixel.Y)
 	service.SetPixelWriteQueueDepth(len(server.broadcast))
+	server.broadcastPixelInfoToAdmins(pixel)
 	pixel.Userid = ""
 	pixel.Faculty = ""
 	replayMs := time.Now().UnixMilli()

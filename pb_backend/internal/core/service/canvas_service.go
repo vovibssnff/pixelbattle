@@ -143,6 +143,75 @@ func (s *CanvasService) ExpandCanvas(ctx context.Context, width, height uint) er
 	return s.canvasRepo.SetCanvasDimensions(ctx, width, height)
 }
 
+// EnsureCanvasInitialized repairs partial canvases by filling missing Redis cells.
+// This prevents a single surviving pixel key from making startup skip initialization.
+func (s *CanvasService) EnsureCanvasInitialized(ctx context.Context, height uint, width uint) error {
+	canvasData, err := s.canvasRepo.GetCanvas(ctx)
+	if err != nil {
+		return err
+	}
+	if len(canvasData) == 0 {
+		logrus.Info("Canvas empty; initializing with white pixels")
+		return s.InitializeCanvas(ctx, height, width)
+	}
+
+	w, h, err := s.CanvasDimensions(ctx)
+	if err != nil {
+		return err
+	}
+	if w == 0 || h == 0 {
+		w, h = width, height
+	}
+	// Never shrink below configured env size (e.g. after interrupted init left a partial grid).
+	if width > w {
+		w = width
+	}
+	if height > h {
+		h = height
+	}
+
+	present := make(map[string]struct{}, len(canvasData))
+	for key := range canvasData {
+		x, y, err := utils.ParseRedisPixelKey(key)
+		if err != nil {
+			return err
+		}
+		if x < w && y < h {
+			present[fmt.Sprintf("%d:%d", x, y)] = struct{}{}
+		}
+	}
+	expected := w * h
+	if uint(len(present)) == expected {
+		return s.canvasRepo.SetCanvasDimensions(ctx, w, h)
+	}
+
+	redisPixel := &domain.RedisPixel{
+		UserId:    "",
+		Faculty:   "",
+		Color:     []uint{255, 255, 255},
+		Timestamp: time.Now().Unix(),
+	}
+	white, err := utils.SerializeRedisPixel(redisPixel)
+	if err != nil {
+		return err
+	}
+	missing := uint(0)
+	for y := uint(0); y < h; y++ {
+		for x := uint(0); x < w; x++ {
+			key := fmt.Sprintf("%d:%d", x, y)
+			if _, ok := present[key]; ok {
+				continue
+			}
+			if err := s.canvasRepo.WritePixel(ctx, x, y, white); err != nil {
+				return fmt.Errorf("repair missing canvas cell (%d,%d): %w", x, y, err)
+			}
+			missing++
+		}
+	}
+	logrus.Infof("Repaired %d missing canvas pixels for %dx%d canvas", missing, w, h)
+	return s.canvasRepo.SetCanvasDimensions(ctx, w, h)
+}
+
 // IsCanvasInitialized checks if the canvas is already initialized.
 func (s *CanvasService) IsCanvasInitialized(ctx context.Context) bool {
 	return s.canvasRepo.CheckInitialized(ctx)
@@ -174,6 +243,51 @@ func (s *CanvasService) GetCanvas(ctx context.Context, img *domain.Image) error 
 		img.Data = append(img.Data, pixel)
 	}
 	return nil
+}
+
+func (s *CanvasService) GetPixelInfo(ctx context.Context, x, y uint) (domain.PixelInfo, error) {
+	rp, err := s.canvasRepo.GetLatestPixel(ctx, x, y)
+	if err != nil {
+		return domain.PixelInfo{}, err
+	}
+	return domain.PixelInfo{
+		X:         x,
+		Y:         y,
+		Color:     rp.Color,
+		UserID:    rp.UserId,
+		Faculty:   rp.Faculty,
+		Timestamp: rp.Timestamp,
+	}, nil
+}
+
+func (s *CanvasService) GetPixelInfoCache(ctx context.Context) ([]domain.PixelInfo, error) {
+	canvasData, err := s.canvasRepo.GetCanvas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pixels := make([]domain.PixelInfo, 0, len(canvasData))
+	for key, values := range canvasData {
+		if len(values) == 0 {
+			continue
+		}
+		x, y, err := utils.ParseRedisPixelKey(key)
+		if err != nil {
+			return nil, err
+		}
+		var rp domain.RedisPixel
+		if err := utils.DeserializeRedisPixel([]byte(values[0]), &rp); err != nil {
+			return nil, err
+		}
+		pixels = append(pixels, domain.PixelInfo{
+			X:         x,
+			Y:         y,
+			Color:     rp.Color,
+			UserID:    rp.UserId,
+			Faculty:   rp.Faculty,
+			Timestamp: rp.Timestamp,
+		})
+	}
+	return pixels, nil
 }
 
 // GetHeatMap retrieves the heatmap data for the canvas.

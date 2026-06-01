@@ -1,0 +1,52 @@
+---
+# Entry-point: ansible-playbook playbooks/deploy.yml
+#
+# Common invocations (run from deploy/):
+#   ansible-playbook playbooks/deploy.yml --ask-vault-pass
+#   ansible-playbook playbooks/deploy.yml --tags configure,deploy
+#   ansible-playbook playbooks/deploy.yml -e target_hosts=local           # smoke-test on this machine
+
+- name: Deploy pixelbattle stack
+  hosts: "{{ target_hosts | default('pixelbattle_servers') }}"
+  become: true
+
+  pre_tasks:
+    - name: Verify Docker Compose v2 is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+
+    - name: Install host packages required by the role
+      ansible.builtin.apt:
+        name:
+          - git
+          - openssl
+          - curl
+          - python3-cryptography
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: pixelbattle.ops.deploy
+
+  post_tasks:
+    - name: Publish Grafana deployment annotation (optional)
+      ansible.builtin.uri:
+        url: "{{ grafana_annotation_url }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_annotation_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          time: "{{ (ansible_date_time.epoch | int) * 1000 }}"
+          tags:
+            - "deploy"
+            - "version:{{ deploy_annotation_version | default('unknown') }}"
+          text: "PixelBattle deploy completed on {{ inventory_hostname }}"
+        status_code: [200]
+      when:
+        - (grafana_annotation_url | default('')) | length > 0
+        - (grafana_annotation_token | default('')) | length > 0
+      changed_when: false

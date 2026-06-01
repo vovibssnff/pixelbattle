@@ -1,0 +1,37 @@
+---
+- name: Display deployment parameters
+  ansible.builtin.debug:
+    msg:
+      - "Deploying pixelbattle"
+      - "Repository: {{ deploy_git_repo }}"
+      - "Branch:     {{ deploy_git_branch }}"
+      - "Target dir: {{ deploy_project_dir }}"
+      - "Caddy TLS:  {{ caddy_tls_mode }} (domain: {{ caddy_domain }})"
+  tags: [always]
+
+- name: Clone source and create runtime directories
+  ansible.builtin.include_tasks: clone.yml
+  tags: [clone]
+
+- name: Generate self-signed certificates (only when caddy_tls_mode == "selfsigned")
+  ansible.builtin.include_tasks: certificates.yml
+  when: caddy_tls_mode == "selfsigned"
+  tags: [certificates]
+
+- name: Render application configuration
+  ansible.builtin.include_tasks: configure.yml
+  tags: [configure]
+
+- name: Build and (re)deploy containers
+  ansible.builtin.include_tasks: build_and_deploy.yml
+  tags: [deploy]
+
+- name: Print summary
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "Pixelbattle deployed."
+      - "App:     https://{{ caddy_domain }}"
+      - "Grafana: https://{{ caddy_domain }}/panel/"
+      - "=========================================="
+  tags: [always]

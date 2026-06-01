@@ -145,11 +145,36 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install ansible-lint
-        run: pip install "ansible-lint>=24,<26"
-      - name: Install Ansible collections (syntax-check for modules)
-        run: ansible-galaxy collection install -r deploy/requirements.yml
-      - name: Lint deploy playbooks
-        run: ansible-lint deploy/ -c .ansible-lint
+        run: pip install "ansible-lint>=24,<26" "ansible-core>=2.16,<2.19"
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+      - name: Build PixelBattle ops collection
+        run: ansible-galaxy collection build ansible_collections/pixelbattle/ops --output-path /tmp/ansible-collections
+      - name: Lint ops collection
+        run: ansible-lint ansible_collections/pixelbattle/ops -c .ansible-lint
+      - name: Syntax check production playbooks
+        run: |
+          for playbook in \
+            deploy-stack.yml \
+            build-images.yml \
+            swarm-init.yml \
+            swarm-redis-cluster.yml \
+            provision-grafana.yml \
+            harden-firewall.yml \
+            install-backups.yml \
+            validate-production.yml; do
+            if [ -f "ansible_collections/pixelbattle/ops/playbooks/${playbook}" ]; then
+              ansible-playbook \
+                -i ansible_collections/pixelbattle/ops/tests/inventory/ci.yml \
+                "ansible_collections/pixelbattle/ops/playbooks/${playbook}" \
+                --syntax-check
+            fi
+          done
+      - name: Ansible collection sanity
+        run: |
+          cd ansible_collections/pixelbattle/ops
+          ansible-test sanity --docker default --skip-test import --skip-test ansible-doc
+        continue-on-error: true
 
   benchmark-tooling-lint:
     runs-on: ubuntu-latest
@@ -161,11 +186,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install ansible-lint
-        run: pip install "ansible-lint>=24,<26"
-      - name: Install Ansible collections (syntax-check for modules)
-        run: ansible-galaxy collection install -r deploy/requirements.yml
+        run: pip install "ansible-lint>=24,<26" "ansible-core>=2.16,<2.19"
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
       - name: Lint benchmark playbooks
-        run: ansible-lint benchmark/ -c .ansible-lint
+        run: ansible-lint ansible_collections/pixelbattle/ops/playbooks/run_monolith_suite.yml ansible_collections/pixelbattle/ops/playbooks/run_distributed_suite.yml ansible_collections/pixelbattle/ops/roles/benchmark -c .ansible-lint
 
   backend-test:
     runs-on: ubuntu-latest

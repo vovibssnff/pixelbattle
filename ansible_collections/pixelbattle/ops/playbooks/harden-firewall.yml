@@ -1,0 +1,9 @@
+---
+- name: Apply production firewall policy before Swarm exposure
+  hosts: swarm_all
+  become: true
+  gather_facts: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+  roles:
+    - role: pixelbattle.ops.firewall

@@ -1,10 +1,12 @@
 # TLS overrides for the main site (imported inside the {$CADDY_DOMAIN} block).
 #
-# Default for production: Caddy obtains public certificates via Let's Encrypt
-# (needs CADDY_DOMAIN with DNS pointing here, ACME_EMAIL, ports 80/443 reachable).
+# Production default: leave this file without a `tls` directive so Caddy obtains
+# public certificates via ACME/Let's Encrypt. This requires CADDY_DOMAIN DNS to
+# point at the Caddy node and public ports 80/443 to be reachable.
 #
-# Local / lab without public DNS — uncomment:
-#	tls internal
+# For local/lab mode without public DNS, use:
+#   tls internal
 #
-# Caddy-managed internal CA — no cert files needed (bench/lab mode):
-	tls internal
+# For self-signed PEMs, generate files under /opt/pixelbattle/certs on the
+# manager, bind-mount them into the caddy service, and use:
+#   tls /etc/caddy/certs/pixelbattle.crt /etc/caddy/certs/pixelbattle.key

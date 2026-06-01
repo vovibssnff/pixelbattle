@@ -8,9 +8,9 @@
 #   manager  192.168.122.10  (vm-manager)
 #   gw-1     192.168.122.11  (vm-backend-1, role=backend, instance_id=gw-1)
 #   gw-2     192.168.122.12  (vm-backend-2, role=backend, instance_id=gw-2)
-#   redis-c1 192.168.122.13  (vm-redis-1,    role=redis,    redis_shard_id=c1)
-#   redis-c2 192.168.122.14  (vm-redis-2,    role=redis,    redis_shard_id=c2)
-#   redis-c3 192.168.122.15  (vm-redis-3,    role=redis,    redis_shard_id=c3)
+#   redis-c1 {{ hostvars[groups['swarm_redis_workers'][0]].ansible_host }}  (vm-redis-1,    role=redis,    redis_shard_id=c1)
+#   redis-c2 {{ hostvars[groups['swarm_redis_workers'][1]].ansible_host }}  (vm-redis-2,    role=redis,    redis_shard_id=c2)
+#   redis-c3 {{ hostvars[groups['swarm_redis_workers'][2]].ansible_host }}  (vm-redis-3,    role=redis,    redis_shard_id=c3)
 
 version: "3.9"
 
@@ -30,6 +30,44 @@ configs:
     file: ../caddy/Caddyfile.swarm
   caddy_tls:
     file: ../caddy/tls.inc
+  grafana_dashboard_provider:
+    file: ../monitoring/grafana/provisioning/dashboards/dashboard.yml
+  grafana_ds_prometheus:
+    file: ../monitoring/grafana/provisioning/datasources/prometheus.yml
+  grafana_ds_infinity:
+    file: ../monitoring/grafana/provisioning/datasources/infinity.yml
+  grafana_dash_application_performance:
+    file: ../monitoring/grafana/dashboards/application-performance.json
+  grafana_dash_benchmark_realtime:
+    file: ../monitoring/grafana/dashboards/benchmark-realtime.json
+  grafana_dash_comparison:
+    file: ../monitoring/grafana/dashboards/comparison-dashboard.json
+  grafana_dash_database_performance:
+    file: ../monitoring/grafana/dashboards/database-performance.json
+  grafana_dash_infrastructure:
+    file: ../monitoring/grafana/dashboards/infrastructure.json
+  grafana_dash_runtime_admin:
+    file: ../monitoring/grafana/dashboards/runtime-admin.json
+
+secrets:
+  admin_api_token:
+    external: true
+    name: pixelbattle_admin_api_token
+  session_key:
+    external: true
+    name: pixelbattle_session_key
+  redis_password:
+    external: true
+    name: pixelbattle_redis_password
+  mongo_uri:
+    external: true
+    name: pixelbattle_mongo_uri
+  mongo_root_password:
+    external: true
+    name: pixelbattle_mongo_root_password
+  grafana_admin_password:
+    external: true
+    name: pixelbattle_grafana_admin_password
 
 services:
   # ---- Redis Cluster (3 masters, no replicas) ----
@@ -46,27 +84,27 @@ services:
         protocol: tcp
         mode: host
     command:
-      - redis-server
-      - "--port"
-      - "6379"
-      - "--cluster-enabled"
-      - "yes"
-      - "--cluster-config-file"
-      - "nodes.conf"
-      - "--cluster-node-timeout"
-      - "5000"
-      - "--appendonly"
-      - "yes"
-      - "--bind"
-      - "0.0.0.0"
-      - "--protected-mode"
-      - "no"
-      - "--cluster-announce-ip"
-      - "192.168.122.13"
-      - "--cluster-announce-port"
-      - "6379"
-      - "--cluster-announce-bus-port"
-      - "16379"
+      - sh
+      - -c
+      - >-
+        redis-server
+        --port 6379
+        --cluster-enabled yes
+        --cluster-config-file nodes.conf
+        --cluster-node-timeout 5000
+        --appendonly yes
+        --save "300 1"
+        --bind 0.0.0.0
+        --protected-mode no
+        --requirepass "$$(cat /run/secrets/redis_password)"
+        --masterauth "$$(cat /run/secrets/redis_password)"
+        --cluster-announce-ip {{ hostvars[groups['swarm_redis_workers'][0]].ansible_host }}
+        --cluster-announce-port 6379
+        --cluster-announce-bus-port 16379
+    secrets:
+      - redis_password
+    volumes:
+      - redis_c1_data:/data
     deploy:
       mode: replicated
       replicas: 1
@@ -78,7 +116,9 @@ services:
         limits:
           memory: 1536M
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$(cat /run/secrets/redis_password)" ping | grep -q PONG
       interval: 10s
       timeout: 3s
       retries: 5
@@ -96,27 +136,27 @@ services:
         protocol: tcp
         mode: host
     command:
-      - redis-server
-      - "--port"
-      - "6379"
-      - "--cluster-enabled"
-      - "yes"
-      - "--cluster-config-file"
-      - "nodes.conf"
-      - "--cluster-node-timeout"
-      - "5000"
-      - "--appendonly"
-      - "yes"
-      - "--bind"
-      - "0.0.0.0"
-      - "--protected-mode"
-      - "no"
-      - "--cluster-announce-ip"
-      - "192.168.122.14"
-      - "--cluster-announce-port"
-      - "6379"
-      - "--cluster-announce-bus-port"
-      - "16379"
+      - sh
+      - -c
+      - >-
+        redis-server
+        --port 6379
+        --cluster-enabled yes
+        --cluster-config-file nodes.conf
+        --cluster-node-timeout 5000
+        --appendonly yes
+        --save "300 1"
+        --bind 0.0.0.0
+        --protected-mode no
+        --requirepass "$$(cat /run/secrets/redis_password)"
+        --masterauth "$$(cat /run/secrets/redis_password)"
+        --cluster-announce-ip {{ hostvars[groups['swarm_redis_workers'][1]].ansible_host }}
+        --cluster-announce-port 6379
+        --cluster-announce-bus-port 16379
+    secrets:
+      - redis_password
+    volumes:
+      - redis_c2_data:/data
     deploy:
       mode: replicated
       replicas: 1
@@ -128,7 +168,9 @@ services:
         limits:
           memory: 1536M
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$(cat /run/secrets/redis_password)" ping | grep -q PONG
       interval: 10s
       timeout: 3s
       retries: 5
@@ -146,27 +188,27 @@ services:
         protocol: tcp
         mode: host
     command:
-      - redis-server
-      - "--port"
-      - "6379"
-      - "--cluster-enabled"
-      - "yes"
-      - "--cluster-config-file"
-      - "nodes.conf"
-      - "--cluster-node-timeout"
-      - "5000"
-      - "--appendonly"
-      - "yes"
-      - "--bind"
-      - "0.0.0.0"
-      - "--protected-mode"
-      - "no"
-      - "--cluster-announce-ip"
-      - "192.168.122.15"
-      - "--cluster-announce-port"
-      - "6379"
-      - "--cluster-announce-bus-port"
-      - "16379"
+      - sh
+      - -c
+      - >-
+        redis-server
+        --port 6379
+        --cluster-enabled yes
+        --cluster-config-file nodes.conf
+        --cluster-node-timeout 5000
+        --appendonly yes
+        --save "300 1"
+        --bind 0.0.0.0
+        --protected-mode no
+        --requirepass "$$(cat /run/secrets/redis_password)"
+        --masterauth "$$(cat /run/secrets/redis_password)"
+        --cluster-announce-ip {{ hostvars[groups['swarm_redis_workers'][2]].ansible_host }}
+        --cluster-announce-port 6379
+        --cluster-announce-bus-port 16379
+    secrets:
+      - redis_password
+    volumes:
+      - redis_c3_data:/data
     deploy:
       mode: replicated
       replicas: 1
@@ -178,7 +220,9 @@ services:
         limits:
           memory: 1536M
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$(cat /run/secrets/redis_password)" ping | grep -q PONG
       interval: 10s
       timeout: 3s
       retries: 5
@@ -188,8 +232,15 @@ services:
     image: oliver006/redis_exporter:v1.62.0-alpine
     networks: [overlay]
     environment:
-      - REDIS_ADDR=redis://192.168.122.13:6379
+      - REDIS_ADDR=redis://{{ hostvars[groups['swarm_redis_workers'][0]].ansible_host }}:6379
       - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    entrypoint:
+      - sh
+      - -c
+    command:
+      - export REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"; exec /redis_exporter
+    secrets:
+      - redis_password
     deploy:
       mode: replicated
       replicas: 1
@@ -208,8 +259,15 @@ services:
     image: oliver006/redis_exporter:v1.62.0-alpine
     networks: [overlay]
     environment:
-      - REDIS_ADDR=redis://192.168.122.14:6379
+      - REDIS_ADDR=redis://{{ hostvars[groups['swarm_redis_workers'][1]].ansible_host }}:6379
       - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    entrypoint:
+      - sh
+      - -c
+    command:
+      - export REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"; exec /redis_exporter
+    secrets:
+      - redis_password
     deploy:
       mode: replicated
       replicas: 1
@@ -228,8 +286,15 @@ services:
     image: oliver006/redis_exporter:v1.62.0-alpine
     networks: [overlay]
     environment:
-      - REDIS_ADDR=redis://192.168.122.15:6379
+      - REDIS_ADDR=redis://{{ hostvars[groups['swarm_redis_workers'][2]].ansible_host }}:6379
       - REDIS_EXPORTER_INCL_SYSTEM_METRICS=true
+    entrypoint:
+      - sh
+      - -c
+    command:
+      - export REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"; exec /redis_exporter
+    secrets:
+      - redis_password
     deploy:
       mode: replicated
       replicas: 1
@@ -246,32 +311,40 @@ services:
 
   # ---- Backend gateways (2 replicas, one per backend VM) ----
   gateway-1:
-    image: pixelbattle/backend:phase2
+    image: {{ pixelbattle_backend_image | default("pixelbattle/backend:phase2") }}
     networks: [overlay]
     ports:
       - target: 8080
-        published: 8081
+        published: 8080
         mode: host
       - target: 9000
         published: 9000
         mode: host
     environment:
       - LOG_LEVEL=info
-      - REDIS_CLUSTER_ADDRS=192.168.122.13:6379,192.168.122.14:6379,192.168.122.15:6379
-      - REDIS_PSW=
+      - REDIS_CLUSTER_ADDRS={{ hostvars[groups['swarm_redis_workers'][0]].ansible_host }}:6379,{{ hostvars[groups['swarm_redis_workers'][1]].ansible_host }}:6379,{{ hostvars[groups['swarm_redis_workers'][2]].ansible_host }}:6379
+      - REDIS_PSW_FILE=/run/secrets/redis_password
       - REDIS_CANVAS_HASHTAG_KEYS=true
-      - MONGO_URI=mongodb://mongodb:27017/pixelbattle
+      - MONGO_URI_FILE=/run/secrets/mongo_uri
       - GATEWAY_INSTANCE_ID=gw-1
       - GATEWAY_GRPC_PORT=9000
-      - GATEWAY_PEERS=gw-2:9000
+      - GATEWAY_PEERS={{ hostvars['vm-backend-2'].ansible_host }}:9000
       - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
       - GATEWAY_OPSTREAM_CONSUMER=gw-1
-      - WS_ALLOW_ANONYMOUS=true
+      - WS_ALLOW_ANONYMOUS={{ deploy_ws_allow_anonymous | default(false) | bool | lower }}
       - RATE_LIMIT_PIXEL_PER_SEC=5
       # 0 = disabled; required for k6 from a single loader IP (see Phase 2 benchmark plan).
-      - RATE_LIMIT_WS_CONN_PER_MIN=0
+      - RATE_LIMIT_WS_CONN_PER_MIN={{ deploy_rate_limit_ws_conn_per_min | default(50) }}
       - CANVAS_HEIGHT=250
       - CANVAS_WIDTH=500
+      - ADMIN_USERNAMES={{ deploy_admin_usernames | default("") }}
+      - ADMIN_API_TOKEN_FILE=/run/secrets/admin_api_token
+      - SESSION_KEY_FILE=/run/secrets/session_key
+    secrets:
+      - admin_api_token
+      - session_key
+      - redis_password
+      - mongo_uri
     deploy:
       mode: replicated
       replicas: 1
@@ -297,32 +370,40 @@ services:
       start_period: 60s
 
   gateway-2:
-    image: pixelbattle/backend:phase2
+    image: {{ pixelbattle_backend_image | default("pixelbattle/backend:phase2") }}
     networks: [overlay]
     ports:
       - target: 8080
-        published: 8081
+        published: 8080
         mode: host
       - target: 9000
         published: 9000
         mode: host
     environment:
       - LOG_LEVEL=info
-      - REDIS_CLUSTER_ADDRS=192.168.122.13:6379,192.168.122.14:6379,192.168.122.15:6379
-      - REDIS_PSW=
+      - REDIS_CLUSTER_ADDRS={{ hostvars[groups['swarm_redis_workers'][0]].ansible_host }}:6379,{{ hostvars[groups['swarm_redis_workers'][1]].ansible_host }}:6379,{{ hostvars[groups['swarm_redis_workers'][2]].ansible_host }}:6379
+      - REDIS_PSW_FILE=/run/secrets/redis_password
       - REDIS_CANVAS_HASHTAG_KEYS=true
-      - MONGO_URI=mongodb://mongodb:27017/pixelbattle
+      - MONGO_URI_FILE=/run/secrets/mongo_uri
       - GATEWAY_INSTANCE_ID=gw-2
       - GATEWAY_GRPC_PORT=9000
-      - GATEWAY_PEERS=gw-1:9000
+      - GATEWAY_PEERS={{ hostvars['vm-backend-1'].ansible_host }}:9000
       - GATEWAY_OPSTREAM_GROUP=pixelbattle-gateway
       - GATEWAY_OPSTREAM_CONSUMER=gw-2
-      - WS_ALLOW_ANONYMOUS=true
+      - WS_ALLOW_ANONYMOUS={{ deploy_ws_allow_anonymous | default(false) | bool | lower }}
       - RATE_LIMIT_PIXEL_PER_SEC=5
       # 0 = disabled; required for k6 from a single loader IP (see Phase 2 benchmark plan).
-      - RATE_LIMIT_WS_CONN_PER_MIN=0
+      - RATE_LIMIT_WS_CONN_PER_MIN={{ deploy_rate_limit_ws_conn_per_min | default(50) }}
       - CANVAS_HEIGHT=250
       - CANVAS_WIDTH=500
+      - ADMIN_USERNAMES={{ deploy_admin_usernames | default("") }}
+      - ADMIN_API_TOKEN_FILE=/run/secrets/admin_api_token
+      - SESSION_KEY_FILE=/run/secrets/session_key
+    secrets:
+      - admin_api_token
+      - session_key
+      - redis_password
+      - mongo_uri
     deploy:
       mode: replicated
       replicas: 1
@@ -351,7 +432,19 @@ services:
   mongodb:
     image: mongo:8.2.4
     networks: [overlay]
-    command: --bind_ip_all
+    ports:
+      - target: 27017
+        published: 27017
+        mode: host
+    command: --auth --bind_ip_all
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "{{ vault_mongo_root_username }}"
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongo_root_password
+    secrets:
+      - mongo_root_password
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
     deploy:
       mode: replicated
       replicas: 1
@@ -364,7 +457,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - mongosh --quiet --eval 'db.runCommand({ping:1})'
+        - mongosh -u "$${MONGO_INITDB_ROOT_USERNAME}" -p "$$(cat /run/secrets/mongo_root_password)" --authenticationDatabase admin --quiet --eval 'db.runCommand({ping:1})'
       interval: 15s
       timeout: 5s
       retries: 5
@@ -373,14 +466,12 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     networks: [overlay]
-    ports:
-      - target: 9090
-        published: 9090
-        mode: host
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=180d
       - --web.enable-lifecycle
+    volumes:
+      - prometheus_data:/prometheus
     configs:
       - source: prometheus_yml
         target: /etc/prometheus/prometheus.yml
@@ -417,13 +508,38 @@ services:
   grafana:
     image: grafana/grafana-oss:11.4.0
     networks: [overlay]
-    ports:
-      - target: 3000
-        published: 3000
-        mode: host
     environment:
       - GF_INSTALL_PLUGINS=volkovlabs-form-panel,yesoreyeram-infinity-datasource
+      - GF_SECURITY_ADMIN_USER={{ vault_grafana_admin_user | default("admin") }}
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
       - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://{{ pixelbattle_domain }}/panel/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    configs:
+      - source: grafana_dashboard_provider
+        target: /etc/grafana/provisioning/dashboards/dashboard.yml
+      - source: grafana_ds_prometheus
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      - source: grafana_ds_infinity
+        target: /etc/grafana/provisioning/datasources/infinity.yml
+      - source: grafana_dash_application_performance
+        target: /etc/grafana/dashboards/application-performance.json
+      - source: grafana_dash_benchmark_realtime
+        target: /etc/grafana/dashboards/benchmark-realtime.json
+      - source: grafana_dash_comparison
+        target: /etc/grafana/dashboards/comparison-dashboard.json
+      - source: grafana_dash_database_performance
+        target: /etc/grafana/dashboards/database-performance.json
+      - source: grafana_dash_infrastructure
+        target: /etc/grafana/dashboards/infrastructure.json
+      - source: grafana_dash_runtime_admin
+        target: /etc/grafana/dashboards/runtime-admin.json
+    secrets:
+      - grafana_admin_password
     deploy:
       mode: replicated
       replicas: 1
@@ -437,7 +553,7 @@ services:
   caddy:
     # Baked static UI under /srv (see pb_frontend/Dockerfile final stage). Plain caddy:alpine has an empty /srv,
     # so SPA routes (/ /main /login …) would 404 while /api/* and /healthz still work.
-    image: pixelbattle/frontend:phase2
+    image: {{ pixelbattle_frontend_image | default("pixelbattle/frontend:phase2") }}
     networks: [overlay]
     ports:
       - target: 80
@@ -446,10 +562,13 @@ services:
       - target: 443
         published: 443
         mode: host
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
     environment:
-      CADDY_DOMAIN: pixelbattle.local
-      ACME_EMAIL: ops@example.com
-      GATEWAY_UPSTREAMS: "gateway-1:8080 gateway-2:8080"
+      CADDY_DOMAIN: {{ pixelbattle_domain }}
+      ACME_EMAIL: {{ vault_acme_email }}
+      GATEWAY_UPSTREAMS: "{{ hostvars['vm-backend-1'].ansible_host }}:8080 {{ hostvars['vm-backend-2'].ansible_host }}:8080"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
@@ -469,11 +588,6 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
     networks: [overlay]
-    ports:
-      - target: 9100
-        published: 9100
-        protocol: tcp
-        mode: host
     command:
       - --path.rootfs=/host
       - --collector.systemd
@@ -488,3 +602,26 @@ services:
       resources:
         limits:
           memory: 64M
+
+# Named volumes for Redis cluster shards — survive docker service update --force.
+# Each service is pinned to one node via placement constraints, so each named
+# volume is always created/reattached on the same node.
+volumes:
+  redis_c1_data:
+    driver: local
+  redis_c2_data:
+    driver: local
+  redis_c3_data:
+    driver: local
+  mongo_data:
+    driver: local
+  mongo_config:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

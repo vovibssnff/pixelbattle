@@ -1,0 +1,88 @@
+---
+all:
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    vault_repo_url: "https://example.invalid/pixelbattle.git"
+    vault_deploy_user: "ubuntu"
+    vault_deploy_password: "ci-password"
+    vault_ssh_key_path: "~/.ssh/id_ed25519"
+    vault_become_password: "ci-password"
+    vault_mongo_root_username: "root"
+    vault_mongo_root_password: "ci-mongo-root-password"
+    vault_mongo_app_username: "pixelbattle"
+    vault_mongo_app_password: "ci-mongo-app-password"
+    vault_redis_password: "ci-redis-password"
+    vault_grafana_admin_user: "admin"
+    vault_grafana_admin_password: "ci-grafana-password"
+    vault_session_key: "ci-session-key-ci-session-key-123456"
+    vault_admin_api_token: "ci-admin-token-ci-admin-token-123456"
+    vault_service_token: "ci-service-token"
+    vault_acme_email: "ops@example.invalid"
+    pixelbattle_domain: "example.invalid"
+    admin_allowed_cidrs:
+      - "127.0.0.1/32"
+    swarm_advertise_addr: "127.0.0.1"
+  children:
+    swarm_manager:
+      hosts:
+        vm-manager:
+          ansible_host: "127.0.0.1"
+          swarm_role: manager
+    swarm_backend_workers:
+      hosts:
+        vm-backend-1:
+          ansible_host: "127.0.0.1"
+          swarm_role: backend
+          gateway_instance_id: gw-1
+        vm-backend-2:
+          ansible_host: "127.0.0.1"
+          swarm_role: backend
+          gateway_instance_id: gw-2
+    swarm_redis_workers:
+      hosts:
+        vm-redis-1:
+          ansible_host: "127.0.0.1"
+          swarm_role: redis
+          redis_shard_id: c1
+        vm-redis-2:
+          ansible_host: "127.0.0.1"
+          swarm_role: redis
+          redis_shard_id: c2
+        vm-redis-3:
+          ansible_host: "127.0.0.1"
+          swarm_role: redis
+          redis_shard_id: c3
+    swarm_workers:
+      children:
+        swarm_backend_workers:
+        swarm_redis_workers:
+    swarm_all:
+      children:
+        swarm_manager:
+        swarm_workers:
+    loaders:
+      hosts:
+        localhost:
+          ansible_connection: local
+          benchmark_remote_host: "127.0.0.1"
+    targets:
+      hosts:
+        benchmark_vm:
+          ansible_connection: local
+          ansible_host: "127.0.0.1"
+          benchmark_co_located_stack: true
+          benchmark_project_root: "/tmp/pixelbattle"
+          benchmark_results_root: "/tmp/pixelbattle-results"
+    pixelbattle_servers:
+      hosts:
+        pixelbattle_vm:
+          ansible_connection: local
+          ansible_host: "127.0.0.1"
+          ansible_user: "ubuntu"
+    local:
+      children:
+        loaders:
+    vms:
+      children:
+        targets:

@@ -180,6 +180,19 @@ func (s *UserService) ListUserIDs(ctx context.Context, limit int) ([]string, err
 	return s.repo.ListUserIDs(ctx, limit)
 }
 
+func (s *UserService) ListAdminUsers(ctx context.Context, limit int) ([]domain.AdminUserInfo, error) {
+	users, err := s.repo.ListAdminUsers(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range users {
+		if s.IsAdmin(users[i].ID) {
+			users[i].Admin = true
+		}
+	}
+	return users, nil
+}
+
 // BanUser bans a user by canonical id (e.g. vk_123 or local username).
 func (s *UserService) BanUser(ctx context.Context, userid string) error {
 	userid = strings.TrimSpace(userid)

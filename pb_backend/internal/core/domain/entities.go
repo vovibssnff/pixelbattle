@@ -122,6 +122,26 @@ type User struct {
 	Stats        UserStats `json:"-" bson:"stats"`
 }
 
+type AdminUserInfo struct {
+	ID                string `json:"id" bson:"_id"`
+	FirstName         string `json:"name" bson:"first_name"`
+	LastName          string `json:"surname" bson:"last_name"`
+	Faculty           string `json:"faculty" bson:"faculty"`
+	TotalPixelsPlaced int    `json:"total_pixels_placed" bson:"total_pixels_placed"`
+	ActivePixels      int    `json:"active_pixels" bson:"active_pixels"`
+	Banned            bool   `json:"banned"`
+	Admin             bool   `json:"admin"`
+}
+
+type PixelInfo struct {
+	X         uint   `json:"x"`
+	Y         uint   `json:"y"`
+	Color     []uint `json:"color"`
+	UserID    string `json:"userid"`
+	Faculty   string `json:"faculty"`
+	Timestamp int64  `json:"timestamp"`
+}
+
 type Image struct {
 	Height uint
 	Width  uint

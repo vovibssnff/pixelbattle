@@ -15,7 +15,7 @@ func StartRestServer(sessionService domain.SessionService, vkAuthProvider vk.VKA
 	timerService domain.TimerService,
 	adminAPIToken string,
 	snapshotter *service.CanvasSnapshotter,
-	wsHub WSResizeNotifier,
+	wsHub WSRuntimeNotifier,
 	height, width int, router *mux.Router) {
 
 	logrus.Info("Initializing REST endpoints")
@@ -37,11 +37,15 @@ func StartRestServer(sessionService domain.SessionService, vkAuthProvider vk.VKA
 		handlers.HandleCanvasPNG(w, r, h, wd)
 	}).Methods("GET")
 
+	router.HandleFunc("/api/pixels/info", handlers.HandlePixelInfo).Methods("GET")
+
 	router.HandleFunc("/api/admin/users/ban", handlers.HandleAdminBan).Methods("POST")
 	router.HandleFunc("/api/admin/users/unban", handlers.HandleAdminUnban).Methods("POST")
 	router.HandleFunc("/api/admin/users/grant_admin", handlers.HandleAdminGrant).Methods("POST")
 	router.HandleFunc("/api/admin/users/revoke_admin", handlers.HandleAdminRevoke).Methods("POST")
 	router.HandleFunc("/api/admin/users", handlers.HandleAdminUsers).Methods("GET")
+	router.HandleFunc("/api/admin/pixels/info", handlers.HandleAdminPixelInfo).Methods("GET")
+	router.HandleFunc("/api/admin/pixels/cache", handlers.HandleAdminPixelInfoCache).Methods("GET")
 	router.HandleFunc("/api/admin/timer/set", handlers.HandleAdminTimerSet).Methods("POST")
 	router.HandleFunc("/api/admin/canvas/freeze", handlers.HandleAdminFreeze).Methods("POST")
 	router.HandleFunc("/api/admin/canvas/resize", handlers.HandleAdminResize).Methods("POST")

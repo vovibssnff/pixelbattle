@@ -1,0 +1,60 @@
+---
+# Phase 1 topology: laptop drives client load only; VM 192.168.122.71 hosts the SUT,
+# observability stack, and Go DB benchmark sidecar (see plan §7.0).
+#
+# Group semantics:
+#   loaders  - hosts that run k6 + Playwright + the Python reporter (laptop).
+#              Wrapped in `systemd-run --scope -p MemoryMax=16G` by the role when
+#              benchmark_use_systemd_scope=true (default for the laptop host below).
+#   targets  - hosts that run docker compose, Prometheus, Grafana, the Go DB bench
+#              sidecar (the VM). Aggregate compose memory cap is 16 GB.
+#
+# Legacy groups `local` and `vms` are kept via the `children:` mechanism so existing
+# invocations (`-e target_hosts=benchmark_vm`, `hosts: benchmark_vm`, etc.) still work.
+#
+# Typical Phase 1 invocation (from benchmark/, with the project venv active):
+#   ansible-playbook -i inventory.yml playbooks/run_monolith_suite.yml
+#
+# Storage deepdive (no 30-min budget, targets-only):
+#   ansible-playbook -i inventory.yml playbooks/run_storage_deepdive.yml
+#
+# Sync results back from VM (ad-hoc):
+#   ansible-playbook -i inventory.yml playbooks/sync_results_from_vm.yml
+
+all:
+  children:
+    loaders:
+      hosts:
+        localhost:
+          ansible_connection: local
+          # Loaders point at the VM stack by default. Override with
+          # -e benchmark_remote_host=<ip> or BENCHMARK_REMOTE_HOST=<ip> for ad-hoc runs.
+          benchmark_remote_host: "192.168.122.71"
+          benchmark_use_systemd_scope: true
+          benchmark_loader_memory_max: 16G
+
+    targets:
+      hosts:
+        benchmark_vm:
+          ansible_host: 192.168.122.71
+          ansible_user: vovi
+          ansible_ssh_pass: vovi
+          ansible_become_password: vovi
+          ansible_python_interpreter: /usr/bin/python3
+          benchmark_co_located_stack: true
+          benchmark_project_root: /opt/pixelbattle
+          # Stack lives under /opt (root); write results under the SSH user home.
+          benchmark_results_root: /home/vovi/pixelbattle-benchmark-results
+          benchmark_opt_sqlite_chown: true
+          # No project venv on the VM; use system Python with numpy/matplotlib installed.
+          benchmark_python_interpreter: /usr/bin/python3
+
+    # Backward-compatibility aliases — declared as parents that include the new groups,
+    # so `-e target_hosts=local`, `hosts: benchmark_vm`, and existing inventory lookups
+    # all keep working.
+    local:
+      children:
+        loaders: {}
+    vms:
+      children:
+        targets: {}

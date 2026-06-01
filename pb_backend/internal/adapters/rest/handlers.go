@@ -23,13 +23,13 @@ type RestHandlers struct {
 	userService    domain.UserService
 	timerService   domain.TimerService
 	snapshotter    *service.CanvasSnapshotter
-	wsHub          WSResizeNotifier
+	wsHub          WSRuntimeNotifier
 	// adminAPIToken: when non-empty, requests with matching X-Admin-Token may call admin APIs without a session.
 	adminAPIToken string
 }
 
 func NewRestHandlers(sessionService domain.SessionService, vkAuthProvider vk.VKAuthProvider, canvasService domain.CanvasService,
-	userService domain.UserService, timerService domain.TimerService, adminAPIToken string, snapshotter *service.CanvasSnapshotter, wsHub WSResizeNotifier) *RestHandlers {
+	userService domain.UserService, timerService domain.TimerService, adminAPIToken string, snapshotter *service.CanvasSnapshotter, wsHub WSRuntimeNotifier) *RestHandlers {
 	return &RestHandlers{
 		sessionService: sessionService,
 		canvasService:  canvasService,
@@ -54,6 +54,15 @@ func (h *RestHandlers) effectiveCanvasDims(ctx context.Context, fbW, fbH uint) (
 	return w, he
 }
 
+func (h *RestHandlers) setCooldownHeader(ctx context.Context, w http.ResponseWriter) {
+	sec, err := h.timerService.CooldownSeconds(ctx)
+	if err != nil {
+		logrus.Debugf("pixel cooldown header: %v", err)
+		return
+	}
+	w.Header().Set("X-Pixel-Cooldown-Sec", strconv.Itoa(sec))
+}
+
 // HandleVKLogin is the VK OAuth callback (GET with query payload).
 func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 	session, _ := h.sessionService.GetSession(r)
@@ -69,6 +78,12 @@ func (h *RestHandlers) HandleVKLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vkID := domain.VKUserID(vkUsr.ID)
+	if h.userService.IsUserBanned(r.Context(), vkID) {
+		service.IncrementBannedRejected()
+		service.RecordLoginAttempt("vk", "fail")
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 
 	if !h.userService.UserExists(r.Context(), vkID) {
 		h.sessionService.SetAuthenticated(session, "in_process")
@@ -179,6 +194,12 @@ func (h *RestHandlers) HandlePasswordLogin(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
+	if h.userService.IsUserBanned(r.Context(), usr.ID) {
+		service.IncrementBannedRejected()
+		service.RecordLoginAttempt("password", "fail")
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	service.RecordLoginAttempt("password", "success")
 	session, _ := h.sessionService.GetSession(r)
 	h.sessionService.SetUserID(session, usr.ID)
@@ -283,6 +304,11 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+	if h.userService.IsUserBanned(r.Context(), h.sessionService.GetUserID(session)) {
+		service.IncrementBannedRejected()
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 
 	cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
 	img := h.canvasService.CreateImage(ch, cw)
@@ -301,6 +327,108 @@ func (h *RestHandlers) HandleInitCanvas(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-store")
+	h.setCooldownHeader(r.Context(), w)
+	if h.userService.IsEffectiveAdmin(r.Context(), h.sessionService.GetUserID(session)) {
+		w.Header().Set("Is-God", "true")
+	}
+	if _, err := w.Write(b); err != nil {
+		logrus.Error(err)
+		return
+	}
+	service.ObserveCanvasInitDuration(start)
+}
+
+// HandlePixelInfo GET /api/pixels/info?x=<int>&y=<int> — authenticated (non-admin) pixel attribution.
+func (h *RestHandlers) HandlePixelInfo(w http.ResponseWriter, r *http.Request) {
+	session, err := h.sessionService.GetSession(r)
+	if err != nil || !h.sessionService.IsAuthenticated(session) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	x64, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("x")), 10, 32)
+	if err != nil {
+		http.Error(w, "invalid x", http.StatusBadRequest)
+		return
+	}
+	y64, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("y")), 10, 32)
+	if err != nil {
+		http.Error(w, "invalid y", http.StatusBadRequest)
+		return
+	}
+	info, err := h.canvasService.GetPixelInfo(r.Context(), uint(x64), uint(y64))
+	if err != nil {
+		http.Error(w, "pixel not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "pixel": info})
+}
+
+// HandleCanvasPNG serves a cached PNG from the snapshotter when available (plan §11.3),
+// with ETag / 304 and X-Snapshot-Ms for WS replay_after_ms; falls back to a live render.
+func (h *RestHandlers) HandleCanvasPNG(w http.ResponseWriter, r *http.Request, height, width uint) {
+	start := time.Now()
+	session, _ := h.sessionService.GetSession(r)
+	if !h.sessionService.IsAuthenticated(session) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if h.userService.IsUserBanned(r.Context(), h.sessionService.GetUserID(session)) {
+		service.IncrementBannedRejected()
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var b []byte
+	var etag string
+	var unixMs int64
+
+	if h.snapshotter != nil {
+		if png, et, ms, ok := h.snapshotter.Get(); ok && len(png) > 0 {
+			b, etag, unixMs = png, et, ms
+		}
+	}
+
+	if len(b) == 0 {
+		cw, ch := h.effectiveCanvasDims(r.Context(), width, height)
+		img := h.canvasService.CreateImage(ch, cw)
+		if err := h.canvasService.GetCanvas(r.Context(), img); err != nil {
+			logrus.Error(err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		var err error
+		b, err = utils.GetImageBytes(img)
+		if err != nil {
+			logrus.Error(err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		unixMs = time.Now().UnixMilli()
+		etag = ""
+	}
+
+	if etag != "" {
+		if inm := r.Header.Get("If-None-Match"); inm != "" && inm == etag {
+			w.Header().Set("ETag", etag)
+			w.Header().Set("X-Snapshot-Ms", strconv.FormatInt(unixMs, 10))
+			w.Header().Set("Cache-Control", "public, max-age=2")
+			h.setCooldownHeader(r.Context(), w)
+			w.WriteHeader(http.StatusNotModified)
+			service.ObserveCanvasInitDuration(start)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=2")
+	w.Header().Set("X-Snapshot-Ms", strconv.FormatInt(unixMs, 10))
+	h.setCooldownHeader(r.Context(), w)
+	if etag != "" {
+		w.Header().Set("ETag", etag)
+	}
 	if h.userService.IsEffectiveAdmin(r.Context(), h.sessionService.GetUserID(session)) {
 		w.Header().Set("Is-God", "true")
 	}

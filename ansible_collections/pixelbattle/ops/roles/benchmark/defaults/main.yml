@@ -1,0 +1,114 @@
+---
+# role_path = benchmark/roles/benchmark
+# dirname x3 → benchmark/roles → benchmark → project root
+benchmark_project_root: "{{ role_path | dirname | dirname | dirname }}"
+
+# Python interpreter: project-wide venv at repo root
+benchmark_python_interpreter: "{{ benchmark_project_root + '/.venv/bin/python' }}"
+
+# Storage backends to benchmark (VKR: Redis-only)
+benchmark_storage_types:
+  - redis
+
+# k6 load test tiers (full suite). Phase 1 §7.0 maps:
+#   medium -> nominal (4 min, 50 -> 200 VUs)
+#   heavy  -> stress  (7 min, 500 sustained)
+#   breakpoint -> linear 100 -> 3000 over 10 min, emits saturation_vus
+benchmark_test_types:
+  - medium
+  - heavy
+  - breakpoint
+
+# Single-step defaults (override with -e for individual playbooks)
+benchmark_storage_type: redis
+benchmark_test_type: medium
+
+# Database benchmark parameters
+benchmark_canvas_height: 250
+benchmark_canvas_width: 500
+benchmark_concurrent_writers: 10
+benchmark_history_rounds: 3
+benchmark_distribution: zipfian          # "uniform" or "zipfian" (hotspot)
+benchmark_warmup_sec: 5                  # seconds of warmup to discard (0 = off)
+benchmark_target_rates: "100,500,1000,2000"  # sustained throughput levels (ops/s)
+benchmark_sustained_duration_sec: 30     # seconds per rate level
+benchmark_ruw_duration_sec: 60           # read-under-write duration
+benchmark_ruw_readers: 2                 # concurrent readers during read-under-write
+benchmark_metrics_port: 9091             # Prometheus /metrics port (0 to disable)
+
+# VKR: disable DB benchmarks by default, keep k6/e2e only.
+benchmark_enable_db_bench: false
+
+# When benchmark_remote_host is set, the DB benchmark runs on benchmark_vm (SSH) so the
+# binary is co-located with Docker; results are fetched back to the controller.
+benchmark_run_db_on_vm: "{{ (benchmark_remote_host | default('') | trim | length) > 0 }}"
+benchmark_db_delegate_host: benchmark_vm
+
+# True on benchmark_vm inventory: use 127.0.0.1 for Redis/Postgres/Mongo (published ports).
+benchmark_co_located_stack: false
+
+# Use Docker (golang image) to run the benchmark when co-located — matches Go toolchain without apt install.
+# If Docker Hub is unreachable (TLS timeout, air-gapped), pre-pull the image on the VM (`docker pull …`) or
+# install Go on the host and run with: -e benchmark_go_via_docker=false
+benchmark_go_via_docker: "{{ (benchmark_db_use_local_ports | default(false) | bool) }}"
+# Override to use a mirror / pinned digest: benchmark_go_docker_image: mirror.example/library/golang:1.23-bookworm
+benchmark_go_docker_image: golang:1.23-bookworm
+benchmark_db_use_local_ports: "{{ (benchmark_run_db_on_vm | default(false) | bool) or (benchmark_co_located_stack | default(false) | bool) }}"
+
+# Env for processes on the VM host (or docker --network host): reach DBs via published ports.
+benchmark_db_host_local_env:
+  REDIS_ADDR: "127.0.0.1:6379"
+  REDIS_PSW: "redis"
+  REDIS_HISTORY: "0"
+  REDIS_TIMER: "1"
+  REDIS_USERS: "2"
+  REDIS_BANNED: "3"
+  POSTGRES_HOST: "127.0.0.1"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "pixelbattle"
+  POSTGRES_PASSWORD: "pixelbattle"
+  POSTGRES_DB: "pixelbattle"
+  MONGO_URI: "mongodb://root:root@127.0.0.1:27017/?directConnection=true"
+
+# Co-located execution (see also benchmark_run_db_on_vm)
+#   Laptop + -e benchmark_remote_host=IP → DB bench delegates to benchmark_vm (this file).
+#   Or run the whole play on the VM: -e target_hosts=benchmark_vm (unset benchmark_remote_host).
+
+# Results layout (all under benchmark_project_root/results/)
+benchmark_results_root: "{{ benchmark_project_root }}/results"
+benchmark_results_dir: "{{ benchmark_results_root }}/benchmarks"
+benchmark_k6_results_dir: "{{ benchmark_results_root }}/k6"
+
+# Reporting script paths
+benchmark_report_script: "{{ benchmark_project_root }}/benchmark/reporting/generate-report.py"
+benchmark_plot_script: "{{ benchmark_project_root }}/benchmark/reporting/plot-graphs.py"
+
+# When the play runs on localhost (laptop) but Docker/stack lives on another machine, set this
+# so Redis/Postgres waits, k6, Go benches, and Prometheus collection hit that host's ports.
+# Override with: -e benchmark_remote_host=IP, inventory host var below, or env BENCHMARK_REMOTE_HOST.
+# (If you instead SSH the play onto the VM with target_hosts=benchmark_vm, leave this empty:
+# the stack is then localhost *on the VM*, which is correct.)
+benchmark_remote_host: "{{ (lookup('ansible.builtin.env', 'BENCHMARK_REMOTE_HOST') | default('', true)) | trim }}"
+
+# Hostname/IP for stack endpoints — NOT the Ansible SSH target; this is where Redis/Postgres/etc. listen.
+benchmark_target_host: "{{ (benchmark_remote_host | default('') | trim) if (benchmark_remote_host | default('') | trim | length > 0) else 'localhost' }}"
+
+# k6 WebSocket target: plain backend (ws://host:8080) or Caddy front door (wss://host, default 443).
+# Remote loaders use TLS + pixelbattle.local so k6 matches the cert; add hosts: <VM_IP> pixelbattle.local.
+benchmark_k6_tls: "{{ (benchmark_remote_host | default('') | trim | length) > 0 }}"
+benchmark_k6_wss_host: "pixelbattle.local"
+benchmark_k6_skip_tls_verify: true
+benchmark_k6_address: >-
+  {{ benchmark_k6_wss_host if benchmark_k6_tls | bool else (benchmark_target_host ~ ':8080') }}
+
+# Prometheus (collect_results) — must match where the stack exposes 9090
+benchmark_prometheus_url: "http://{{ benchmark_target_host }}:9090"
+
+# When targeting a remote VM, skip collecting Docker logs from the controller (wrong machine)
+benchmark_collect_docker_logs: "{{ (benchmark_remote_host | default('') | trim | length) == 0 }}"
+
+# Extra env for `go run ./cmd/benchmark` when benchmark_remote_host is set (otherwise use app.env only)
+benchmark_db_bench_environment: {}
+
+# Number of Docker log lines to capture per container
+benchmark_docker_log_tail: 1000

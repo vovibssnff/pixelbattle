@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+backup_dir="{{ backups_dir }}"
+stack="{{ backups_stack_name }}"
+ts="$(date -u +%Y%m%dT%H%M%SZ)"
+run_dir="${backup_dir}/${ts}"
+mkdir -p "${run_dir}"
+
+mongo_cid="$(docker ps --filter "label=com.docker.swarm.service.name=${stack}_mongodb" -q | head -1 || true)"
+if [[ -n "${mongo_cid}" ]]; then
+  docker exec "${mongo_cid}" mongodump \
+    --username "{{ vault_mongo_root_username }}" \
+    --password "{{ vault_mongo_root_password }}" \
+    --authenticationDatabase admin \
+    --archive > "${run_dir}/mongodb.archive"
+fi
+
+for shard in c1 c2 c3; do
+  redis_cid="$(docker ps --filter "label=com.docker.swarm.service.name=${stack}_redis-${shard}" -q | head -1 || true)"
+  if [[ -n "${redis_cid}" ]]; then
+    docker exec "${redis_cid}" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" --rdb /tmp/dump.rdb >/dev/null'
+    docker cp "${redis_cid}:/tmp/dump.rdb" "${run_dir}/redis-${shard}.rdb"
+  fi
+done
+
+tar -C "${backup_dir}" -czf "${backup_dir}/${ts}.tar.gz" "${ts}"
+rm -rf "${run_dir}"
+find "${backup_dir}" -type f -name '*.tar.gz' -mtime +"{{ backups_retention_days }}" -delete

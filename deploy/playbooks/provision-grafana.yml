@@ -13,10 +13,12 @@
   hosts: swarm_manager
   gather_facts: false
   vars:
+    grafana_admin_user: "{{ vault_grafana_admin_user | default('admin') }}"
+    grafana_admin_password: "{{ vault_grafana_admin_password }}"
     grafana_src: "{{ playbook_dir }}/../../monitoring/grafana"
     grafana_stage: /home/ubuntu/grafana-provision
     grafana_container_provisioning: /etc/grafana/provisioning
-    grafana_container_dashboards: /var/lib/grafana/dashboards
+    grafana_container_dashboards: /etc/grafana/dashboards
 
   tasks:
     # ------------------------------------------------------------------ #
@@ -73,10 +75,11 @@
     # ------------------------------------------------------------------ #
     - name: Create provisioning dirs inside container
       ansible.builtin.command: >-
-        docker exec {{ grafana_cid.stdout }}
-        sh -c "mkdir -p /etc/grafana/provisioning/datasources
-               mkdir -p /etc/grafana/provisioning/dashboards
-               mkdir -p /var/lib/grafana/dashboards"
+        docker exec -u 0 {{ grafana_cid.stdout }}
+        mkdir -p
+        /etc/grafana/provisioning/datasources
+        /etc/grafana/provisioning/dashboards
+        /etc/grafana/dashboards
       changed_when: false
 
     # ------------------------------------------------------------------ #
@@ -105,10 +108,11 @@
     # ------------------------------------------------------------------ #
     - name: Trigger Grafana provisioning reload via API
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:3000/api/admin/provisioning/dashboards/reload"
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/admin/provisioning/dashboards/reload"
+        validate_certs: false
         method: POST
-        user: admin
-        password: admin
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
         force_basic_auth: true
         status_code: [200, 204]
       register: reload_result
@@ -116,10 +120,11 @@
 
     - name: Also reload datasources
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:3000/api/admin/provisioning/datasources/reload"
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/admin/provisioning/datasources/reload"
+        validate_certs: false
         method: POST
-        user: admin
-        password: admin
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
         force_basic_auth: true
         status_code: [200, 204]
       register: reload_ds_result
@@ -127,9 +132,10 @@
 
     - name: Verify dashboards are visible
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:3000/api/search?type=dash-db"
-        user: admin
-        password: admin
+        url: "https://{{ caddy_domain | default(vault_caddy_domain | default('pixelbattle.local')) }}/panel/api/search?type=dash-db"
+        validate_certs: false
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
         force_basic_auth: true
         status_code: 200
       register: dash_list

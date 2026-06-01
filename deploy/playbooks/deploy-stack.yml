@@ -16,6 +16,10 @@
   vars:
     stack_name: pixelbattle
     deploy_dir: /home/ubuntu/pixelbattle-deploy
+    pixelbattle_image_tag_suffix: "{{ lookup('pipe', 'git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S') }}"
+    pixelbattle_backend_image: "pixelbattle/backend:phase2-{{ pixelbattle_image_tag_suffix }}"
+    pixelbattle_frontend_image: "pixelbattle/frontend:phase2-{{ pixelbattle_image_tag_suffix }}"
+    pixelbattle_domain: "{{ caddy_domain }}"
 
     # config_key must match the key name in the configs: block of stack.yml
     config_sources:
@@ -29,6 +33,38 @@
         src: "{{ playbook_dir }}/../../caddy/Caddyfile.swarm"
       - key: caddy_tls
         src: "{{ playbook_dir }}/../../caddy/tls.inc"
+      - key: grafana_dashboard_provider
+        src: "{{ playbook_dir }}/../../monitoring/grafana/provisioning/dashboards/dashboard.yml"
+      - key: grafana_ds_prometheus
+        src: "{{ playbook_dir }}/../../monitoring/grafana/provisioning/datasources/prometheus.yml"
+      - key: grafana_ds_infinity
+        src: "{{ playbook_dir }}/../../monitoring/grafana/provisioning/datasources/infinity.yml"
+      - key: grafana_dash_application_performance
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/application-performance.json"
+      - key: grafana_dash_benchmark_realtime
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/benchmark-realtime.json"
+      - key: grafana_dash_comparison
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/comparison-dashboard.json"
+      - key: grafana_dash_database_performance
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/database-performance.json"
+      - key: grafana_dash_infrastructure
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/infrastructure.json"
+      - key: grafana_dash_runtime_admin
+        src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/runtime-admin.json"
+
+    secret_sources:
+      - key: admin_api_token
+        content: "{{ vault_admin_api_token | default('') }}"
+      - key: session_key
+        content: "{{ vault_session_key | default('') }}"
+      - key: redis_password
+        content: "{{ vault_redis_password | default('') }}"
+      - key: mongo_root_password
+        content: "{{ vault_mongo_root_password | default('') }}"
+      - key: mongo_uri
+        content: "mongodb://{{ vault_mongo_root_username | urlencode }}:{{ vault_mongo_root_password | urlencode }}@mongodb:27017/pixelbattle?authSource=admin"
+      - key: grafana_admin_password
+        content: "{{ vault_grafana_admin_password | default('') }}"
 
   tasks:
     # ------------------------------------------------------------------ #
@@ -39,6 +75,49 @@
         path: "{{ deploy_dir }}/configs"
         state: directory
         mode: "0755"
+
+    - name: Create secret staging directory on manager
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/secrets"
+        state: directory
+        mode: "0700"
+
+    - name: Verify admin API token is configured
+      ansible.builtin.assert:
+        that:
+          - (vault_admin_api_token | default('') | trim | length) >= 32
+        fail_msg: "Set vault_admin_api_token to a 32+ character secret in deploy/group_vars/all/vault.yml"
+
+    - name: Verify session key is configured
+      ansible.builtin.assert:
+        that:
+          - (vault_session_key | default('') | trim | length) >= 32
+        fail_msg: "Set vault_session_key to a 32+ character secret in deploy/group_vars/all/vault.yml"
+
+    - name: Verify Redis password is configured
+      ansible.builtin.assert:
+        that:
+          - (vault_redis_password | default('') | trim | length) >= (redis_password_min_length | default(16) | int)
+        fail_msg: >-
+          Set vault_redis_password to at least {{ redis_password_min_length | default(16) }}
+          characters in deploy/group_vars/all/vault.yml
+
+    - name: Verify Mongo credentials are configured
+      ansible.builtin.assert:
+        that:
+          - (vault_mongo_root_username | default('') | trim | length) > 0
+          - (vault_mongo_root_password | default('') | trim | length) >= (mongo_password_min_length | default(16) | int)
+        fail_msg: >-
+          Set vault_mongo_root_username and vault_mongo_root_password (>= {{ mongo_password_min_length | default(16) }} chars)
+          in deploy/group_vars/all/vault.yml
+
+    - name: Verify Grafana admin password is configured
+      ansible.builtin.assert:
+        that:
+          - (vault_grafana_admin_password | default('') | trim | length) >= (grafana_admin_password_min_length | default(16) | int)
+        fail_msg: >-
+          Set vault_grafana_admin_password to at least {{ grafana_admin_password_min_length | default(16) }}
+          characters in deploy/group_vars/all/vault.yml
 
     # ------------------------------------------------------------------ #
     # 2. Upload config files and compute hashes                            #
@@ -75,6 +154,39 @@
         msg: "{{ cfg_ver }}"
 
     # ------------------------------------------------------------------ #
+    # 2b. Upload secrets and compute hashes                                #
+    # ------------------------------------------------------------------ #
+    - name: Upload secret files to manager
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ deploy_dir }}/secrets/{{ item.key }}"
+        mode: "0600"
+      loop: "{{ secret_sources }}"
+      no_log: true
+
+    - name: Compute content hash for each secret
+      ansible.builtin.shell: |
+        set -o pipefail
+        sha256sum {{ deploy_dir }}/secrets/{{ item.key }} | awk '{print substr($1,1,8)}'
+      args:
+        executable: /bin/bash
+      loop: "{{ secret_sources }}"
+      register: secret_hash_results
+      changed_when: false
+      no_log: true
+
+    - name: Build secret key→versioned-name map
+      ansible.builtin.set_fact:
+        secret_ver: >-
+          {{
+            secret_ver | default({}) | combine({
+              item.item.key: stack_name + '_' + item.item.key + '_' + item.stdout
+            })
+          }}
+      loop: "{{ secret_hash_results.results }}"
+      no_log: true
+
+    # ------------------------------------------------------------------ #
     # 3. Create any missing config objects on the Swarm                    #
     # ------------------------------------------------------------------ #
     - name: List existing Docker configs
@@ -91,11 +203,26 @@
       when: cfg_ver[item.key] not in existing_configs.stdout_lines
       changed_when: true
 
+    - name: List existing Docker secrets
+      ansible.builtin.command: docker secret ls --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: existing_secrets
+      changed_when: false
+
+    - name: Create secret object if not present
+      ansible.builtin.command: >-
+        docker secret create
+        {{ secret_ver[item.key] }}
+        {{ deploy_dir }}/secrets/{{ item.key }}
+      loop: "{{ secret_sources }}"
+      when: secret_ver[item.key] not in existing_secrets.stdout_lines
+      changed_when: true
+      no_log: true
+
     # ------------------------------------------------------------------ #
     # 4. Generate patched stack.yml that uses external versioned configs   #
     # ------------------------------------------------------------------ #
-    - name: Copy stack.yml to deploy dir
-      ansible.builtin.copy:
+    - name: Render stack.yml to deploy dir
+      ansible.builtin.template:
         src: "{{ playbook_dir }}/../stack.yml"
         dest: "{{ deploy_dir }}/stack.yml"
         mode: "0644"
@@ -119,9 +246,9 @@
         for key, versioned in cfg_ver.items():
             new_block += f"  {key}:\n    external: true\n    name: {versioned}\n"
 
-        # Replace the configs: block (from 'configs:\n' up to 'services:\n')
+        # Replace the configs: block (from 'configs:\n' up to 'secrets:\n' or 'services:\n')
         patched = re.sub(
-            r'^configs:.*?(?=^services:)',
+            r'^configs:.*?(?=^(secrets|services):)',
             new_block + "\n",
             content,
             flags=re.MULTILINE | re.DOTALL
@@ -136,9 +263,45 @@
       register: patch_result
       changed_when: true
 
+    - name: Rewrite secrets block to use external versioned names
+      ansible.builtin.shell: |
+        set -o pipefail
+        python3 - << 'PYEOF'
+        import re
+
+        stack_file = "{{ deploy_dir }}/stack.yml"
+        secret_ver = {{ secret_ver | to_json }}
+
+        with open(stack_file) as f:
+            content = f.read()
+
+        new_block = "secrets:\n"
+        for key, versioned in secret_ver.items():
+            new_block += f"  {key}:\n    external: true\n    name: {versioned}\n"
+
+        patched = re.sub(
+            r'^secrets:.*?(?=^services:)',
+            new_block + "\n",
+            content,
+            flags=re.MULTILINE | re.DOTALL
+        )
+
+        with open(stack_file, 'w') as f:
+            f.write(patched)
+        print("patched secrets ok")
+        PYEOF
+      args:
+        executable: /bin/bash
+      register: patch_secrets_result
+      changed_when: true
+
     - name: Show patch result
       ansible.builtin.debug:
         var: patch_result.stdout
+
+    - name: Show secrets patch result
+      ansible.builtin.debug:
+        var: patch_secrets_result.stdout
 
     # ------------------------------------------------------------------ #
     # 5. Deploy the stack                                                  #
@@ -160,25 +323,78 @@
       ansible.builtin.debug:
         var: stack_deploy.stdout_lines
 
-    # ------------------------------------------------------------------ #
-    # 6. Wait for all service tasks to converge (up to 6 min)              #
-    # ------------------------------------------------------------------ #
-    - name: Wait for all tasks to be Running
+    - name: Force-update edge services after deploy (non-blocking)
+      ansible.builtin.command: docker service update --detach --force {{ stack_name }}_{{ item }}
+      loop:
+        - caddy
+        - grafana
+        - mongodb
+      changed_when: true
+      failed_when: false
+      when: deploy_force_update | default(true) | bool
+
+    - name: Wait for MongoDB to become healthy (first init can take ~90s)
       ansible.builtin.shell: |
         set -o pipefail
-        desired=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' -q | wc -l)
-        running=$(docker stack ps {{ stack_name }} --filter 'desired-state=running' \
-                  --format '{{ "{{" }}.CurrentState{{ "}}" }}' | awk '/^Running/{c++} END{print c+0}')
-        echo "running=$running desired=$desired"
-        [ "$running" -eq "$desired" ] && [ "$desired" -gt "0" ]
+        docker service ls --filter name={{ stack_name }}_mongodb --format '{{ "{{" }}.Replicas{{ "}}" }}' | grep -q '^1/1$'
+      args:
+        executable: /bin/bash
+      register: mongo_ready
+      retries: 18
+      delay: 10
+      until: mongo_ready.rc == 0
+      changed_when: false
+
+    - name: Force-update gateway services after MongoDB is up (non-blocking)
+      ansible.builtin.command: docker service update --detach --force {{ stack_name }}_{{ item }}
+      loop:
+        - gateway-1
+        - gateway-2
+      changed_when: true
+      failed_when: false
+      when: deploy_force_update | default(true) | bool
+
+    # ------------------------------------------------------------------ #
+    # 6. Wait for services to reach desired replicas (fails fast, ~2 min)  #
+    # ------------------------------------------------------------------ #
+    - name: Wait for stack services to reach desired replicas
+      ansible.builtin.shell: |
+        set -o pipefail
+        bad=0
+        while IFS= read -r line; do
+          name="${line%% *}"
+          replicas="${line#* }"
+          left="${replicas%%/*}"
+          right="${replicas##*/}"
+          if [ -z "$right" ] || [ "$left" != "$right" ]; then
+            echo "not ready: ${name} ${replicas}"
+            bad=1
+          fi
+        done < <(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}')
+        exit $bad
       args:
         executable: /bin/bash
       register: converge_check
-      retries: 36
+      retries: "{{ ((deploy_wait_timeout_seconds | default(120) | int) // 10) | int }}"
       delay: 10
       until: converge_check.rc == 0
       changed_when: false
-      failed_when: false
+
+    - name: Show services not yet converged (last attempt)
+      ansible.builtin.command: >-
+        docker stack services {{ stack_name }}
+        --format 'table {{ "{{" }}.Name{{ "}}" }}\t{{ "{{" }}.Replicas{{ "}}" }}\t{{ "{{" }}.Image{{ "}}" }}'
+      register: converge_status
+      changed_when: false
+      when: converge_check.rc != 0
+
+    - name: Fail when stack did not converge
+      ansible.builtin.fail:
+        msg: >-
+          Stack services did not reach desired replicas within
+          {{ deploy_wait_timeout_seconds | default(120) }}s.
+          {{ converge_status.stdout | default('') }}
+      when: converge_check.rc != 0
 
     - name: Final service table
       ansible.builtin.command: >-
@@ -190,6 +406,32 @@
     - name: Show services
       ansible.builtin.debug:
         var: svc_table.stdout_lines
+
+    # Grafana stores the admin password in grafana.db on first start; changing the Docker
+    # secret alone does not update login. Sync the DB password from vault after deploy.
+    - name: Wait for Grafana task to be running
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name={{ stack_name }}_grafana -q | head -1)
+        [ -n "$cid" ]
+      args:
+        executable: /bin/bash
+      register: grafana_running
+      retries: 12
+      delay: 5
+      until: grafana_running.rc == 0
+      changed_when: false
+
+    - name: Reset Grafana admin password to match vault (staged secret)
+      ansible.builtin.shell: |
+        set -o pipefail
+        cid=$(docker ps --filter label=com.docker.swarm.service.name={{ stack_name }}_grafana -q | head -1)
+        pw=$(cat {{ deploy_dir }}/secrets/grafana_admin_password)
+        printf '%s' "$pw" | docker exec -i "$cid" grafana cli admin reset-admin-password --password-from-stdin
+      args:
+        executable: /bin/bash
+      no_log: true
+      changed_when: true
 
     # ------------------------------------------------------------------ #
     # 7. Prune stale configs from previous versions                        #
@@ -207,3 +449,18 @@
         item not in cfg_ver.values() | list
       failed_when: false
       changed_when: true
+
+    - name: List all secrets now
+      ansible.builtin.command: docker secret ls --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: all_secrets_now
+      changed_when: false
+
+    - name: Remove stale secret versions
+      ansible.builtin.command: docker secret rm {{ item }}
+      loop: "{{ all_secrets_now.stdout_lines }}"
+      when: >
+        item.startswith(stack_name + '_') and
+        item not in secret_ver.values() | list
+      failed_when: false
+      changed_when: true
+      no_log: true

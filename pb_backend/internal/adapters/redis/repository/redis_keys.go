@@ -27,7 +27,32 @@ func PixelMetaKey(x, y uint) string {
 	return fmt.Sprintf("pixmeta:{%d:%d}", y, x)
 }
 
+// ProbeKey is outside the pixel:* namespace so availability checks never make an
+// empty canvas look initialized.
+func ProbeKey(hashTag bool) string {
+	if hashTag {
+		return "{probe}:availability"
+	}
+	return "probe:availability"
+}
+
 const pixelKeyGlob = "pixel:*"
+
+// CollectPixelKeysByDimension returns every canvas list key for width×height (row-major y then x).
+// Used instead of SCAN when logical size is known so snapshots read exactly w×h cells.
+func CollectPixelKeysByDimension(width, height uint, hashTagKeys bool) []string {
+	if width == 0 || height == 0 {
+		return nil
+	}
+	n := int(width) * int(height)
+	keys := make([]string, 0, n)
+	for y := uint(0); y < height; y++ {
+		for x := uint(0); x < width; x++ {
+			keys = append(keys, PixelKey(hashTagKeys, x, y))
+		}
+	}
+	return keys
+}
 
 // CanvasSizeKey stores logical width/height in a small Redis HASH (ADR-003).
 // Hash-tagged for cluster so meta lives in one slot.

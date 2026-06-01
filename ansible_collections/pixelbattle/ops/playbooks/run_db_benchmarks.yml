@@ -1,0 +1,15 @@
+---
+# Local stack:  ansible-playbook -i inventory.yml playbooks/run_db_benchmarks.yml
+# VM stack only: ansible-playbook -i inventory.yml playbooks/run_db_benchmarks.yml -e target_hosts=benchmark_vm
+#
+# Laptop + remote stack: this playbook only includes run_db_benchmarks.yml (no delegation).
+# Use full_benchmark_suite.yml -e benchmark_remote_host=<VM> so the Go binary runs on the VM.
+# Override params: -e "benchmark_canvas_height=250 benchmark_canvas_width=500 ..."
+- name: Run Database-Level Benchmarks
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Run database benchmarks
+      ansible.builtin.include_role:
+        name: pixelbattle.ops.benchmark
+        tasks_from: run_db_benchmarks.yml

@@ -25,7 +25,7 @@
       ansible.builtin.shell: |
         set -o pipefail
         cid=$(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-{{ redis_shard_id }} -q | head -1)
-        [ -n "$cid" ] && docker exec "$cid" redis-cli ping || echo "no container"
+        [ -n "$cid" ] && docker exec "$cid" sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" ping' || echo "no container"
       args:
         executable: /bin/bash
       register: redis_ping
@@ -45,40 +45,85 @@
         set -o pipefail
         docker exec \
           $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
-          redis-cli cluster info | grep -c 'cluster_state:ok' || true
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep -c 'cluster_state:ok' || true
       args:
         executable: /bin/bash
       register: cluster_ok
       changed_when: false
       failed_when: false
 
-    - name: Form the 3-master cluster (no replicas)
+    - name: Check if cluster nodes have slot assignments (for --cluster fix path)
       ansible.builtin.shell: |
         set -o pipefail
         docker exec \
           $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
-          redis-cli --cluster create \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep 'cluster_slots_assigned' | awk -F: '{print $2}' | tr -d ' \r' || echo 0
+      args:
+        executable: /bin/bash
+      register: cluster_slots
+      changed_when: false
+      failed_when: false
+      when: (cluster_ok.stdout | int) == 0
+
+    - name: Try to repair existing cluster with --cluster fix (preserves data)
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" --cluster fix \
+            {{ redis_ips[0] }}:6379 \
+            --cluster-fix-with-unreachable-masters' 2>&1 || true
+      args:
+        executable: /bin/bash
+      when:
+        - (cluster_ok.stdout | int) == 0
+        - (cluster_slots.stdout | default('0') | int) > 0
+      register: cluster_fix
+      changed_when: true
+
+    - name: Re-check cluster state after fix attempt
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info' | grep -c 'cluster_state:ok' || true
+      args:
+        executable: /bin/bash
+      register: cluster_ok_after_fix
+      changed_when: false
+      failed_when: false
+      when: cluster_fix is not skipped
+
+    - name: Form the 3-master cluster (no replicas) — only if fix and check both failed
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker exec \
+          $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" --cluster create \
             {{ redis_ips[0] }}:6379 \
             {{ redis_ips[1] }}:6379 \
             {{ redis_ips[2] }}:6379 \
-            --cluster-replicas 0 --cluster-yes
+            --cluster-replicas 0 --cluster-yes'
       args:
         executable: /bin/bash
-      when: (cluster_ok.stdout | int) == 0
+      when: >-
+        (cluster_ok.stdout | int) == 0 and
+        (cluster_slots.stdout | default('0') | int) == 0 or
+        (cluster_fix is not skipped and (cluster_ok_after_fix.stdout | default('0') | int) == 0)
       register: cluster_create
       changed_when: "'OK' in (cluster_create.stdout | default(''))"
 
     - name: Show cluster create output
       ansible.builtin.debug:
         var: cluster_create.stdout_lines
-      when: cluster_create is not skipped
+      when: cluster_create is not skipped and cluster_create is changed
 
     - name: Final cluster info
       ansible.builtin.shell: |
         set -o pipefail
         docker exec \
           $(docker ps --filter label=com.docker.swarm.service.name=pixelbattle_redis-c1 -q | head -1) \
-          redis-cli cluster info
+          sh -c 'redis-cli -a "$(cat /run/secrets/redis_password)" cluster info'
       args:
         executable: /bin/bash
       register: cluster_info

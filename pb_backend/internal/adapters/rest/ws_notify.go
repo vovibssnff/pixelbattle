@@ -1,6 +1,7 @@
 package rest
 
-// WSResizeNotifier notifies WebSocket clients of canvas geometry changes (ADR-003).
-type WSResizeNotifier interface {
+// WSRuntimeNotifier notifies WebSocket clients of runtime admin changes.
+type WSRuntimeNotifier interface {
 	NotifyCanvasResize(width, height uint, payload []byte)
+	NotifyPixelCooldown(seconds int, payload []byte)
 }

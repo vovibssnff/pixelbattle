@@ -1,0 +1,14 @@
+---
+# Run locally:  ansible-playbook playbooks/collect_results.yml
+# Run on a VM:  ansible-playbook playbooks/collect_results.yml -e target_hosts=benchmark_vm
+# Remote stack on another host: -e benchmark_remote_host=192.168.122.71 (sets benchmark_prometheus_url)
+- name: Collect Benchmark Results and Logs
+  hosts: "{{ target_hosts | default('local') }}"
+  gather_facts: true
+  tasks:
+    - name: Collect results
+      ansible.builtin.include_role:
+        name: pixelbattle.ops.benchmark
+        tasks_from: collect_results.yml
+      vars:
+        benchmark_collected_dir: "{{ benchmark_results_root }}/collected_{{ ansible_date_time.epoch }}"

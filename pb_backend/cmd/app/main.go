@@ -62,7 +62,7 @@ func main() {
 
 	ch := uint(config.CanvasHeight)
 	cw := uint(config.CanvasWidth)
-	sentinelKey := redis_repo.PixelKey(hashTagKeys, cw-1, ch-1)
+	sentinelKey := redis_repo.ProbeKey(hashTagKeys)
 	probe := service.NewAvailabilityProbe(canvasRDB, sentinelKey, 0)
 	probe.Start()
 	defer probe.Stop()
@@ -109,11 +109,8 @@ func main() {
 	sessionService := service.NewSessionService(sessionStore)
 	vkAuthProvider := vk.NewVKAuthProvider(config.ServiceToken, config.APIVersion)
 
-	if !canvasService.IsCanvasInitialized(context.Background()) {
-		logrus.Info("Initializing canvas with white pixels")
-		if err := canvasService.InitializeCanvas(context.Background(), uint(config.CanvasHeight), uint(config.CanvasWidth)); err != nil {
-			logrus.Fatalf("Failed to initialize canvas: %v", err)
-		}
+	if err := canvasService.EnsureCanvasInitialized(context.Background(), uint(config.CanvasHeight), uint(config.CanvasWidth)); err != nil {
+		logrus.Fatalf("Failed to ensure canvas initialization: %v", err)
 	}
 	service.SetCanvasDimensionsGauge(cw, ch)
 

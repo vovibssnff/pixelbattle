@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"pb_backend/internal/core/domain"
 	"pb_backend/internal/metrics"
+	"pb_backend/internal/utils"
 	"strconv"
 	"sync"
 	"time"
@@ -93,6 +95,19 @@ func (r *CanvasRepository) WritePixel(ctx context.Context, x, y uint, pixelData 
 	return err
 }
 
+// resolveCanvasPixelKeys uses stored canvas dimensions when set (fast, deterministic),
+// otherwise falls back to SCAN (legacy / mid-migrate).
+func (r *CanvasRepository) resolveCanvasPixelKeys(ctx context.Context) ([]string, error) {
+	w, h, err := r.GetCanvasDimensions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if w > 0 && h > 0 {
+		return CollectPixelKeysByDimension(w, h, r.hashTagKeys), nil
+	}
+	return collectPixelKeys(ctx, r.rdb)
+}
+
 func (r *CanvasRepository) CheckInitialized(ctx context.Context) bool {
 	start := time.Now()
 	keys, err := collectPixelKeys(ctx, r.rdb)
@@ -108,7 +123,7 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 	r.bulkReadMu.Lock()
 	defer r.bulkReadMu.Unlock()
 	start := time.Now()
-	keys, err := collectPixelKeys(ctx, r.rdb)
+	keys, err := r.resolveCanvasPixelKeys(ctx)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("get_canvas", "redis", time.Since(start), err)
 		return nil, err
@@ -137,11 +152,27 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 	return result, nil
 }
 
+func (r *CanvasRepository) GetLatestPixel(ctx context.Context, x, y uint) (domain.RedisPixel, error) {
+	start := time.Now()
+	value, err := r.rdb.LIndex(ctx, r.pixelKey(x, y), -1).Result()
+	if err != nil {
+		metrics.ObserveDatabaseOperation("get_latest_pixel", "redis", time.Since(start), err)
+		return domain.RedisPixel{}, err
+	}
+	var pixel domain.RedisPixel
+	if err := utils.DeserializeRedisPixel([]byte(value), &pixel); err != nil {
+		metrics.ObserveDatabaseOperation("get_latest_pixel", "redis", time.Since(start), err)
+		return domain.RedisPixel{}, err
+	}
+	metrics.ObserveDatabaseOperation("get_latest_pixel", "redis", time.Since(start), nil)
+	return pixel, nil
+}
+
 func (r *CanvasRepository) GetCanvasHistory(ctx context.Context) (map[string][]string, error) {
 	r.bulkReadMu.Lock()
 	defer r.bulkReadMu.Unlock()
 	start := time.Now()
-	keys, err := collectPixelKeys(ctx, r.rdb)
+	keys, err := r.resolveCanvasPixelKeys(ctx)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("get_canvas_history", "redis", time.Since(start), err)
 		return nil, err
@@ -174,7 +205,7 @@ func (r *CanvasRepository) LoadHeatMap(ctx context.Context) (map[string]int64, e
 	r.bulkReadMu.Lock()
 	defer r.bulkReadMu.Unlock()
 	start := time.Now()
-	keys, err := collectPixelKeys(ctx, r.rdb)
+	keys, err := r.resolveCanvasPixelKeys(ctx)
 	if err != nil {
 		metrics.ObserveDatabaseOperation("load_heatmap", "redis", time.Since(start), err)
 		return nil, err

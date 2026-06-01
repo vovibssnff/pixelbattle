@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"pb_backend/internal/core/domain"
+	"pb_backend/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -73,6 +74,25 @@ func (r *CanvasRepository) GetCanvas(ctx context.Context) (map[string][]string, 
 	}
 
 	return result, nil
+}
+
+func (r *CanvasRepository) GetLatestPixel(ctx context.Context, x, y uint) (domain.RedisPixel, error) {
+	query := `
+		SELECT pixel_data
+		FROM pixel_history
+		WHERE x = $1 AND y = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	var pixelData []byte
+	if err := r.db.QueryRowContext(ctx, query, x, y).Scan(&pixelData); err != nil {
+		return domain.RedisPixel{}, err
+	}
+	var pixel domain.RedisPixel
+	if err := utils.DeserializeRedisPixel(pixelData, &pixel); err != nil {
+		return domain.RedisPixel{}, err
+	}
+	return pixel, nil
 }
 
 // LoadHeatMap counts history length per coordinate

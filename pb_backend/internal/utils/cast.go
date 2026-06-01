@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"pb_backend/internal/core/domain"
 )
@@ -40,7 +41,9 @@ func DeserializeUser(data []byte, usr *domain.User) error {
 }
 
 func toRGBA(img domain.Image) *image.RGBA {
-	rgba := image.NewRGBA(image.Rect(0, 0, int(img.Width), int(img.Height)))
+	bounds := image.Rect(0, 0, int(img.Width), int(img.Height))
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, &image.Uniform{C: color.RGBA{R: 255, G: 255, B: 255, A: 255}}, image.Point{}, draw.Src)
 	for _, pixel := range img.Data {
 		rgba.Set(int(pixel.X), int(pixel.Y), color.RGBA{
 			uint8(pixel.Color[0]),
