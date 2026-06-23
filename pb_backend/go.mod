@@ -8,7 +8,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.2.2
-	github.com/gorilla/websocket v1.5.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.2.0
 	github.com/lib/pq v1.11.2
