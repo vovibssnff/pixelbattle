@@ -37,7 +37,7 @@ jobs:
         working-directory: pb_backend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: pb_backend/go.mod
           cache: true
@@ -58,7 +58,7 @@ jobs:
         working-directory: pb_backend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: pb_backend/go.mod
           cache: true
@@ -205,7 +205,7 @@ jobs:
         working-directory: pb_backend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: pb_backend/go.mod
           cache: true
